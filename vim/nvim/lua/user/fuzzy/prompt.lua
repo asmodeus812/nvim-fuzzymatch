@@ -76,7 +76,7 @@ end
 local function populate_buffer(buffer, lines)
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
-    vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines or {})
+    pcall(vim.api.nvim_buf_set_lines, buffer, 0, -1, false, lines or {})
     vim.bo[buffer].modifiable = oldma
     vim.bo[buffer].modified = false
 end
@@ -414,12 +414,8 @@ function Select:open(opts)
                 buffer = prompt_buffer,
                 callback = debounce_callback(opts.prompt_debounce, function(args)
                     if not args.buf or not vim.api.nvim_buf_is_valid(args.buf) then
-                        local ok, re = safe_call(opts.prompt_interrupt, self)
+                        local ok, re = safe_call(opts.prompt_input, nil, self, nil)
                         if not ok and re then vim.notify(re, vim.log.levels.ERROR) end
-
-                        ok, re = safe_call(opts.prompt_input, nil, self, nil)
-                        if not ok and re then vim.notify(re, vim.log.levels.ERROR) end
-
                         self:close_view()
                     else
                         local line = self:_prompt_getquery()
@@ -659,7 +655,6 @@ function Select.new(opts)
         prompt_cancel = Select.close_view,
         prompt_debounce = 200,
         prompt_preview = false,
-        prompt_interrupt = false,
         prompt_input = false,
         prompt_list = true,
         prompt_prefix = "> ",
@@ -667,7 +662,7 @@ function Select.new(opts)
         window_ratio = 0.15,
         resume_view = false,
         open_view = true,
-        ephemeral = false,
+        ephemeral = true,
         mappings = {
             ["<tab>"] = Select.toggle_entry,
             ["<esc>"] = Select.close_view,
