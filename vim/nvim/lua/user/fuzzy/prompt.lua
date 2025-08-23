@@ -1,34 +1,9 @@
 local PROMPT_HIGHLIGHT_NAMESPACE = vim.api.nvim_create_namespace("prompt_matches_highlight")
 local highlight_extmark_opts = { limit = 1, type = "highlight", details = false, hl_name = false }
+local utils = require("user.fuzzy.utils")
 
 local Select = {}
 Select.__index = Select
-
-local function debounce_callback(wait, callback)
-    local debounce_timer = nil
-    return function(args)
-        if debounce_timer and not debounce_timer:is_closing() then
-            debounce_timer:close()
-            debounce_timer = nil
-        end
-        debounce_timer = vim.defer_fn(function()
-            callback(args)
-        end, wait)
-    end
-end
-
-local function safe_call(callback, ...)
-    if callback ~= nil and type(callback) == "function" then
-        local ok, res = pcall(callback, ...)
-        if not ok and res and #res > 0 then
-            vim.notify(res, vim.log.levels.ERROR)
-            return nil, nil
-        else
-            return ok, res
-        end
-    end
-    return nil, nil
-end
 
 local function buffer_getline(buf, lnum)
     local row = lnum ~= nil and (lnum - 1) or 0
@@ -137,6 +112,9 @@ function Select:_normalize_view()
 end
 
 function Select:_list_selection(lnum)
+    if not self.list_buffer or not vim.api.nvim_buf_is_valid(self.list_buffer) then
+        return {}
+    end
     local placed = lnum == nil and vim.fn.sign_getplaced(self.list_buffer, {
         group = "list_toggle_entry_group",
     })
@@ -159,11 +137,19 @@ function Select:_list_selection(lnum)
 end
 
 function Select:_prompt_getquery(lnum)
+    if not self.prompt_buffer or not vim.api.nvim_buf_is_valid(self.prompt_buffer) then
+        return nil
+    end
     return buffer_getline(self.prompt_buffer, lnum)
 end
 
 function Select:_make_callback(callback)
-    return function() return safe_call(callback, self) end
+    return function()
+        return utils.safe_call(
+            callback,
+            self
+        )
+    end
 end
 
 function Select:_create_mappings(buffer, mode, mappings)
@@ -223,12 +209,12 @@ function Select:move_cursor(dir, callback)
     cursor[1] = (cursor[1] + dir) % (line_count + 1)
     if cursor[1] == 0 and dir > 0 then cursor[1] = 1 end
     vim.api.nvim_win_set_cursor(list_window, cursor)
-    safe_call(callback, callback and self:_list_selection(cursor[1]))
+    utils.safe_call(callback, callback and self:_list_selection(cursor[1]))
 end
 
 function Select:edit_entry(command, mods, callback)
     local selection = self:_list_selection()
-    local ok, items = safe_call(callback, callback and selection)
+    local ok, items = utils.safe_call(callback, callback and selection)
     if not ok or not type(items) == "table" or #items == 0 then
         items = selection
     end
@@ -272,7 +258,7 @@ function Select:toggle_entry(callback)
             }
         )
     end
-    safe_call(callback, callback and self:_list_selection(cursor[1]))
+    utils.safe_call(callback, callback and self:_list_selection(cursor[1]))
     self:move_cursor(1)
 end
 
@@ -299,7 +285,7 @@ function Select:send_fixlist(type, callback)
         vim.fn.setloclist(0, {}, " ", args)
         self._options.loclist_open()
     end
-    safe_call(callback, callback and selection)
+    utils.safe_call(callback, callback and selection)
     self:close_view()
 end
 
@@ -318,7 +304,7 @@ function Select:close_view(callback)
     if self.preview_window and vim.api.nvim_win_is_valid(self.preview_window) then
         vim.api.nvim_win_close(self.list_window, true)
     end
-    safe_call(callback, nil)
+    utils.safe_call(callback, nil)
     self.preview_window = nil
 end
 
@@ -371,10 +357,27 @@ function Select:destroy()
     self.preview_buffer = nil
 end
 
+function Select:query()
+    return self:_prompt_getquery()
+end
+
 function Select:isopen()
     local prompt = self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window)
     local list = self.list_window and vim.api.nvim_win_is_valid(self.list_window)
     return prompt and list
+end
+
+function Select:render(entries, positions)
+    if entries ~= nil then
+        self._content.positions = positions
+        self._content.entries = entries
+        self._content.streaming = true
+        self:_render_list()
+    elseif positions == nil then
+        -- new entries will no longer be sent here
+        -- _content holds the latest and all entries
+        self._content.streaming = false
+    end
 end
 
 function Select:open(opts)
@@ -394,39 +397,29 @@ function Select:open(opts)
             prompt_buffer = vim.api.nvim_create_buf(false, true)
             prompt_buffer = initialize_buffer(prompt_buffer, "prompt", "fuzzy")
             self:_create_mappings(prompt_buffer, "i", opts.mappings)
+            self:_create_mappings(prompt_buffer, "i", {
+                ["<esc>"] = opts.prompt_cancel,
+            })
             vim.bo[prompt_buffer].bufhidden = opts.ephemeral and "wipe" or "hide"
             vim.bo[prompt_buffer].modifiable = true
 
-            local onlist = vim.schedule_wrap(function(entries, positions)
-                if entries ~= nil and positions ~= nil then
-                    self._content.positions = positions
-                    self._content.entries = entries
-                    self._content.streaming = true
-                    self:_render_list()
-                elseif entries == nil and positions == nil then
-                    -- new entries will no longer be sent here
-                    -- _content holds the latest and all entries
-                    self._content.streaming = false
-                end
-            end)
-
             local prompt_trigger = vim.api.nvim_create_autocmd({ "TextChangedP", "TextChangedI" }, {
                 buffer = prompt_buffer,
-                callback = debounce_callback(opts.prompt_debounce, function(args)
+                callback = utils.debounce_callback(opts.prompt_debounce, function(args)
                     if not args.buf or not vim.api.nvim_buf_is_valid(args.buf) then
-                        local ok, re = safe_call(opts.prompt_input, nil, self, nil)
+                        local ok, re = utils.safe_call(opts.prompt_input, nil)
                         if not ok and re then vim.notify(re, vim.log.levels.ERROR) end
                         self:close_view()
                     else
                         local line = self:_prompt_getquery()
                         if line and #line > 0 and type(opts.prompt_input) == "function" then
                             vim.api.nvim_win_set_cursor(self.list_window, { 1, 0 })
-                            local ok, status, entries, positions = pcall(opts.prompt_input, line, self, onlist)
+                            local ok, status, entries, positions = pcall(opts.prompt_input, line)
                             if not ok or ok == false then
                                 vim.notify(status, vim.log.levels.ERROR)
                             elseif entries ~= nil and #entries > 0 then
-                                onlist(entries, positions)
-                                onlist(nil, nil)
+                                self:render(entries, positions)
+                                self:render(nil, nil)
                             end
                         end
                     end
@@ -642,7 +635,13 @@ function Select:open(opts)
 end
 
 function Select.action(action, callback)
-    return function(_self) safe_call(action, _self, callback) end
+    return function(_self)
+        utils.safe_call(
+            action,
+            _self,
+            callback
+        )
+    end
 end
 
 function Select.new(opts)
@@ -665,8 +664,6 @@ function Select.new(opts)
         ephemeral = true,
         mappings = {
             ["<tab>"] = Select.toggle_entry,
-            ["<esc>"] = Select.close_view,
-            ["<c-c>"] = Select.close_view,
             ["<c-p>"] = Select.select_prev,
             ["<c-n>"] = Select.select_next,
             ["<c-k>"] = Select.select_prev,
