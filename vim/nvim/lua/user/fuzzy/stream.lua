@@ -101,13 +101,20 @@ end
 function Stream:_handle_stdout(err, chunk)
     if chunk then
         assert(not err)
-        for _, line in ipairs(vim.split(chunk, "\n")) do
-            if self._state.size == self._options.step then
-                self:_flush_results()
-            elseif line and #line > 0 then
-                self._state.buffer[self._state.size + 1] = line
-                self._state.size = self._state.size + 1
+        local content
+        if self._options.lines == true then
+            content = vim.split(chunk, "\n")
+            for _, line in ipairs(content) do
+                if self._state.size == self._options.step then
+                    self:_flush_results()
+                elseif line and #line > 0 then
+                    self._state.buffer[self._state.size + 1] = line
+                    self._state.size = self._state.size + 1
+                end
             end
+        elseif self._options.bytes == true then
+            assert(nil, "not implemented")
+            content = chunk
         end
     end
 end
@@ -180,6 +187,8 @@ end
 function Stream.new(opts)
     opts = vim.tbl_deep_extend("force", {
         ephemeral = true,
+        bytes = false,
+        lines = true,
         step = 100000,
     }, opts or {})
 

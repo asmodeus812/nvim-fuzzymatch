@@ -98,13 +98,14 @@ end
 
 function M.debounce_callback(wait, callback)
     local debounce_timer = nil
-    return function(args)
+    return function(...)
         if debounce_timer and not debounce_timer:is_closing() then
             debounce_timer:close()
             debounce_timer = nil
         end
+        local args = { ... }
         debounce_timer = vim.defer_fn(function()
-            callback(args)
+            callback(unpack(args))
         end, wait)
     end
 end

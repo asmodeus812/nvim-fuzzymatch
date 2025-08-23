@@ -200,6 +200,23 @@ function Select:_render_list()
     end
 end
 
+function Select:_destroy_view()
+    self:close_view()
+
+    if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
+        vim.api.nvim_buf_delete(self.list_buffer, { force = true })
+    end
+    self.list_buffer = nil
+    if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
+        vim.api.nvim_buf_delete(self.prompt_buffer, { force = true })
+    end
+    self.prompt_buffer = nil
+    if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
+        vim.api.nvim_buf_delete(self.preview_buffer, { force = true })
+    end
+    self.preview_buffer = nil
+end
+
 function Select:move_cursor(dir, callback)
     local list_window = self.list_window
     local cursor = vim.api.nvim_win_get_cursor(list_window)
@@ -340,25 +357,12 @@ function Select:send_locliset(callback)
     self:send_fixlist("loclist", callback)
 end
 
-function Select:destroy()
-    self:close_view()
-
-    if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
-        vim.api.nvim_buf_delete(self.list_buffer, { force = true })
-    end
-    self.list_buffer = nil
-    if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
-        vim.api.nvim_buf_delete(self.prompt_buffer, { force = true })
-    end
-    self.prompt_buffer = nil
-    if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
-        vim.api.nvim_buf_delete(self.preview_buffer, { force = true })
-    end
-    self.preview_buffer = nil
-end
-
 function Select:query()
     return self:_prompt_getquery()
+end
+
+function Select:close()
+    return self:close_view()
 end
 
 function Select:isopen()
@@ -382,7 +386,7 @@ end
 
 function Select:open(opts)
     if type(opts) == "table" then
-        self:destroy()
+        self:_destroy_view()
     elseif not self:isopen() then
         opts = assert(self._options)
     else
@@ -516,16 +520,18 @@ function Select:open(opts)
             vim.bo[list_buffer].bufhidden = opts.ephemeral and "wipe" or "hide"
             vim.bo[list_buffer].modifiable = false
 
-            if type(opts.prompt_list) == "table" then
-                local entries, positions
+            local entries, positions
+            if type(opts.prompt_list) == "function" then
+                entries, positions = opts.prompt_list(self)
+            elseif type(opts.prompt_list) == "table" then
                 if type(opts.prompt_list[1]) == "table" then
                     entries = opts.prompt_list[1]
                     positions = opts.prompt_list[2]
-                elseif type(opts.prompt_list) == "function" then
-                    entries, positions = opts.prompt_list(self)
                 else
                     entries = opts.prompt_list
                 end
+            end
+            if not entries then
                 self._content.positions = positions
                 self._content.entries = entries
                 self._content.streaming = false
@@ -660,7 +666,6 @@ function Select.new(opts)
         --
         window_ratio = 0.15,
         resume_view = false,
-        open_view = true,
         ephemeral = true,
         mappings = {
             ["<tab>"] = Select.toggle_entry,
@@ -689,9 +694,6 @@ function Select.new(opts)
         }
     }, Select)
 
-    if opts.open_view == true then
-        self:open()
-    end
     return self
 end
 
