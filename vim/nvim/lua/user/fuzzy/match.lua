@@ -76,13 +76,37 @@ function Match:_destroy_context()
     end
 end
 
+function Match:_destroy_results()
+    if self.results then
+        for index, value in ipairs(self.results) do
+            if index == 1 then
+                value = utils.fill_table(
+                    value, utils.EMPTY_STRING
+                )
+            elseif index == 2 then
+                value = utils.fill_table(
+                    value, utils.EMPTY_TABLE
+                )
+            else
+                value = utils.fill_table(
+                    value, 0
+                )
+            end
+            assert(value ~= nil)
+            utils.attach_table(value)
+            utils.return_table(value)
+        end
+        self.results = nil
+    end
+end
+
 function Match:_clean_context()
-    if self._state.results then
-        for _, value in ipairs(self._state.results) do
+    if self._state.accum then
+        for _, value in ipairs(self._state.accum) do
             utils.detach_table(value)
         end
-        self.results = self._state.results
-        self._state.results = nil
+        self.results = self._state.accum
+        self._state.accum = nil
     end
 
     if self._state.buffer then
@@ -113,58 +137,25 @@ function Match:_clean_context()
     self.callback = nil
 end
 
-function Match:_create_context()
-    self._state.offset = 1
-
-    if not self._state.results then
-        self._state.results = {}
-    end
-
-    if not self._state.chunks then
-        local size = self._options.step
-        self._state.chunks = utils.obtain_table(size)
-        utils.resize_table(
-            self._state.chunks,
-            self._options.step,
-            utils.EMPTY_STRING
-        )
-    end
-
-    if not self._state.buffer then
-        self._state.buffer = {
-            utils.obtain_table(),
-            utils.obtain_table(),
-            utils.obtain_table(),
-        }
-    end
-
-    if type(self.callback) == "function" then
-        local function worker(timer) self:_match_worker(timer) end
-        self._state.timer_id = vim.fn.timer_start(self._options.timer, worker, {
-            ["repeat"] = -1,
-        })
-        return self
-    else
-        return self:_match_worker(nil)
+function Match:_bind_method(method)
+    return function(...)
+        return method(self, ...)
     end
 end
 
 function Match:_match_worker(timer)
-    local results
-    if timer ~= nil then
-        if not self:_initialize_chunks() then
-            self:stop()
-            utils.safe_call(
-                self.callback,
-                nil -- terminate
-            )
-            return
-        end
-        results = utils.time_execution(vim.fn.matchfuzzypos, self._state.tail or self._state.chunks, self.pattern)
-    else
-        results = utils.time_execution(vim.fn.matchfuzzypos, self.list, self.pattern)
+    assert(timer == self._state.timer_id)
+    if not self:_initialize_chunks() then
+        local callback = self.callback
         self:stop()
+        utils.safe_call(callback, nil)
+        return
     end
+
+    local items = self._state.tail or self._state.chunks
+    local results = utils.time_execution(
+        vim.fn.matchfuzzypos, items, self.pattern
+    )
 
     local strings = results[1]
     local positions = results[2]
@@ -175,32 +166,34 @@ function Match:_match_worker(timer)
         for idx, pos in ipairs(positions) do
             positions[idx] = convert_positions(pos)
         end
-        if #self._state.results == 0 then
-            local state = self._state
-            state.results[1] = utils.attach_table(strings)
-            state.results[2] = utils.attach_table(positions)
-            state.results[3] = utils.attach_table(scores)
+        if #self._state.accum == 0 then
+            self._state.accum[1] = utils.attach_table(strings)
+            self._state.accum[2] = utils.attach_table(positions)
+            self._state.accum[3] = utils.attach_table(scores)
         else
             local result = utils.time_execution(Match.merge,
-                self._state.buffer, self._state.results,
+                self._state.buffer, self._state.accum,
                 { strings, positions, scores }
             )
-            self._state.buffer = self._state.results
-            self._state.results = result
+            self._state.buffer = self._state.accum
+            self._state.accum = result
             assert(#result[1] == #result[2])
             assert(#result[2] == #result[3])
         end
         utils.safe_call(
             self.callback,
-            self._state.results
+            self._state.accum
+        )
+    else
+        utils.safe_call(
+            self.callback,
+            {
+                utils.EMPTY_TABLE,
+                utils.EMPTY_TABLE,
+                utils.EMPTY_TABLE,
+            }
         )
     end
-
-    return self._state.results
-end
-
-function Match:results()
-    return self.results
 end
 
 function Match:running()
@@ -209,6 +202,17 @@ function Match:running()
         return ok and info ~= nil and next(info)
     end
     return false
+end
+
+function Match:wait(timeout)
+    local done = vim.wait(timeout or self.state._options.timeout or utils.MAX_TIMEOUT, function()
+        return self.state.results ~= nil
+    end, nil, true)
+
+    if not done then
+        self:stop()
+    end
+    return self.results
 end
 
 function Match:stop()
@@ -232,12 +236,46 @@ function Match:match(list, pattern, callback)
         return
     end
 
-    self.list = list
-    self.results = nil
-    self.pattern = pattern
-    self.callback = callback
+    self.list = assert(list)
+    self.pattern = assert(pattern)
+    self.callback = assert(callback)
+    if self._options.ephemeral then
+        self:_destroy_results()
+    else
+        self.results = nil
+    end
 
-    return self:_create_context()
+    self._state.offset = 1
+
+    if not self._state.accum then
+        self._state.accum = {}
+    end
+
+    if not self._state.chunks then
+        local size = self._options.step
+        self._state.chunks = utils.obtain_table(size)
+        utils.resize_table(
+            self._state.chunks,
+            self._options.step,
+            utils.EMPTY_STRING
+        )
+    end
+
+    if not self._state.buffer then
+        self._state.buffer = {
+            utils.obtain_table(),
+            utils.obtain_table(),
+            utils.obtain_table(),
+        }
+    end
+
+    self._state.timer_id = vim.fn.timer_start(
+        self._options.timer,
+        self:_bind_method(
+            Match._match_worker
+        ),
+        { ["repeat"] = -1 }
+    )
 end
 
 function Match.merge(source, left, right)
@@ -289,12 +327,12 @@ function Match.new(opts)
         callback = nil,
         _options = opts,
         _state = {
-            offset = 0,
+            timer_id = nil,
             tail = nil,
+            offset = 0,
             chunks = nil,
             buffer = nil,
-            results = nil,
-            timer_id = nil,
+            accum = nil,
         },
     }, Match)
 

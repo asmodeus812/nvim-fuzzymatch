@@ -10,7 +10,23 @@ local function close_handle(handle)
     end
 end
 
+function Stream:_destroy_results()
+    -- the results can be re-claimed back into the pool, when a new stream is starting up, this ensures that old references to the
+    -- _state.accum which are now pointing to stream.results are re-used.
+    if self.results then
+        self.results = utils.fill_table(
+            self.results,
+            utils.EMPTY_STRING
+        )
+        utils.attach_table(self.results)
+        utils.return_table(self.results)
+        self.results = nil
+    end
+end
+
 function Stream:_destroy_stream()
+    -- make sure that the buffer itself is also returned back to the pool, this will ensure that future stream instances, or this
+    -- one can pick it from the pool and use it.
     if self._state.buffer then
         utils.return_table(self._state.buffer)
         self._state.buffer = nil
@@ -19,6 +35,8 @@ function Stream:_destroy_stream()
 end
 
 function Stream:_close_stream()
+    -- this method ensures that handles are correctly cleaned, however it also ensures that any helper tables are cleared up, for
+    -- subsequent invokations of new streams through :start
     if self._state.stdout then
         self._state.stdout:read_stop()
         close_handle(self._state.stdout)
@@ -36,6 +54,8 @@ function Stream:_close_stream()
         self._state.handle = nil
     end
 
+    -- we do not want to return the buffer back to the pool, just clean up the string references to avoid any memory leaks, the
+    -- buffer could still be reused in future calls to start new streams, see `ephemeral`
     if self._state.buffer then
         utils.fill_table(
             self._state.buffer,
@@ -44,6 +64,8 @@ function Stream:_close_stream()
         self._state.size = 0
     end
 
+    -- the accumulator must be detached from the pool, as closing the stream now implies no more results will come in, this frees
+    -- the accumulator from the pool, allowing users to use the results as they see fit, through stream.results.
     if self._state.accum then
         assert(self.results == nil)
         utils.detach_table(self._state.accum)
@@ -55,11 +77,13 @@ function Stream:_close_stream()
 end
 
 function Stream:_make_stream()
+    -- the stream is curerntly only working with stdout/err there is no handle for stdin, as it is not expected for the stream to
+    -- accept any input while it is sending data back to us.
     self._state.stdout = assert(uv.new_pipe(false))
     self._state.stderr = assert(uv.new_pipe(false))
-    self._state.total = 0
-    self._state.size = 0
 
+    -- the stdio array needs to contain these in a very specific order, the first entry is the stdin pipe, the rest are the stdout
+    -- and stderr is the last one always.
     local stdio = {
         nil,
         self._state.stdout,
@@ -68,7 +92,7 @@ function Stream:_make_stream()
     return stdio
 end
 
-function Stream:bind_method(method)
+function Stream:_bind_method(method)
     return function(...)
         return method(self, ...)
     end
@@ -80,56 +104,92 @@ function Stream:_flush_results()
     end
     self._state.total = self._state.total + self._state.size
 
+    -- ensure that the size of the buffer is exactly the currently accumulated size, this is done since our buffer is constantly
+    -- being re-used, for the very first flush the buffer might be bigger and contain empty slots, subsequent resizes will probably
+    -- be noops
     self._state.buffer = utils.resize_table(
         self._state.buffer,
         self._state.size,
         utils.EMPTY_STRING
     )
+
+    -- ensure that the size of the accumulation buffer is also the current total accumulated size, again this is done to ensure that
+    -- the accumulation buffer has no empty slots and its size is exact, the resize is here is relevant for each flush since the
+    -- buffer grows.
     self._state.accum = utils.resize_table(
         self._state.accum,
         self._state.total,
         utils.EMPTY_STRING
     )
+
+    -- invoke the user supplied callback which is supposed to process the results, this callback must not modify the input arguments
+    -- but can use-them to process the results,
     utils.safe_call(
         self.callback,
-        self._state.accum,
-        self._state.buffer
+        self._state.buffer,
+        self._state.accum
     )
+
+    -- reset the state for the next flush call
     self._state.size = 0
 end
 
 function Stream:_handle_stdout(err, chunk)
-    if chunk then
-        assert(not err)
-        local content
-        if self._options.lines == true then
-            content = vim.split(chunk, "\n")
-            for _, line in ipairs(content) do
-                if self._state.size == self._options.step then
-                    self:_flush_results()
-                elseif line and #line > 0 then
-                    self._state.buffer[self._state.size + 1] = line
-                    self._state.size = self._state.size + 1
-                end
+    if err or not chunk then return end
+    if self._options.lines == true then
+        -- when the type of stream is defined as lines, split the output based on new lines, this might produce some empty lines
+        -- which are filtered afterwards.
+        local content = vim.split(chunk, "\n")
+        for _, line in ipairs(content) do
+            if self._state.size == self._options.step then
+                -- when the size has reached the maximum allowed, flush the buffer, and send it over for processing to
+                -- the user provided callback
+                self:_flush_results()
+            elseif line and #line > 0 then
+                -- keep accumulating non blank lines into the buffer, eventually the buffer size will be enough to be
+                -- flushed, see above
+                self._state.buffer[self._state.size + 1] = line
+                self._state.size = self._state.size + 1
             end
-        elseif self._options.bytes == true then
-            assert(nil, "not implemented")
-            content = chunk
+        end
+    elseif self._options.bytes == true then
+        -- when the type of the stream is defined as bytes, simply append the string chunks to the buffer, once the buffer
+        -- contains N number of chunks, where the total length of all chunks in the buffer, is greater than the allowed size,
+        -- flush the buffer
+        local length = 0
+        local buffer = self._state.buffer
+        for i = 1, self._state.size, 1 do
+            length = length + #buffer[i]
+        end
+        if length >= self._options.step then
+            -- the length is more than the size so we flush the buffer, note that this might flush more bytes than the size,
+            -- we have intentionally not strictly clamped the buffer to the allowed size to avoid extra string re-allocation
+            -- and copying.
+            self:_flush_results()
+        elseif chunk and #chunk > 0 then
+            -- keep adding the chunks that are non empty to the buffer eventually the buffer will contain enough chunks
+            -- whose total length exeeds or equals the maximum allowed size
+            self._state.buffer[self._state.size + 1] = chunk
+            self._state.size = self._state.size + 1
         end
     end
 end
 
 function Stream:_handle_stderr(err, chunk)
+    -- handle stderr, some processes output on stderr instead of stdout, and should also be handled
     if chunk then assert(not err, chunk) end
 end
 
 function Stream:_handle_exit()
     local callback = self.callback
+    -- on exit make sure that there is nothing more to flush, if there is any size accumulated over the very last call toThe handle
+    -- of stdout or stderr, then we need to finally flush it as well, this is to ensure that there is no left over unprocessed data
+    -- after the stream has closed
     if self._state.size > 0 then
         self:_flush_results()
     end
     self:stop()
-    utils.safe_call(callback, nil)
+    utils.safe_call(callback)
 end
 
 function Stream:running()
@@ -139,7 +199,24 @@ end
 function Stream:start(cmd, args, callback)
     self:stop()
 
-    local size = self._options.step
+    -- prepare the state, make sure to re-claim state if it can be done
+    self.callback = assert(callback)
+    if self._options.ephemeral then
+        -- if the results are still valid we can re-claim the old results, since new ones will override the old ones anyway,
+        -- this will be done when the `ephemeral` is set otherwise the old results will not be destroyed.
+        self:_destroy_results()
+    else
+        -- unlink and detach the current results reference, that assumes the user is going to be using this results reference
+        -- somewhere and we are not allowed to return it to the pool or re-use it in any way
+        self.results = nil
+    end
+
+    -- based on the type of the stream the step either governs how many bytes to read, or how many lines into the buffer before
+    -- flushing
+    local size = self._options.lines and self._options.step
+
+    -- ensure that a buffer is claimed from the pool, a buffer with the required size, or close to it will be pulled from the pool
+    -- for future use
     if not self._state.buffer then
         self._state.buffer = utils.obtain_table(size)
         self._state.buffer = utils.resize_table(
@@ -148,33 +225,46 @@ function Stream:start(cmd, args, callback)
         )
     end
 
-    local stdio = self:_make_stream()
+    -- the accumulator has to also be pulled form the pool, similarly to the buffer, the accumulator starts with a given size, at
+    -- least enough to fit in the first batch of buffer entries, it will however grow further, unlike the buffer
     if not self._state.accum then
         self._state.accum = utils.obtain_table(size)
+        self._state.accum = utils.resize_table(
+            self._state.accum, size,
+            utils.EMPTY_STRING
+        )
     end
-    self.callback = assert(callback)
-    self.results = nil
 
+    local stdio = self:_make_stream()
+
+    -- crreate the handles for the stream, and bind
     self._state.handle = assert(uv.spawn(assert(cmd), {
         cwd = vim.fn.getcwd(),
         detached = false,
         args = args or {},
         stdio = stdio,
-    }, self:bind_method(Stream._handle_exit)))
+    }, self:_bind_method(
+        Stream._handle_exit
+    )))
 
+    -- start reading from the stdout/err pipes attached to the stream
     uv.read_start(
         self._state.stdout,
-        self:bind_method(
+        self:_bind_method(
             Stream._handle_stdout
         )
     )
-
     uv.read_start(
         self._state.stderr,
-        self:bind_method(
+        self:_bind_method(
             Stream._handle_stderr
         )
     )
+
+    -- make sure the state is clear for the processing to start from the start
+    self._state.total = 0
+    self._state.size = 0
+    return self
 end
 
 function Stream:stop()
@@ -182,6 +272,17 @@ function Stream:stop()
     if self._options.ephemeral then
         self:_destroy_stream()
     end
+end
+
+function Stream:wait(timeout)
+    local done = vim.wait(timeout or self.state._options.timeout or utils.MAX_TIMEOUT, function()
+        return self.state.results ~= nil
+    end, nil, true)
+
+    if not done then
+        self:stop()
+    end
+    return self.results
 end
 
 function Stream.new(opts)
@@ -207,6 +308,7 @@ function Stream.new(opts)
         },
     }, Stream)
 
+    assert(opts.bytes ~= opts.lines)
     return self
 end
 

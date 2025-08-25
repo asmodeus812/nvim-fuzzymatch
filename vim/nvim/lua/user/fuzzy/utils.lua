@@ -2,6 +2,7 @@ local table_pool = { tables = {}, used = {} }
 for i = 1, 16, 1 do table.insert(table_pool.tables, i, {}) end
 
 local M = {
+    MAX_TIMEOUT = 2 ^ 31 - 1,
     EMPTY_STRING = "",
     EMPTY_TABLE = {}
 }
@@ -65,8 +66,10 @@ function M.fill_table(tbl, value)
 end
 
 function M.resize_table(tbl, size, default)
-    assert(size >= 0)
-    if size > #tbl then
+    assert(not size or size >= 0)
+    if not size then
+        return tbl
+    elseif size > #tbl then
         for i = #tbl + 1, size, 1 do
             tbl[i] = default
         end
@@ -85,18 +88,76 @@ function M.resize_table(tbl, size, default)
     return tbl
 end
 
+function M.compare_tables(t1, t2, visited)
+    visited = visited or {}
+
+    -- If both are the same object, they're equal
+    if t1 == t2 then return true end
+
+    -- Check if types are different
+    if type(t1) ~= type(t2) then return false end
+
+    -- Handle non-table types
+    if type(t1) ~= "table" then
+        return t1 == t2
+    end
+
+    -- Prevent infinite recursion on circular references
+    if visited[t1] and visited[t1][t2] then return true end
+    visited[t1] = visited[t1] or {}
+    visited[t1][t2] = true
+
+    -- Check if both are empty tables
+    if next(t1) == nil and next(t2) == nil then return true end
+
+    -- Check table size by counting elements
+    local count1, count2 = 0, 0
+    for _ in pairs(t1) do count1 = count1 + 1 end
+    for _ in pairs(t2) do count2 = count2 + 1 end
+    if count1 ~= count2 then return false end
+
+    -- Recursively compare all key-value pairs
+    for k, v1 in pairs(t1) do
+        local v2 = t2[k]
+
+        -- Check if key exists in both tables
+        if v2 == nil then return false end
+
+        -- Recursively compare values
+        if not M.compare_tables(v1, v2, visited) then
+            return false
+        end
+    end
+
+    -- Also check that t2 doesn't have extra keys not in t1
+    for k in pairs(t2) do
+        if t1[k] == nil then return false end
+    end
+
+    return true
+end
+
 function M.time_execution(func, ...)
     local start_time = vim.loop.hrtime()
+
+    local func_info = debug.getinfo(func, "nS")
+    local func_name = func_info.name or "anonymous"
+    local func_defined = func_info.short_src .. ":" .. func_info.linedefined
+
     local ok, result = pcall(func, ...)
     local end_time = vim.loop.hrtime()
     local duration_ms = (end_time - start_time) / 1e6
 
-    vim.notify(string.format("Elapsed time: %.3f ms", duration_ms))
+    vim.notify(string.format("[%s] Elapsed time: %.3f ms (defined at %s)",
+        func_name, duration_ms, func_defined))
     assert(ok, string.format("Execution error: %s", result))
     return result
 end
 
 function M.debounce_callback(wait, callback)
+    if assert(wait) and wait == 0 then
+        return callback
+    end
     local debounce_timer = nil
     return function(...)
         if debounce_timer and not debounce_timer:is_closing() then
