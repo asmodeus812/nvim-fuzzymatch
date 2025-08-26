@@ -14,11 +14,13 @@ local utils = require("user.fuzzy.utils")
 --- @field preview_buffer integer entry preview buffer
 --- @field _options table configuration options
 --- @field _content table content holder
---- @field _content.entries string[]|nil list of entries to display, one per line
+--- @field _content.entries table[]|string[]|nil list of entries to display, one per line
 --- @field _content.positions integer[][]|nil list of highlight positions for each entry
+--- @field _content.display string|function when entries consists of array of tables populate the list with the value a property from the table which value is equal to display, or if display is a function populate the list with result of the display function, which receives the entry as its only argument
 --- @field _content.streaming boolean marks if the content is still streaming or receiving data
 local Select = {}
 Select.__index = Select
+local render_step = 50000
 
 local function icon_set()
     local ok, module = pcall(require, 'nvim-web-devicons')
@@ -33,11 +35,67 @@ local function buffer_getline(buf, lnum)
     return text and #text == 1 and text[1]
 end
 
+local function extract_match(entry, display)
+    local match = entry
+    if type(display) == "function" then
+        match = display(entry)
+    elseif type(display) == "string" then
+        match = entry[display]
+    end
+    return match
+end
+
 local function compute_offsets(str, start_char, char_len)
     local start_byte = vim.str_byteindex(str, start_char)
     local end_char = start_char + char_len
     local end_byte = vim.str_byteindex(str, end_char)
     return start_byte, end_byte
+end
+
+local function compute_decoration(str, decoration)
+    local content = {}
+    local highlights = {}
+    local file_icons = icon_set()
+
+    if type(decoration.status_provider) == "function" then
+        local status, status_highlight = decoration.status_provider(str)
+        if type(status) == "string" and #status > 0 then
+            table.insert(content, status)
+            table.insert(highlights, status_highlight or "Normal")
+        end
+    elseif decoration.status_provider == true and file_icons then
+        local result = vim.system({
+            'git',
+            'status',
+            '--porcelain',
+            '-z',
+            '--',
+            str,
+        }):wait(50)
+        local modified = result.code == 0 and #result.stdout > 0
+        local status, status_highlight = modified and "~", "SpecialChar"
+        if type(status) == "string" and #status > 0 then
+            table.insert(content, status)
+            table.insert(highlights, status_highlight or "Normal")
+        end
+    end
+
+    if type(decoration.icon_provider) == "function" then
+        local icon, icon_highlight = decoration.icon_provider(str)
+        if type(icon) == "string" and #icon > 0 then
+            table.insert(content, icon)
+            table.insert(highlights, icon_highlight or "Normal")
+        end
+    elseif decoration.icon_provider == true and file_icons then
+        local icon, icon_highlight = file_icons.get_icon(str,
+            vim.fn.fnamemodify(str, ':e'), { default = true })
+        if type(icon) == "string" and #icon > 0 then
+            table.insert(content, icon)
+            table.insert(highlights, icon_highlight or "Normal")
+        end
+    end
+
+    return content, highlights
 end
 
 local function initialize_window(window)
@@ -67,61 +125,32 @@ local function initialize_buffer(buffer, bt, ft)
     return buffer
 end
 
-local function populate_buffer(buffer, lines)
+local function populate_buffer(buffer, list, display)
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
-    pcall(vim.api.nvim_buf_set_lines, buffer, 0, -1, false, lines or {})
-    vim.bo[buffer].modifiable = oldma
+    if display ~= nil then
+        local start = 1
+        local _end = math.min(#list, render_step)
+        local lines = utils.obtain_table(render_step)
+
+        while start < _end do
+            for i = start, _end, 1 do
+                lines[i] = extract_match(list[i], display)
+            end
+            vim.api.nvim_buf_set_lines(buffer, start - 1, _end - 1, false, lines)
+            start = math.min(#list, _end + 1)
+            _end = math.min(#list, _end + render_step)
+        end
+        vim.api.nvim_buf_set_lines(buffer, _end, -1, false, {})
+        utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
+    else
+        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, list)
+        vim.bo[buffer].modifiable = oldma
+    end
     vim.bo[buffer].modified = false
 end
 
-local function compute_decoration(target, decoration)
-    local content = {}
-    local highlights = {}
-    local file_icons = icon_set()
-
-    if type(decoration.status_provider) == "function" then
-        local status, status_highlight = decoration.status_provider(target)
-        if type(status) == "string" and #status > 0 then
-            table.insert(content, status)
-            table.insert(highlights, status_highlight or "Normal")
-        end
-    elseif decoration.status_provider == true and file_icons then
-        local result = vim.system({
-            'git',
-            'status',
-            '--porcelain',
-            '-z',
-            '--',
-            target,
-        }):wait(50)
-        local modified = result.code == 0 and #result.stdout > 0
-        local status, status_highlight = modified and "~", "SpecialChar"
-        if type(status) == "string" and #status > 0 then
-            table.insert(content, status)
-            table.insert(highlights, status_highlight or "Normal")
-        end
-    end
-
-    if type(decoration.icon_provider) == "function" then
-        local icon, icon_highlight = decoration.icon_provider(target)
-        if type(icon) == "string" and #icon > 0 then
-            table.insert(content, icon)
-            table.insert(highlights, icon_highlight or "Normal")
-        end
-    elseif decoration.icon_provider == true and file_icons then
-        local icon, icon_highlight = file_icons.get_icon(target,
-            vim.fn.fnamemodify(target, ':e'), { default = true })
-        if type(icon) == "string" and #icon > 0 then
-            table.insert(content, icon)
-            table.insert(highlights, icon_highlight or "Normal")
-        end
-    end
-
-    return content, highlights
-end
-
-local function highlight_range(buffer, start, _end, entries, positions, override)
+local function highlight_range(buffer, start, _end, entries, positions, display, override)
     assert(start <= _end and start > 0)
     for target = start, _end, 1 do
         if positions and #positions > 0 and target <= #positions then
@@ -149,7 +178,7 @@ local function highlight_range(buffer, start, _end, entries, positions, override
 
                 for i = 1, #matches, 2 do
                     local byte_start, byte_end = compute_offsets(
-                        entry, matches[i + 0], matches[i + 1]
+                        extract_match(entry, display), matches[i + 0], matches[i + 1]
                     )
                     vim.api.nvim_buf_set_extmark(
                         buffer,
@@ -175,7 +204,7 @@ local function highlight_range(buffer, start, _end, entries, positions, override
     end
 end
 
-local function decorate_range(buffer, start, _end, entries, decoration, override)
+local function decorate_range(buffer, start, _end, entries, decoration, display, override)
     assert(start <= _end and start > 0)
 
     local oldma = vim.bo[buffer].modifiable
@@ -187,45 +216,45 @@ local function decorate_range(buffer, start, _end, entries, decoration, override
             highlight_extmark_opts
         )
         if not marks or #marks < 1 then
-            local line = entries[target]
-            if line and #line > 0 then
-                local content, highlights = compute_decoration(line, decoration)
-                if #content > 0 then
-                    assert(#content == #highlights)
+            local entry = entries[target]
+            local content, highlights = compute_decoration(
+                extract_match(entry, display), decoration
+            )
+            if #content > 0 then
+                assert(#content == #highlights)
 
-                    -- prefix the line with the decorations, they are concatenated in order from the content table,
-                    -- afterwards the matching highlights are inserted as extmarks, this will make sure that this append
-                    -- is going to shift the extmarks forward,
-                    table.insert(content, "")
-                    local decor = table.concat(content, " ")
-                    vim.api.nvim_buf_set_text(buffer,
-                        target - 1, 0, target - 1, 0, { decor }
+                -- prefix the line with the decorations, they are concatenated in order from the content table,
+                -- afterwards the matching highlights are inserted as extmarks, this will make sure that this append
+                -- is going to shift the extmarks forward,
+                table.insert(content, "")
+                local decor = table.concat(content, " ")
+                vim.api.nvim_buf_set_text(buffer,
+                    target - 1, 0, target - 1, 0, { decor }
+                )
+
+                local offset = 0
+                for index, highlight in ipairs(highlights) do
+                    local decor_item = content[index]
+                    local end_col = offset + #decor_item
+                    vim.api.nvim_buf_set_extmark(
+                        buffer,
+                        LIST_DECORATED_NAMESPACE,
+                        target - 1,
+                        offset,
+                        {
+                            strict = true,
+                            hl_eol = false,
+                            invalidate = true,
+                            ephemeral = false,
+                            undo_restore = false,
+                            end_col = end_col,
+                            end_line = target - 1,
+                            right_gravity = true,
+                            end_right_gravity = true,
+                            hl_group = highlight,
+                        }
                     )
-
-                    local offset = 0
-                    for index, highlight in ipairs(highlights) do
-                        local decor_item = content[index]
-                        local end_col = offset + #decor_item
-                        vim.api.nvim_buf_set_extmark(
-                            buffer,
-                            LIST_DECORATED_NAMESPACE,
-                            target - 1,
-                            offset,
-                            {
-                                strict = true,
-                                hl_eol = false,
-                                invalidate = true,
-                                ephemeral = false,
-                                undo_restore = false,
-                                end_col = end_col,
-                                end_line = target - 1,
-                                right_gravity = true,
-                                end_right_gravity = true,
-                                hl_group = highlight,
-                            }
-                        )
-                        offset = end_col + 1
-                    end
+                    offset = end_col + 1
                 end
             end
         end
@@ -304,7 +333,9 @@ function Select:_highlight_list()
             self.list_buffer,
             math.max(1, cursor[1] - height),
             math.min(#entries, cursor[1] + height),
-            entries, positions, self._content.streaming)
+            entries, positions,
+            self._content.display,
+            self._content.streaming)
     end
 end
 
@@ -319,7 +350,9 @@ function Select:_decorate_list()
             self.list_buffer,
             math.max(1, cursor[1] - height),
             math.min(#entries, cursor[1] + height),
-            entries, providers, self._content.streaming)
+            entries, providers,
+            self._content.display,
+            self._content.streaming)
     end
 end
 
@@ -327,7 +360,8 @@ function Select:_render_list()
     if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
         populate_buffer(
             self.list_buffer,
-            self._content.entries
+            self._content.entries,
+            self._content.display
         )
     end
 
@@ -387,8 +421,13 @@ function Select:edit_entry(command, mods, callback)
     elseif not ok or not type(items) == "table" then
         items = selection
     end
+
+    items = vim.tbl_map(function(entry)
+        return extract_match(entry, self._content.display)
+    end, items or {})
+
     self:close_view()
-    for _, value in ipairs(items or {}) do
+    for _, value in ipairs(items) do
         vim.cmd[command]({
             args = { value },
             mods = mods,
@@ -433,12 +472,12 @@ end
 
 function Select:send_fixlist(type, callback)
     local selection = self:_list_selection()
-    local items = vim.tbl_map(function(line)
-        local ok, result = utils.safe_call(callback, line)
+    local items = vim.tbl_map(function(entry)
+        local ok, result = utils.safe_call(callback, entry)
         if ok and result == false then
             return nil
         elseif not ok or not type(result) == "string" then
-            result = line
+            result = extract_match(entry, self._content.display)
         end
         return {
             col = 1,
@@ -537,10 +576,11 @@ function Select:isopen()
     return prompt and list
 end
 
-function Select:render(entries, positions)
+function Select:render(entries, positions, display)
     if entries ~= nil then
         self._content.positions = positions
         self._content.entries = entries
+        self._content.display = display
         self._content.streaming = true
         self:_render_list()
     elseif positions == nil then

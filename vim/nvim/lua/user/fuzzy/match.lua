@@ -168,6 +168,7 @@ function Match:_clean_context()
     self.list = nil
     self.pattern = nil
     self.callback = nil
+    self.transform = nil
 end
 
 function Match:_bind_method(method)
@@ -190,9 +191,8 @@ function Match:_match_worker()
     -- the current items will be either the tail (last chunk) or the regular chunks, this is done for efficiency, all chunks are of
     -- equal size, only the tail can be smaller and usually it is.
     local items = self._state.tail or self._state.chunks
-    local results = utils.time_execution(
-        vim.fn.matchfuzzypos, items, self.pattern
-    )
+    local args = { items, self.pattern, self.transform }
+    local results = utils.time_execution(vim.fn.matchfuzzypos, unpack(args))
 
     local strings = results[1]
     local positions = results[2]
@@ -258,7 +258,7 @@ function Match:stop()
     end
 end
 
-function Match:match(list, pattern, callback)
+function Match:match(list, pattern, callback, transform)
     -- each time we start a new match we make sure to stop any ongoing processing and clean up the context, any old state will be lost,
     -- depending on the ephemeral option more aggressive clean up might be done
     self:stop()
@@ -272,6 +272,7 @@ function Match:match(list, pattern, callback)
     self.list = assert(list)
     self.pattern = assert(pattern)
     self.callback = assert(callback)
+    self.transform = transform or nil
 
     self._state.offset = 1
 
@@ -376,6 +377,7 @@ function Match.new(opts)
         results = nil,
         pattern = nil,
         callback = nil,
+        transform = nil,
         _options = opts,
         _state = {
             timer = nil,

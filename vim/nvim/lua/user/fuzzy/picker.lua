@@ -54,16 +54,17 @@ function Picker:_input_prompt()
     return utils.debounce_callback(self._options.prompt_debounce, function(query)
         if query == nil then
             -- the input has been interrupted, so we need to stop everything
+            self.select:render(nil, nil)
             self.select:close()
             self.match:stop()
-        elseif self._options.interactive then
+        elseif self._state.interactive then
             -- in interactive mode we need to restart the stream with the new query, so that the command can produce results based on the query, for example when using find -name <query>
             local content = self._state.content
             assert(type(content) ~= "table")
 
             -- when interactive is a string it means that the string is an argument placeholder, that should be replaced
             -- with the query, otherwise the query is just prepended to the args list
-            local arg = self._options.interactive
+            local arg = self._state.interactive
             local args_copy = vim.fn.copy(self._state.args)
             if type(arg) == "string" then
                 for _idx, _arg in ipairs(args_copy or {}) do
@@ -96,10 +97,11 @@ function Picker:_input_prompt()
                                     -- render the new matching results, which would update the list view
                                     self.select:render(
                                         matching[1],
-                                        matching[2]
+                                        matching[2],
+                                        self._state.display
                                     )
                                 end
-                            end)
+                            end, self._state.transform)
                         end
                     end
                 })
@@ -119,16 +121,18 @@ function Picker:_input_prompt()
                         -- render the new matching results, which would update the list view
                         self.select:render(
                             matching[1],
-                            matching[2]
+                            matching[2],
+                            self._state.display
                         )
                     end
-                end)
+                end, self._state.transform)
             else
                 -- just render all the results as they are, when there is no query, nothing can be matched against, so we
                 -- dump all the results.
                 self.select:render(
                     self.stream.results,
-                    nil -- nohighlights
+                    nil, -- nohighlights
+                    self._state.display
                 )
                 self.select:render(nil, nil)
             end
@@ -155,13 +159,17 @@ function Picker:_flush_results()
                         -- render the new matching results, which would update the list view
                         self.select:render(
                             matching[1],
-                            matching[2]
+                            matching[2],
+                            self._state.display
                         )
                     end
-                end)
+                end, self._state.transform)
             else
                 -- when there is no query we just render all the results as they are
-                self.select:render(all, nil)
+                self.select:render(
+                    all, nil,
+                    self._state.display
+                )
                 self.select:render(nil, nil)
             end
         end
@@ -173,8 +181,9 @@ function Picker:close()
 end
 
 --- @class PickerOpenOptions
---- @field args table arguments to pass to the command or function, default is {}
---- @field interactive boolean|string when set to true the picker will restart the stream with
+--- @field args? table arguments to pass to the command or function, default is {}
+--- @field display? string|function when the content is table or function that consists of tables, match by this string table field name, or by an item produced by function, the function receives the item currently being tested for matches
+--- @field interactive? boolean|string when set to true the picker will restart the stream with the query as the first argument, when set to a string the string will be used as a placeholder in the args list to be replaced with the query, default is false
 
 --- @param content string|function|table the content to use for the picker, can be a command string, a function that produces results, by calling a supplied callback as first argument, or a table of strings
 --- @param opts PickerOpenOptions options to configure the picker with
@@ -195,9 +204,13 @@ function Picker:open(content, opts)
         self:_clear_content(content, args)
     end
 
-    -- each time we open we need to reset the interactive mode, as it might be different from the last time, that is only valid for
-    -- string executable {cmd} content type.
-    self._options.interactive = opts.interactive or false
+    self._state.display = opts.display
+    if type(opts.display) == "function" then
+        self._state.transform = { text_cb = opts.display }
+    elseif type(opts.display) == "string" then
+        self._state.transform = { key = opts.display }
+    end
+    self._state.interactive = opts.interactive or false
     self.select:open()
 
     if type(content) ~= "table" then
@@ -214,10 +227,16 @@ function Picker:open(content, opts)
         -- when a table is provided the content is expected to be a list of strings, each string being a separate entry, and in
         -- this mode the interactive option is not supported, as there is no way to passk the query to the command, because
         -- there is no command
-        assert(content and #content > 0 and type(content[1]) == "string")
-        assert(self._options.interactive == false)
+        assert((content and #content > 0)
+            or type(content[1]) == "string"
+            or type(content[1]) == "table")
+        assert(self._state.interactive == false)
         if not self.stream.results then
-            self.select:render(content, nil)
+            self.select:render(
+                content, nil,
+                self._state.display
+            )
+            self.select:render(nil, nil)
             self.stream.results = content
         end
     end
@@ -234,7 +253,6 @@ end
 --- @field stream_type string type of stream to use, either "lines" or "bytes", default is "lines"
 --- @field window_size number size of the picker window as a ratio of the screen size, default is 0.15
 --- @field resume_view boolean whether to resume the view on close, default is true
---- @field interactive boolean|string when set to true the picker will restart the stream with the query as the first argument, when set to a string the string will be used as a placeholder in the args list to be replaced with the query, default is false
 
 --- @param opts PickerOptions options to configure the picker with
 --- @return Picker
@@ -258,6 +276,9 @@ function Picker.new(opts)
         select = nil,
         _options = opts,
         _state = {
+            interactive = false,
+            transform = nil,
+            display = nil,
             content = nil,
             args = nil,
         },

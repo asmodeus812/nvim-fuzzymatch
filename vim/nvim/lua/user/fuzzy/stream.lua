@@ -78,8 +78,6 @@ function Stream:_close_stream()
         -- the accumulator must be detached from the pool, as closing the stream now implies no more results will come in, this frees
         -- the accumulator from the pool, allowing users to use the results as they see fit, through stream.results.
         utils.detach_table(self._state.accum)
-        assert(self.results == nil
-            or self.results == self._state.accum)
         self.results = self._state.accum
         self._state.accum = nil
         self._state.total = 0
