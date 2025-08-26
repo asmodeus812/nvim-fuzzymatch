@@ -1,6 +1,18 @@
 local utils = require("user.fuzzy.utils")
-local uv = vim.loop
+local async = require("user.fuzzy.async")
 
+--- @class Stream
+--- @field results string[]|nil The results accumulated so far, this is only valid after the stream has finished, or if the stream is ephemeral and a new stream has not yet started.
+--- @field callback fun(buffer: string[], accum: string[]) The callback to be invoked when new data is available, this is only valid when the stream is running.
+--- @field _options table The options for the stream.
+--- @field _state table The internal state of the stream.
+--- @field _state.size integer The current size of the buffer.
+--- @field _state.total integer The total number of items accumulated so far.
+--- @field _state.stdout userdata|nil The stdout pipe of the stream.
+--- @field _state.stderr userdata|nil The stderr pipe of the stream.
+--- @field _state.handle userdata|nil The handle of the stream.
+--- @field _state.buffer string[]|nil The buffer to hold the current batch of data.
+--- @field _state.accum string[]|nil The accumulator to hold all the data accumulated so far.
 local Stream = {}
 Stream.__index = Stream
 
@@ -24,10 +36,10 @@ function Stream:_destroy_results()
     end
 end
 
-function Stream:_destroy_stream()
-    -- make sure that the buffer itself is also returned back to the pool, this will ensure that future stream instances, or this
-    -- one can pick it from the pool and use it.
+function Stream:_destroy_context()
     if self._state.buffer then
+        -- make sure that the buffer itself is also returned back to the pool, this will ensure that future stream instances, or this
+        -- one can pick it from the pool and use it.
         utils.return_table(self._state.buffer)
         self._state.buffer = nil
         self._state.size = 0
@@ -42,21 +54,19 @@ function Stream:_close_stream()
         close_handle(self._state.stdout)
         self._state.stdout = nil
     end
-
     if self._state.stderr then
         self._state.stderr:read_stop()
         close_handle(self._state.stderr)
         self._state.stderr = nil
     end
-
     if self._state.handle then
         close_handle(self._state.handle)
         self._state.handle = nil
     end
 
-    -- we do not want to return the buffer back to the pool, just clean up the string references to avoid any memory leaks, the
-    -- buffer could still be reused in future calls to start new streams, see `ephemeral`
     if self._state.buffer then
+        -- we do not want to return the buffer back to the pool, just clean up the string references to avoid any memory leaks, the
+        -- buffer could still be reused in future calls to start new streams, see `ephemeral`
         utils.fill_table(
             self._state.buffer,
             utils.EMPTY_STRING
@@ -64,11 +74,12 @@ function Stream:_close_stream()
         self._state.size = 0
     end
 
-    -- the accumulator must be detached from the pool, as closing the stream now implies no more results will come in, this frees
-    -- the accumulator from the pool, allowing users to use the results as they see fit, through stream.results.
     if self._state.accum then
-        assert(self.results == nil)
+        -- the accumulator must be detached from the pool, as closing the stream now implies no more results will come in, this frees
+        -- the accumulator from the pool, allowing users to use the results as they see fit, through stream.results.
         utils.detach_table(self._state.accum)
+        assert(self.results == nil
+            or self.results == self._state.accum)
         self.results = self._state.accum
         self._state.accum = nil
         self._state.total = 0
@@ -79,8 +90,8 @@ end
 function Stream:_make_stream()
     -- the stream is curerntly only working with stdout/err there is no handle for stdin, as it is not expected for the stream to
     -- accept any input while it is sending data back to us.
-    self._state.stdout = assert(uv.new_pipe(false))
-    self._state.stderr = assert(uv.new_pipe(false))
+    self._state.stdout = assert(vim.loop.new_pipe(false))
+    self._state.stderr = assert(vim.loop.new_pipe(false))
 
     -- the stdio array needs to contain these in a very specific order, the first entry is the stdin pipe, the rest are the stdout
     -- and stderr is the last one always.
@@ -96,6 +107,13 @@ function Stream:_bind_method(method)
     return function(...)
         return method(self, ...)
     end
+end
+
+function Stream:_transform_data(data)
+    if type(self._options.transform) == "function" then
+        return self._options.transform(data)
+    end
+    return data
 end
 
 function Stream:_flush_results()
@@ -145,7 +163,10 @@ function Stream:_handle_stdout(err, chunk)
                 -- when the size has reached the maximum allowed, flush the buffer, and send it over for processing to
                 -- the user provided callback
                 self:_flush_results()
-            elseif line and #line > 0 then
+            end
+
+            line = self:_transform_data(line)
+            if line and #line > 0 then
                 -- keep accumulating non blank lines into the buffer, eventually the buffer size will be enough to be
                 -- flushed, see above
                 self._state.buffer[self._state.size + 1] = line
@@ -166,7 +187,10 @@ function Stream:_handle_stdout(err, chunk)
             -- we have intentionally not strictly clamped the buffer to the allowed size to avoid extra string re-allocation
             -- and copying.
             self:_flush_results()
-        elseif chunk and #chunk > 0 then
+        end
+
+        chunk = self:_transform_data(chunk)
+        if chunk and #chunk > 0 then
             -- keep adding the chunks that are non empty to the buffer eventually the buffer will contain enough chunks
             -- whose total length exeeds or equals the maximum allowed size
             self._state.buffer[self._state.size + 1] = chunk
@@ -196,20 +220,42 @@ function Stream:running()
     return self._state.handle ~= nil
 end
 
-function Stream:start(cmd, args, callback)
+function Stream:stop()
+    -- close the stream handles, and if the stream is ephemeral, also destroy the context and results, this would invalidate any
+    -- references that the user might hold.
+    self:_close_stream()
+    if self._options.ephemeral then
+        self:_destroy_context()
+        self:_destroy_results()
+    end
+end
+
+function Stream:wait(timeout)
+    -- wait util results are available, or the timeout expires, if the timeout expires the stream is stopped and whatever
+    -- results are available are returned
+    local done = vim.wait(timeout or self._options.timeout or utils.MAX_TIMEOUT, function()
+        return self.results ~= nil
+    end, nil, true)
+
+    if not done then
+        self:stop()
+    end
+    return self.results
+end
+
+--- @class StreamStartOpts
+--- @field args? string[] The arguments to pass to the command
+--- @field env? table The environment variables to set for the command
+--- @field callback fun(buffer: string[], accum: string[]) The callback to invoke when new data is available, this is required
+
+--- @param cmd string|function The command to run, or a function which accepts a callback to be invoked with data chunks to supply data to the stream
+--- @param opts StreamStartOpts|nil The options for starting the stream
+function Stream:start(cmd, opts)
+    opts = opts or {}
     self:stop()
 
     -- prepare the state, make sure to re-claim state if it can be done
-    self.callback = assert(callback)
-    if self._options.ephemeral then
-        -- if the results are still valid we can re-claim the old results, since new ones will override the old ones anyway,
-        -- this will be done when the `ephemeral` is set otherwise the old results will not be destroyed.
-        self:_destroy_results()
-    else
-        -- unlink and detach the current results reference, that assumes the user is going to be using this results reference
-        -- somewhere and we are not allowed to return it to the pool or re-use it in any way
-        self.results = nil
-    end
+    self.callback = assert(opts.callback)
 
     -- based on the type of the stream the step either governs how many bytes to read, or how many lines into the buffer before
     -- flushing
@@ -235,54 +281,49 @@ function Stream:start(cmd, args, callback)
         )
     end
 
-    local stdio = self:_make_stream()
+    if type(cmd) == "function" then
+        local callback = function(data)
+            self:_handle_stdout(nil, data)
+            async.yield()
+        end
+        local executor = async.wrap(function()
+            utils.safe_call(cmd, callback)
+            self:_handle_exit()
+        end)
+        executor()
+    else
+        local stdio = self:_make_stream()
 
-    -- crreate the handles for the stream, and bind
-    self._state.handle = assert(uv.spawn(assert(cmd), {
-        cwd = vim.fn.getcwd(),
-        detached = false,
-        args = args or {},
-        stdio = stdio,
-    }, vim.schedule_wrap(self:_bind_method(
-        Stream._handle_exit
-    ))))
+        -- crreate the handles for the stream, and bind
+        self._state.handle = assert(vim.loop.spawn(assert(cmd), {
+            cwd = vim.fn.getcwd(),
+            args = opts.args or {},
+            detached = false,
+            env = opts.env,
+            stdio = stdio,
+        }, vim.schedule_wrap(self:_bind_method(
+            Stream._handle_exit
+        ))))
 
-    -- start reading from the stdout/err pipes attached to the stream
-    uv.read_start(
-        self._state.stdout,
-        vim.schedule_wrap(self:_bind_method(
-            Stream._handle_stdout
-        ))
-    )
-    uv.read_start(
-        self._state.stderr,
-        vim.schedule_wrap(self:_bind_method(
-            Stream._handle_stderr
-        ))
-    )
+        -- start reading from the stdout/err pipes attached to the stream
+        vim.loop.read_start(
+            self._state.stdout,
+            vim.schedule_wrap(self:_bind_method(
+                Stream._handle_stdout
+            ))
+        )
+        vim.loop.read_start(
+            self._state.stderr,
+            vim.schedule_wrap(self:_bind_method(
+                Stream._handle_stderr
+            ))
+        )
+    end
 
     -- make sure the state is clear for the processing to start from the start
     self._state.total = 0
     self._state.size = 0
     return self
-end
-
-function Stream:stop()
-    self:_close_stream()
-    if self._options.ephemeral then
-        self:_destroy_stream()
-    end
-end
-
-function Stream:wait(timeout)
-    local done = vim.wait(timeout or self.state._options.timeout or utils.MAX_TIMEOUT, function()
-        return self.state.results ~= nil
-    end, nil, true)
-
-    if not done then
-        self:stop()
-    end
-    return self.results
 end
 
 function Stream.new(opts)

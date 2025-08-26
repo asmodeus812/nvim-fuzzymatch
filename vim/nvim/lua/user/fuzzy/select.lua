@@ -1,8 +1,22 @@
 local LIST_HIGHLIGHT_NAMESPACE = vim.api.nvim_create_namespace("list_highlight_namespace")
 local LIST_DECORATED_NAMESPACE = vim.api.nvim_create_namespace("list_decorated_namespace")
 local highlight_extmark_opts = { limit = 1, type = "highlight", details = false, hl_name = false }
+local detailed_extmark_opts = { limit = 4, type = "highlight", details = true, hl_name = true }
 local utils = require("user.fuzzy.utils")
 
+--- @class Select
+--- @field source_window integer window where the selection was opened from
+--- @field prompt_window integer window showing the prompt
+--- @field list_window integer window showing the list of entries
+--- @field preview_window integer preview window showing the current entry
+--- @field prompt_buffer integer buffer showing the prompt
+--- @field list_buffer integer buffer showing the entries
+--- @field preview_buffer integer entry preview buffer
+--- @field _options table configuration options
+--- @field _content table content holder
+--- @field _content.entries string[]|nil list of entries to display, one per line
+--- @field _content.positions integer[][]|nil list of highlight positions for each entry
+--- @field _content.streaming boolean marks if the content is still streaming or receiving data
 local Select = {}
 Select.__index = Select
 
@@ -121,6 +135,18 @@ local function highlight_range(buffer, start, _end, entries, positions, override
                 local entry = entries[target]
                 local matches = positions[target]
                 assert(#matches % 2 == 0 and entry ~= nil)
+
+                local decors = vim.api.nvim_buf_get_extmarks(
+                    buffer, LIST_DECORATED_NAMESPACE,
+                    { target - 1, 0 }, { target - 1, -1 },
+                    detailed_extmark_opts
+                )
+
+                -- if the line has been decorated, we need to offset the highlights by the
+                -- length of the last decoration, as it is the one that will be at the end
+                local decor = decors and #decors > 0 and decors[#decors]
+                local offset = decor and decor.end_col or 0
+
                 for i = 1, #matches, 2 do
                     local byte_start, byte_end = compute_offsets(
                         entry, matches[i + 0], matches[i + 1]
@@ -129,7 +155,7 @@ local function highlight_range(buffer, start, _end, entries, positions, override
                         buffer,
                         LIST_HIGHLIGHT_NAMESPACE,
                         target - 1,
-                        byte_start,
+                        offset + byte_start,
                         {
                             strict = true,
                             hl_eol = false,
@@ -668,7 +694,7 @@ function Select:open(opts)
 
             local entries, positions
             if type(opts.prompt_list) == "function" then
-                entries, positions = opts.prompt_list(self)
+                entries, positions = opts.prompt_list()
             elseif type(opts.prompt_list) == "table" then
                 if type(opts.prompt_list[1]) == "table" then
                     entries = opts.prompt_list[1]
@@ -805,6 +831,21 @@ function Select.action(action, callback)
     end
 end
 
+--- @class SelectOptions
+--- @field prompt_input fun(query: string): (string[], integer[])? Function that is called when the user inputs text in the prompt.
+--- @field prompt_confirm fun(selection: string[]): (string[]|false)? Function that is called when the user confirms the selection.
+--- @field prompt_cancel fun(): nil Function that is called when the user cancels the selection.
+--- @field prompt_list (boolean|string[]|(fun(): (string[], integer[])?))? List of entries to show in the list when opened, or a function that returns such a list.
+--- @field prompt_query string? The query prompt prefix.
+--- @field prompt_prefix string? The sign text to show in the prompt line.
+--- @field prompt_input boolean? Whether to show the prompt window.
+--- @field ephemeral boolean? Whether to wipe the buffers when closed.
+--- @field window_ratio number? The ratio of the screen height to use for the list window.
+--- @field step integer? The number of entries to load per batch when streaming.
+--- @field mappings table<string, fun(self: Select)>? A table of key mappings to set in the prompt and/or list buffer.
+--- @field providers table<string, boolean|fun(target: string): (string, string)?> A table of decoration providers to use for each entry in the list.
+--- @param opts SelectOptions
+--- @return Select
 function Select.new(opts)
     opts = vim.tbl_deep_extend("force", {
         --

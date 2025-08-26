@@ -105,8 +105,16 @@ local tt = {
     "test101",
 }
 
+local function print_50_lines(cb)
+    for i = 1, 50 do
+        cb("line " .. i)
+    end
+end
+
 vim.keymap.set("n", "gz", function()
-    picker:open("find", { args = { vim.fn.getcwd(), "-type", "f" } })
+    picker:open("find", { interactive = false, args = { vim.fn.getcwd(), "-type", "f" } })
     -- picker:open("rg", { args = { }, interactive = true })
-    -- picker:open(tt, {})
+    -- picker:open("find", { interactive = "{prompt}", args = { vim.fn.getcwd(), "-type", "f", "-name", "{prompt}" } })
+    -- picker:open(print_50_lines)
+    -- picker:open(tt)
 end)
