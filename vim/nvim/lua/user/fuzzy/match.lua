@@ -56,9 +56,11 @@ function Match:_initialize_chunks()
 end
 
 function Match:_stop_processing()
-    if self._state.timer_id ~= nil then
-        pcall(vim.fn.timer_stop, self._state.timer_id)
-        self._state.timer_id = nil
+    if self._state.timer ~= nil then
+        if vim.loop.is_closing(self._state.timer) == false then
+            pcall(vim.loop.stop, self._state.timer)
+        end
+        self._state.timer = nil
     end
 end
 
@@ -143,9 +145,8 @@ function Match:_bind_method(method)
     end
 end
 
-function Match:_match_worker(timer)
-    assert(timer == self._state.timer_id)
-    if not self:_initialize_chunks() then
+function Match:_match_worker()
+    if not self:running() or not self:_initialize_chunks() then
         local callback = self.callback
         self:stop()
         utils.safe_call(callback, nil)
@@ -180,28 +181,16 @@ function Match:_match_worker(timer)
             assert(#result[1] == #result[2])
             assert(#result[2] == #result[3])
         end
-        utils.safe_call(
-            self.callback,
-            self._state.accum
-        )
-    else
-        utils.safe_call(
-            self.callback,
-            {
-                utils.EMPTY_TABLE,
-                utils.EMPTY_TABLE,
-                utils.EMPTY_TABLE,
-            }
-        )
     end
+
+    utils.safe_call(
+        self.callback,
+        self._state.accum
+    )
 end
 
 function Match:running()
-    if self._state.timer_id ~= nil then
-        local ok, info = pcall(vim.fn.timer_info, self._state.timer_id)
-        return ok and info ~= nil and next(info)
-    end
-    return false
+    return self._state.timer ~= nil
 end
 
 function Match:wait(timeout)
@@ -269,12 +258,12 @@ function Match:match(list, pattern, callback)
         }
     end
 
-    self._state.timer_id = vim.fn.timer_start(
+    self._state.timer = vim.loop.new_timer()
+    self._state.timer:start(0,
         self._options.timer,
-        self:_bind_method(
+        vim.schedule_wrap(self:_bind_method(
             Match._match_worker
-        ),
-        { ["repeat"] = -1 }
+        ))
     )
 end
 
@@ -327,7 +316,7 @@ function Match.new(opts)
         callback = nil,
         _options = opts,
         _state = {
-            timer_id = nil,
+            timer = nil,
             tail = nil,
             offset = 0,
             chunks = nil,

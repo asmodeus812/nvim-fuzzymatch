@@ -243,22 +243,22 @@ function Stream:start(cmd, args, callback)
         detached = false,
         args = args or {},
         stdio = stdio,
-    }, self:_bind_method(
+    }, vim.schedule_wrap(self:_bind_method(
         Stream._handle_exit
-    )))
+    ))))
 
     -- start reading from the stdout/err pipes attached to the stream
     uv.read_start(
         self._state.stdout,
-        self:_bind_method(
+        vim.schedule_wrap(self:_bind_method(
             Stream._handle_stdout
-        )
+        ))
     )
     uv.read_start(
         self._state.stderr,
-        self:_bind_method(
+        vim.schedule_wrap(self:_bind_method(
             Stream._handle_stderr
-        )
+        ))
     )
 
     -- make sure the state is clear for the processing to start from the start

@@ -24,7 +24,6 @@ function Picker:_cancel_prompt()
     return Select.action(Select.close_view, function()
         self.stream:stop()
         self.match:stop()
-        self.match:_destroy_results()
     end)
 end
 
@@ -35,16 +34,40 @@ function Picker:_confirm_prompt()
     end)
 end
 
+-- function Picker:_stage_filter()
+-- end
+
 function Picker:_input_prompt()
-    -- @Note: the query received on the callback will always represent the latest input entered in the select,
-    -- thus any intermediate characters can/will be skipped if within the debounce time, this implies that data
-    -- will be "missing" but for the purposes of this use case we are okay with not always receiving the latest
-    -- query state from the select
-    return vim.schedule_wrap(utils.debounce_callback(self._options.prompt_debounce, function(query)
+    return utils.debounce_callback(self._options.prompt_debounce, function(query)
         if query == nil then
             self.select:stop()
             self.match:stop()
-            self.match:_destroy_results()
+        elseif self._options.interactive then
+            local content = self._state.content
+            assert(type(content) == "string")
+
+            local args_copy = vim.fn.copy(self._state.args)
+            table.insert(args_copy or {}, 1, query)
+            if type(query) == "string" and #query > 0 then
+                self.stream:start(self._state.content, args_copy, function(_, all)
+                    if not all then
+                        self.select:render(nil, nil)
+                    else
+                        self.match:match(all, query, function(matching)
+                            if matching == nil then
+                                self.select:render(nil, nil)
+                            else
+                                self.select:render(
+                                    matching[1],
+                                    matching[2]
+                                )
+                            end
+                        end)
+                    end
+                end)
+            else
+                self.select:render({}, {})
+            end
         elseif self.stream.results then
             if type(query) == "string" and #query > 0 then
                 self.match:match(self.stream.results, query, function(matching)
@@ -65,16 +88,11 @@ function Picker:_input_prompt()
                 self.select:render(nil, nil)
             end
         end
-    end))
+    end)
 end
 
 function Picker:_flush_results()
-    -- @Note: the stream is sending references to the results in the callback, therefore debouncing the
-    -- callback has to be done with care, due to the fact that the callback receives two arguments (total, buffer) the total can be used
-    -- with debounce since it is only accumulating results in to the same table reference, however the buffer table reference is re-used on
-    -- every call, overriding the content of the buffer, debouncing that means we will never receive the current actual buffer contents being
-    -- received on stdout/stderr
-    return vim.schedule_wrap(utils.debounce_callback(0, function(_, all)
+    return utils.debounce_callback(0, function(_, all)
         if all == nil then
             self.select:render(nil, nil)
         else
@@ -95,15 +113,16 @@ function Picker:_flush_results()
                 self.select:render(nil, nil)
             end
         end
-    end))
+    end)
 end
 
 function Picker:close()
     self:_close_picker()
 end
 
-function Picker:open(content, args)
-    args = args or {}
+function Picker:open(content, opts)
+    opts = opts or {}
+    local args = opts.args or {}
     if type(content) == "function" then
         content = content()
     end
@@ -114,16 +133,15 @@ function Picker:open(content, args)
     if self._state.content ~= content then
         self:_clear_content(content, args)
     elseif self._state.args ~= args then
-        local current_args = vim.fn.copy(self._state_args or {})
-        local new_args = vim.fn.copy(args or {})
-        ---@diagnostic disable-next-line: param-type-mismatch
-        table.sort(new_args)
-        ---@diagnostic disable-next-line: param-type-mismatch
-        table.sort(current_args)
-        if not utils.compare_tables(current_args, new_args) then
+        if not utils.compare_tables(self._state.args, args) then
             self:_clear_content(content, args)
         end
+    elseif not self.select._options.resume_view then
+        self:_clear_content(content, args)
     end
+
+    self._options.interactive = opts.interactive or false
+    self.select:open()
 
     if type(content) == "string" then
         -- when a string is provided we assume that a command line utilty or executable must be executed and obtain the stdout/stderr of
@@ -131,7 +149,7 @@ function Picker:open(content, args)
         if not self.stream.results then
             assert(#content > 0 and vim.fn.executable(content) == 1)
             self.stream:start(
-                content, args or {},
+                content, args,
                 self:_flush_results()
             )
         end
@@ -139,9 +157,12 @@ function Picker:open(content, args)
         -- when a table is provided a table of strings is required, otherwise the behavior is undefined, for the underlyting
         -- matcher.
         assert(content and #content > 0 and type(content[1]) == "string")
-        self.stream.results = content
+        assert(self._options.interactive == false)
+        if not self.stream.results then
+            self.select:render(content, nil)
+            self.stream.results = content
+        end
     end
-    self.select:open()
 end
 
 function Picker.new(opts)
@@ -152,9 +173,9 @@ function Picker.new(opts)
         prompt_debounce = 200,
         prompt_prefix = "> ",
         prompt_query = "",
-        stream_debounce = 50,
         stream_type = "lines",
-        window_size = 0.15
+        window_size = 0.15,
+        resume_view = true,
     }, opts or {})
 
     local is_lines = opts.stream_type == "lines"
@@ -185,20 +206,26 @@ function Picker.new(opts)
 
     self.select = Select.new({
         ephemeral = opts.ephemeral,
+        resume_view = opts.resume_view,
         window_ratio = opts.window_size,
         prompt_query = opts.prompt_query,
         prompt_prefix = opts.prompt_prefix,
+        prompt_input = self:_input_prompt(),
         prompt_cancel = self:_cancel_prompt(),
         prompt_confirm = self:_confirm_prompt(),
-        prompt_input = self:_input_prompt(),
         prompt_list = true,
-        resume_view = true,
+        -- mappings = {
+        -- ["<c-g>"] = opts.interactive and self:_stage_filter()
+        -- },
         providers = {
             icon_provider = true,
             status_provider = false,
         }
     })
 
+    if opts.resume_view == true then
+        assert(opts.ephemeral == false)
+    end
     return self
 end
 

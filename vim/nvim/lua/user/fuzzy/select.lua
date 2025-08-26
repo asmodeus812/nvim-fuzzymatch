@@ -27,7 +27,6 @@ local function compute_offsets(str, start_char, char_len)
 end
 
 local function initialize_window(window)
-    vim.api.nvim_win_set_cursor(window, { 1, 0 })
     vim.wo[window][0].rnu = false
     vim.wo[window][0].number = false
     vim.wo[window][0].list = false
@@ -557,7 +556,6 @@ function Select:open(opts)
                     else
                         local line = self:_prompt_getquery()
                         if line and type(opts.prompt_input) == "function" then
-                            vim.api.nvim_win_set_cursor(self.list_window, { 1, 0 })
                             local ok, status, entries, positions = pcall(opts.prompt_input, line)
                             if not ok or ok == false then
                                 vim.notify(status, vim.log.levels.ERROR)
@@ -726,6 +724,9 @@ function Select:open(opts)
             });
             vim.api.nvim_win_set_height(list_window, list_height)
             list_window = initialize_window(list_window)
+            if not opts.resume_view then
+                vim.api.nvim_win_set_cursor(list_window, { 1, 0 })
+            end
             vim.wo[list_window][0].signcolumn = 'number'
 
             local highlight_matches = vim.api.nvim_create_autocmd("WinScrolled", {
