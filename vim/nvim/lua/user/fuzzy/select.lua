@@ -37,9 +37,12 @@ end
 
 local function extract_match(entry, display)
     local match = entry
+    local typ = display and type(entry)
+    assert(not typ or typ == "table")
     if type(display) == "function" then
-        match = display(entry)
+        match = display(assert(entry))
     elseif type(display) == "string" then
+        assert(entry and next(entry))
         match = entry[display]
     end
     return match
@@ -173,8 +176,8 @@ local function highlight_range(buffer, start, _end, entries, positions, display,
 
                 -- if the line has been decorated, we need to offset the highlights by the
                 -- length of the last decoration, as it is the one that will be at the end
-                local decor = decors and #decors > 0 and decors[#decors]
-                local offset = decor and decor.end_col or 0
+                local decor = decors ~= nil and #decors > 0 and decors[#decors]
+                local offset = (decor and #decor >= 4 and decor[4].end_col + 1 or 0)
 
                 for i = 1, #matches, 2 do
                     local byte_start, byte_end = compute_offsets(
@@ -191,11 +194,11 @@ local function highlight_range(buffer, start, _end, entries, positions, display,
                             invalidate = true,
                             ephemeral = false,
                             undo_restore = false,
-                            end_col = byte_end,
-                            end_line = target - 1,
                             right_gravity = true,
                             end_right_gravity = true,
                             hl_group = "IncSearch",
+                            end_line = target - 1,
+                            end_col = offset + byte_end,
                         }
                     )
                 end
@@ -366,8 +369,8 @@ function Select:_render_list()
     end
 
     if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
-        self:_highlight_list()
         self:_decorate_list()
+        self:_highlight_list()
         vim.api.nvim_win_call(
             self.list_window,
             vim.cmd.redraw
@@ -414,17 +417,19 @@ function Select:edit_entry(command, mods, callback)
     local list_window = self.list_window
     local cursor = vim.api.nvim_win_get_cursor(list_window)
     local selection = self:_list_selection(cursor[1])
-    local ok, items = utils.safe_call(callback, selection)
-    if ok and items == false then
-        self:close_view()
-        return
-    elseif not ok or not type(items) == "table" then
-        items = selection
-    end
-
-    items = vim.tbl_map(function(entry)
-        return extract_match(entry, self._content.display)
-    end, items or {})
+    local items = vim.tbl_map(function(entry)
+        local ok, result = utils.safe_call(callback, entry)
+        if ok and result == false then
+            return nil
+        elseif not ok or not type(result) == "string" then
+            result = extract_match(entry, self._content.display)
+        end
+        return {
+            col = 1,
+            lnum = 1,
+            filename = result,
+        }
+    end, selection)
 
     self:close_view()
     for _, value in ipairs(items) do
@@ -798,8 +803,8 @@ function Select:open(opts)
             local highlight_matches = vim.api.nvim_create_autocmd("WinScrolled", {
                 pattern = tostring(list_window),
                 callback = function()
-                    self:_highlight_list()
                     self:_decorate_list()
+                    self:_highlight_list()
                 end
             })
 

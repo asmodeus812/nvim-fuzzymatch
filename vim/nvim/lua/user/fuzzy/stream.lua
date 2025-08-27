@@ -280,13 +280,24 @@ function Stream:start(cmd, opts)
     end
 
     if type(cmd) == "function" then
+        local did_exit = false
         local callback = function(data)
-            self:_handle_stdout(nil, data)
+            if not did_exit and data ~= nil then
+                self:_handle_stdout(nil, data)
+            else
+                self:_handle_exit()
+                did_exit = true
+            end
             async.yield()
+            if did_exit then
+                async.abort()
+            end
         end
         local executor = async.wrap(function()
             utils.safe_call(cmd, callback)
-            self:_handle_exit()
+            if did_exit == false then
+                self:_handle_exit()
+            end
         end)
         executor()
     else

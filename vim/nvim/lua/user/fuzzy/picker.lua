@@ -91,7 +91,12 @@ function Picker:_input_prompt()
                             -- match the new results against the query and render them, which would update the list view
                             self.match:match(all, query, function(matching)
                                 if matching == nil then
-                                    -- notify that there matching has finished, so the renderer can update the status
+                                    -- notify that there matching has finished, so the renderer can update the status, also
+                                    -- check if there was actually nothing matched once the matching has signaled it has
+                                    -- finished if that is the case clear the selection list
+                                    if #self.match.results == 0 then
+                                        self.select:render({}, {})
+                                    end
                                     self.select:render(nil, nil)
                                 else
                                     -- render the new matching results, which would update the list view
@@ -115,7 +120,12 @@ function Picker:_input_prompt()
                 -- when there is a query we need to match against it, note we are using the current stream.results, which hold the current most up to date results produced by the stream / command
                 self.match:match(self.stream.results, query, function(matching)
                     if matching == nil then
-                        -- notify that there matching has finished, so the renderer can update the status
+                        -- notify that there matching has finished, so the renderer can update the status, also
+                        -- check if there was actually nothing matched once the matching has signaled it has
+                        -- finished if that is the case clear the selection list
+                        if #self.match.results == 0 then
+                            self.select:render({}, {})
+                        end
                         self.select:render(nil, nil)
                     else
                         -- render the new matching results, which would update the list view
@@ -153,7 +163,12 @@ function Picker:_flush_results()
                 -- when there is a query we need to match against it
                 self.match:match(all, query, function(matching)
                     if matching == nil then
-                        -- notify that there matching has finished, so the renderer can update the status
+                        -- notify that there matching has finished, so the renderer can update the status, also
+                        -- check if there was actually nothing matched once the matching has signaled it has
+                        -- finished if that is the case clear the selection list
+                        if #self.match.results == 0 then
+                            self.select:render({}, {})
+                        end
                         self.select:render(nil, nil)
                     else
                         -- render the new matching results, which would update the list view

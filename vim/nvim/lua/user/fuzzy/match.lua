@@ -223,7 +223,8 @@ function Match:_match_worker()
             assert(#result[2] == #result[3])
         end
 
-        -- call the callback with the current accumulated results
+        -- call the callback with the current accumulated results, note that we do that only when there are any new results, at
+        -- all, otherwise there is no need to execute it as there are no new matches to be added to the final accumulated result
         utils.safe_call(
             self.callback,
             self._state.accum
