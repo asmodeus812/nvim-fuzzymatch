@@ -1,5 +1,5 @@
 local Picker = require("user.fuzzy.picker")
-local picker = Picker.new({ interactive = true })
+local picker = Picker.new()
 
 local tt = {
     { name = "test1", },
@@ -119,8 +119,8 @@ end
 
 vim.keymap.set("n", "gz", function()
     -- picker:open("find", { interactive = false, args = { vim.fn.getcwd(), "-type", "f" } })
-    -- picker:open("rg", { args = { }, interactive = true })
+    picker:open("rg", { args = { }, interactive = true })
     -- picker:open("find", { interactive = "{prompt}", args = { vim.fn.getcwd(), "-type", "f", "-name", "{prompt}" } })
-    picker:open(print_50_lines)
+    -- picker:open(print_50_lines)
     -- picker:open(tt, { display = function(e) return e.name end })
 end)

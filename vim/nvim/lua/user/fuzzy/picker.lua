@@ -9,6 +9,7 @@ local utils = require("user.fuzzy.utils")
 --- @field select Select
 --- @field _options PickerOptions
 --- @field _state table
+--- @field _state.stage table
 local Picker = {}
 Picker.__index = Picker
 
@@ -18,10 +19,23 @@ function Picker:_clear_content(content, args)
     self._state.content = assert(content)
     self._state.args = assert(args)
 
+    self.match:stop()
+    self.stream:stop()
+
     -- forcefully clear the results, returning them to the pool for re-use, this is important to avoid huge performance penalties
     -- and possible memory fragmentation
     self.stream:_destroy_results()
     self.match:_destroy_results()
+end
+
+function Picker:_clear_stage()
+    local stage = self._state.stage
+    if stage and next(stage) then
+        stage.match:stop()
+
+        stage.match:_destroy_results()
+        stage.select:_destroy_view()
+    end
 end
 
 function Picker:_close_picker()
@@ -30,6 +44,12 @@ function Picker:_close_picker()
     self.select:close()
     self.stream:stop()
     self.match:stop()
+end
+
+function Picker:_close_stage()
+    local stage = self._state.stage
+    stage.select:close()
+    stage.match:stop()
 end
 
 function Picker:_cancel_prompt()
@@ -48,6 +68,123 @@ function Picker:_confirm_prompt()
     end)
 end
 
+function Picker:_create_stage()
+    self:_clear_stage()
+
+    local function _input_prompt()
+        return utils.debounce_callback(self._options.prompt_debounce, function(query)
+            local stage = self._state.stage
+            if query == nil then
+                stage.select:render(nil, nil)
+                stage.select:close()
+                stage.match:stop()
+            elseif self.match.results then
+                if type(query) == "string" and #query > 0 then
+                    stage.match:match(self.match.results[1], query, function(matching)
+                        if matching == nil then
+                            if #stage.match.results == 0 then
+                                stage.select:render({}, {})
+                            end
+                            stage.select:render(nil, nil)
+                        else
+                            stage.select:render(
+                                matching[1],
+                                matching[2],
+                                self._state.display
+                            )
+                        end
+                    end, self._state.transform)
+                else
+                    stage.select:render(
+                        stage.match.results[1],
+                        nil, -- nohighlights
+                        self._state.display
+                    )
+                    stage.select:render(nil, nil)
+                end
+            end
+        end)
+    end
+
+    local function _cancel_prompt()
+        return Select.action(Select.close_view, function()
+            local stage = self._state.stage
+            stage.match:stop()
+        end)
+    end
+
+    local function _confirm_prompt()
+        return Select.action(Select.select_entry, function(selected)
+            vim.print(selected)
+            return selected
+        end)
+    end
+
+    local opts = self._options
+    self._state.stage = {
+        select = Select.new({
+            ephemeral = opts.ephemeral,
+            resume_view = not opts.ephemeral,
+            window_ratio = opts.window_size,
+            prompt_query = opts.prompt_query,
+            prompt_prefix = opts.prompt_prefix,
+            prompt_input = _input_prompt(),
+            prompt_cancel = _cancel_prompt(),
+            prompt_confirm = _confirm_prompt(),
+            prompt_list = true,
+            providers = {
+                icon_provider = true,
+                status_provider = false,
+            },
+            mappings = {
+                ["<c-g>"] = function()
+                    self:_initiate_stage()
+                end
+            }
+        }),
+        match = Match.new({
+            ephemeral = opts.ephemeral,
+            timer = opts.match_timer,
+            limit = opts.match_limit,
+            step = opts.match_step,
+        })
+    }
+end
+
+function Picker:_initiate_stage()
+    local stage = self._state.stage
+    if self.select:isopen() then
+        self:_close_picker()
+        stage.select:open()
+
+        local matches = self.match.results
+        if stage.select:isempty() and matches and #matches > 0 then
+            stage.select:render(matches[1])
+            stage.select:render(nil, nil)
+        end
+    elseif stage.select:isopen() then
+        self:_close_stage()
+        self.select:open()
+    end
+end
+
+function Picker:_interactive_args(query)
+    local key = self._state.interactive
+    local args = vim.fn.copy(self._state.args)
+    if type(key) == "string" then
+        for _idx, _arg in ipairs(args or {}) do
+            if _arg == key then
+                args[_idx] = query
+                break
+            end
+            assert(_idx < #args)
+        end
+    else
+        table.insert(args or {}, 1, query)
+    end
+    return args
+end
+
 function Picker:_input_prompt()
     -- debounce the user input to avoid flooding the matching and rendering logic with too many updates, especially when dealing
     -- with large result sets or fast typers
@@ -64,25 +201,11 @@ function Picker:_input_prompt()
 
             -- when interactive is a string it means that the string is an argument placeholder, that should be replaced
             -- with the query, otherwise the query is just prepended to the args list
-            local arg = self._state.interactive
-            local args_copy = vim.fn.copy(self._state.args)
-            if type(arg) == "string" then
-                for _idx, _arg in ipairs(args_copy or {}) do
-                    if _arg == arg then
-                        args_copy[_idx] = query
-                        break
-                    end
-                    assert(_idx < #args_copy)
-                end
-            else
-                table.insert(args_copy or {}, 1, query)
-            end
-
             if type(query) == "string" and #query > 0 then
                 -- when there is a query we need to match against it, so we restart the stream with the new args, and match
                 -- the results as they come in
                 self.stream:start(self._state.content, {
-                    args = args_copy,
+                    args = self:_interactive_args(query),
                     callback = function(_, all)
                         if not all then
                             -- notify that the streaming is done, so the renderer can update the status
@@ -147,6 +270,7 @@ function Picker:_input_prompt()
                 self.select:render(nil, nil)
             end
         end
+        self:_clear_stage()
     end)
 end
 
@@ -187,6 +311,7 @@ function Picker:_flush_results()
                 )
                 self.select:render(nil, nil)
             end
+            self:_clear_stage()
         end
     end)
 end
@@ -225,8 +350,23 @@ function Picker:open(content, opts)
     elseif type(opts.display) == "string" then
         self._state.transform = { key = opts.display }
     end
-    self._state.interactive = opts.interactive or false
-    self.select:open()
+
+    local select_options = nil
+    if opts.interactive ~= self._state.interactive then
+        select_options = {}
+        if opts.interactive ~= nil and opts.interactive ~= false then
+            self:_create_stage()
+            select_options.mappings = {
+                ["<c-g>"] = function()
+                    self:_initiate_stage()
+                end
+            }
+        else
+            self:_clear_stage()
+        end
+        self._state.interactive = opts.interactive or false
+    end
+    self.select:open(select_options)
 
     if type(content) ~= "table" then
         -- when a string or a function is provided the content is expected to be a command that produces output, or a function
@@ -262,10 +402,12 @@ end
 --- @field ephemeral boolean whether the picker should be ephemeral or not, default is false
 --- @field match_limit number? optional limit on the number of matches to return, default is
 --- @field match_timer number time in milliseconds to wait before returning partial matches, default is 100
+--- @field match_step number the maximum number eleemnts to process in a single batch of fuzzy matching
 --- @field prompt_debounce number time in milliseconds to debounce the prompt input, default is 200
 --- @field prompt_prefix string prefix to use for the prompt, default is "> "
 --- @field prompt_query string initial query to use for the prompt, default is ""
 --- @field stream_type string type of stream to use, either "lines" or "bytes", default is "lines"
+--- @field stream_step integer the maximum number of elements to accumulate before flushing the stream
 --- @field window_size number size of the picker window as a ratio of the screen size, default is 0.15
 --- @field resume_view boolean whether to resume the view on close, default is true
 
@@ -276,10 +418,12 @@ function Picker.new(opts)
         ephemeral = false,
         match_limit = nil,
         match_timer = 100,
-        prompt_debounce = 200,
+        match_step = 50000,
+        prompt_debounce = 250,
         prompt_prefix = "> ",
         prompt_query = "",
         stream_type = "lines",
+        stream_step = 100000,
         window_size = 0.15,
         resume_view = true,
     }, opts or {})
@@ -295,6 +439,7 @@ function Picker.new(opts)
             transform = nil,
             display = nil,
             content = nil,
+            stage = nil,
             args = nil,
         },
     }, Picker)
@@ -303,14 +448,14 @@ function Picker.new(opts)
         ephemeral = opts.ephemeral,
         timer = opts.match_timer,
         limit = opts.match_limit,
-        step = 50000,
+        step = opts.match_step,
     })
 
     self.stream = Stream.new({
         ephemeral = opts.ephemeral,
+        step = opts.stream_step,
         bytes = not is_lines,
         lines = is_lines,
-        step = 100000,
     })
 
     self.select = Select.new({
@@ -323,10 +468,6 @@ function Picker.new(opts)
         prompt_cancel = self:_cancel_prompt(),
         prompt_confirm = self:_confirm_prompt(),
         prompt_list = true,
-        -- TODO: fix this, action is not working at the moment
-        -- mappings = {
-        -- ["<c-g>"] = opts.interactive and self:_stage_filter()
-        -- },
         providers = {
             icon_provider = true,
             status_provider = false,

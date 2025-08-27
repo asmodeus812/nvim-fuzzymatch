@@ -20,7 +20,7 @@ local utils = require("user.fuzzy.utils")
 --- @field _content.streaming boolean marks if the content is still streaming or receiving data
 local Select = {}
 Select.__index = Select
-local render_step = 50000
+local render_step = 25000
 
 local function icon_set()
     local ok, module = pcall(require, 'nvim-web-devicons')
@@ -424,11 +424,7 @@ function Select:edit_entry(command, mods, callback)
         elseif not ok or not type(result) == "string" then
             result = extract_match(entry, self._content.display)
         end
-        return {
-            col = 1,
-            lnum = 1,
-            filename = result,
-        }
+        return result
     end, selection)
 
     self:close_view()
@@ -499,10 +495,10 @@ function Select:send_fixlist(type, callback)
         title = "[Selection]",
     }
 
-    if type == "qf" then
+    if type == "quickfix" then
         vim.fn.setqflist({}, " ", args)
         self._options.quickfix_open()
-    else
+    elseif type == "loclist" then
         local target
         if self.source_window and vim.api.nvim_win_is_valid(self.source_window) then
             target = self.source_window
@@ -518,6 +514,7 @@ end
 function Select:close_view(callback)
     if self.source_window and vim.api.nvim_win_is_valid(self.source_window) then
         vim.api.nvim_set_current_win(self.source_window)
+        self.source_window = nil
     end
     if self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window) then
         vim.api.nvim_win_close(self.prompt_window, true)
@@ -560,7 +557,7 @@ function Select:select_tab(callback)
 end
 
 function Select:send_quickfix(callback)
-    self:send_fixlist("qf", callback)
+    self:send_fixlist("quickfix", callback)
 end
 
 function Select:send_locliset(callback)
@@ -581,6 +578,17 @@ function Select:isopen()
     return prompt and list
 end
 
+function Select:isempty()
+    if not self.list_buffer or not vim.api.nvim_buf_is_valid(self.list_buffer) then
+        return true
+    end
+    if vim.api.nvim_buf_line_count(self.list_buffer) == 1 then
+        local lines = vim.api.nvim_buf_get_lines(self.list_buffer, 0, 1, false)
+        return not lines or #lines == 0 or #lines[1] == 0
+    end
+    return false
+end
+
 function Select:render(entries, positions, display)
     if entries ~= nil then
         self._content.positions = positions
@@ -594,14 +602,15 @@ function Select:render(entries, positions, display)
 end
 
 function Select:open(opts)
-    if type(opts) == "table" then
+    if type(opts) == "table" and next(opts) then
         self:_destroy_view()
-        self._options = opts
-    elseif not self:isopen() then
-        opts = assert(self._options)
-    else
+        self._options = vim.tbl_deep_extend(
+            "force", self._options, assert(opts)
+        )
+    elseif self:isopen() then
         return
     end
+    opts = assert(self._options)
 
     self.source_window = vim.api.nvim_get_current_win()
     local size = vim.g.win_viewport_height * opts.window_ratio
@@ -646,9 +655,9 @@ function Select:open(opts)
 
             local mode_changed = vim.api.nvim_create_autocmd("ModeChanged", {
                 buffer = prompt_buffer,
-                callback = function()
-                    vim.cmd.startinsert()
-                end
+                callback = vim.schedule_wrap(function()
+                    vim.cmd.startinsert({ bang = true })
+                end)
             })
 
             vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
@@ -893,21 +902,17 @@ end
 --- @return Select
 function Select.new(opts)
     opts = vim.tbl_deep_extend("force", {
-        --
         quickfix_open = vim.cmd.copen,
         loclist_open = vim.cmd.lopen,
-        --
         prompt_confirm = Select.select_entry,
         prompt_cancel = Select.close_view,
         prompt_preview = false,
         prompt_input = false,
         prompt_list = true,
         prompt_prefix = "> ",
-        --
         window_ratio = 0.15,
         resume_view = false,
         ephemeral = true,
-        -- providers
         providers = {
             status_provider = false,
             icon_provider = false,
