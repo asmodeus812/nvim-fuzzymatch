@@ -120,10 +120,10 @@ local function generate_lines(cb)
 end
 
 vim.keymap.set("n", "gz", function()
-    picker:open("find", { args = { ".", "-type", "f" } })
-    -- picker:open("rg", { args = { "--column", "--line-number", "--no-heading", "class" } })
+    -- picker:open("find", { args = { ".", "-type", "f" } })
+    -- picker:open("rg", { converter = Picker.grep_converter, args = { "--column", "--line-number", "--no-heading", "class" } })
 
-    -- picker:open("rg", { args = { "--column", "--line-number", "--no-heading", "{prompt}" }, interactive = "{prompt}" })
+    picker:open("rg", { converter = Picker.grep_converter, args = { "--column", "--line-number", "--no-heading", "{prompt}" }, interactive = "{prompt}" })
     -- picker:open("find", { interactive = "{prompt}", args = { vim.fn.getcwd(), "-type", "f", "-name", "{prompt}" } })
 
     -- picker:open(print_50_lines, {})

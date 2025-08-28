@@ -14,6 +14,7 @@ local utils = require("fuzzy.utils")
 --- @field preview_window integer|nil The window ID of the preview window.
 --- @field preview_buffer integer|nil The buffer ID of the preview buffer.
 --- @field _options SelectOptions The options used to configure the selection interface.
+--- @field _state { query: string } The state of the select holds different internal state components
 --- @field _content { entries: any[]|nil, positions: integer[][]|nil, display: (string|fun(entry: any): string)? , streaming: boolean } The current content of the selection interface.
 local Select = {}
 Select.__index = Select
@@ -179,7 +180,7 @@ local function highlight_range(buffer, start, _end, entries, positions, display,
                         target - 1,
                         offset + byte_start,
                         {
-                            strict = true,
+                            strict = false,
                             hl_eol = false,
                             invalidate = true,
                             ephemeral = false,
@@ -188,7 +189,7 @@ local function highlight_range(buffer, start, _end, entries, positions, display,
                             end_right_gravity = true,
                             hl_group = "IncSearch",
                             end_line = target - 1,
-                            end_col = offset + byte_end,
+                            end_col = offset + byte_end
                         }
                     )
                 end
@@ -256,17 +257,23 @@ local function decorate_range(buffer, start, _end, entries, decoration, display,
     vim.bo[buffer].modified = false
 end
 
--- TODO: make this work beter with cursorline and shit
-function Select:_normalize_view()
-    if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
-        vim.wo[self.list_window][0].cursorline = true
+function Select:_prompt_input(input, callback)
+    if type(callback) == "function" then
+        local ok, status, entries, positions = pcall(callback, input)
+        if not ok or ok == false then
+            vim.notify(status, vim.log.levels.ERROR)
+        elseif entries ~= nil then
+            self:list(entries, positions)
+            self:list(nil, nil)
+        end
     end
-    if self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window) then
-        vim.wo[self.prompt_window][0].cursorline = false
+end
+
+function Select:_prompt_getquery(lnum)
+    if not self.prompt_buffer or not vim.api.nvim_buf_is_valid(self.prompt_buffer) then
+        return nil
     end
-    if self.preview_window and vim.api.nvim_win_is_valid(self.preview_window) then
-        vim.wo[self.preview_window][0].cursorline = false
-    end
+    return buffer_getline(self.prompt_buffer, lnum)
 end
 
 function Select:_list_selection(lnum)
@@ -287,30 +294,40 @@ function Select:_list_selection(lnum)
     end
 end
 
-function Select:_prompt_input(input, callback)
-    if type(callback) == "function" then
-        local ok, status, entries, positions = pcall(callback, input)
-        if not ok or ok == false then
-            vim.notify(status, vim.log.levels.ERROR)
-        elseif entries ~= nil then
-            self:list(entries, positions)
-            self:list(nil, nil)
+function Select:_entry_mapper(callback, cursor)
+    return function(entry)
+        local ok, result = utils.safe_call(callback, entry, cursor)
+        if ok and result == false then
+            return nil
         end
-    end
-end
 
-function Select:_prompt_getquery(lnum)
-    if not self.prompt_buffer or not vim.api.nvim_buf_is_valid(self.prompt_buffer) then
-        return nil
+        local col = 1
+        local lnum = 1
+
+        if type(result) == "table" and result.filename then
+            col = result.col or 1
+            lnum = result.lnum or 1
+            result = result.filename
+        else
+            result = extract_match(
+                result or entry,
+                self._content.display
+            )
+        end
+
+        assert(type(result) == "string" and #result > 0)
+        return {
+            col = col,
+            lnum = lnum,
+            filename = result,
+        }
     end
-    return buffer_getline(self.prompt_buffer, lnum)
 end
 
 function Select:_make_callback(callback)
     return function()
         return utils.safe_call(
-            callback,
-            self
+            callback, self
         )
     end
 end
@@ -407,9 +424,18 @@ function Select:_destroy_view()
     end
 end
 
+--- Executes user callback with the current selection passed in, the action performs a no operation and is entirely reliant on the user
+--- callback to perform any action, this is a generic function used to invoke the user callback with current selection
+function Select:default_select(callback)
+    local cursor = vim.api.nvim_win_get_cursor(self.list_window)
+    local selection = callback and self:_list_selection(cursor[1])
+    self:close_view()
+    utils.safe_call(callback, selection, cursor)
+end
+
 --- Moves the cursor in the list by a specified direction, this is a generic function used by other selection methods.
 function Select:move_cursor(dir, callback)
-    local list_window = self.list_window
+    local list_window = assert(self.list_window)
     local cursor = vim.api.nvim_win_get_cursor(list_window)
     local line_count = vim.fn.line("$", list_window)
 
@@ -417,43 +443,99 @@ function Select:move_cursor(dir, callback)
     cursor[1] = (cursor[1] + dir) % (line_count + 1)
     if cursor[1] == 0 and dir > 0 then cursor[1] = 1 end
     vim.api.nvim_win_set_cursor(list_window, cursor)
-    utils.safe_call(callback, callback and self:_list_selection(cursor[1]))
+
+    local selection = callback and self:_list_selection(cursor[1])
+    utils.safe_call(callback, selection, cursor)
 end
 
---- Edits the selected entry using the specified command and modifiers, this is a generic function used by other selection methods.
-function Select:edit_entry(command, mods, callback)
-    local list_window = self.list_window
+--- Executes command against the selected entry as an argument passed to that command, this is a generic function used by other
+--- selection methods.
+function Select:exec_command(command, mods, callback)
+    local list_window = assert(self.list_window)
     local cursor = vim.api.nvim_win_get_cursor(list_window)
-    local selection = self:_list_selection(cursor[1])
-    local items = vim.tbl_map(function(entry)
-        local ok, result = utils.safe_call(callback, entry)
-        if ok and result == false then
-            return nil
-        elseif not ok or not type(result) == "string" then
-            result = extract_match(entry, self._content.display)
-        end
-        return result
-    end, selection)
+    local items = vim.tbl_map(
+        self:_entry_mapper(
+            callback,
+            cursor
+        ),
+        self:_list_selection(
+            cursor[1]
+        )
+    )
 
     self:close_view()
 
     for _, value in ipairs(items) do
-        if not value or #value == 0 then
+        if value == nil then
             goto continue
         end
+
+        local col = 1
+        local lnum = 1
+        local fname = value
+
+        if type(value) == "table" then
+            col = assert(value.col)
+            lnum = assert(value.lnum)
+            fname = assert(value.filename)
+        end
+
         vim.cmd[command]({
-            args = { value },
+            args = { fname },
             mods = mods,
             bang = true,
         })
+        vim.api.nvim_win_set_cursor(0, { lnum, col - 1 })
+
         ::continue::
+    end
+end
+
+--- Sends the selected entries to the quickfix or location list, using the provided callback to extract filenames from entries, the type
+--- argument value must be either "quickfix" or "loclist".
+function Select:send_fixlist(type, callback)
+    local list_window = assert(self.list_window)
+    local cursor = vim.api.nvim_win_get_cursor(list_window)
+
+    local items = vim.tbl_map(
+        self:_entry_mapper(
+            callback,
+            cursor
+        ),
+        self:_list_selection(
+            cursor[1]
+        )
+    )
+
+    self:close_view()
+
+    local args = {
+        nr = "$",
+        items = vim.tbl_filter(function(item)
+            return item ~= nil and item.filename
+        end, items),
+        title = "[Selection]",
+    }
+
+    if type == "quickfix" then
+        vim.fn.setqflist({}, " ", args)
+        self._options.quickfix_open()
+    elseif type == "loclist" then
+        local target
+        if self.source_window and vim.api.nvim_win_is_valid(self.source_window) then
+            target = self.source_window
+        else
+            target = vim.fn.winnr("#")
+        end
+        vim.fn.setloclist(target, {}, " ", args)
+        self._options.loclist_open()
     end
 end
 
 --- Toggles the selection state of the current entry in the list, using signs to indicate selection, and moves the cursor down by one
 --- entry, by default.
 function Select:toggle_entry(callback)
-    local list_window = self.list_window
+    local list_window = assert(self.list_window)
     local cursor = vim.api.nvim_win_get_cursor(list_window)
     local placed = vim.fn.sign_getplaced(self.list_buffer, {
         group = "list_toggle_entry_group", lnum = cursor[1],
@@ -482,62 +564,10 @@ function Select:toggle_entry(callback)
             }
         )
     end
-    utils.safe_call(callback, callback and self:_list_selection(cursor[1]))
+
+    local selection = callback and self:_list_selection(cursor[1])
+    utils.safe_call(callback, selection, cursor)
     self:move_cursor(1)
-end
-
---- Sends the selected entries to the quickfix or location list, using the provided callback to extract filenames from entries, the type
---- argument value must be either "quickfix" or "loclist".
-function Select:send_fixlist(type, callback)
-    local selection = self:_list_selection()
-    local items = vim.tbl_map(function(entry)
-        local ok, result = utils.safe_call(callback, entry)
-        if ok and result == false then
-            return nil
-        elseif not ok or not type(result) == "string" then
-            result = extract_match(entry, self._content.display)
-        end
-        if type(result) == "table" and next(result) then
-            assert(result.col and result.col > 0)
-            assert(result.lnum and result.lnum > 0)
-            assert(result.filename and #result.filename > 0)
-            return result
-        else
-            assert(type(result) == "string" and #result > 0)
-            return {
-                col = 1,
-                lnum = 1,
-                filename = result,
-            }
-        end
-    end, selection)
-
-    items = vim.tbl_filter(function(item)
-        return item ~= nil and item.filename and #item.filename > 0
-    end, items)
-
-    local args = {
-        nr = "$",
-        items = vim.tbl_filter(function(item)
-            return item ~= nil
-        end, items),
-        title = "[Selection]",
-    }
-
-    if type == "quickfix" then
-        vim.fn.setqflist({}, " ", args)
-        self._options.quickfix_open()
-    elseif type == "loclist" then
-        local target
-        if self.source_window and vim.api.nvim_win_is_valid(self.source_window) then
-            target = self.source_window
-        else
-            target = vim.fn.winnr("#")
-        end
-        vim.fn.setloclist(target, {}, " ", args)
-        self._options.loclist_open()
-    end
-    self:close_view()
 end
 
 --- Closes all open windows associated with the selection interface and returns focus to the source window, if it is still valid.
@@ -558,8 +588,7 @@ function Select:close_view(callback)
         vim.api.nvim_win_close(self.list_window, true)
         self.preview_window = nil
     end
-
-    utils.safe_call(callback, nil)
+    utils.safe_call(callback)
 end
 
 --- Moves the cursor to the next entry in the list.
@@ -574,22 +603,22 @@ end
 
 --- Opens the selected entry in the source window. See `:edit` and Select.source_window.
 function Select:select_entry(callback)
-    self:edit_entry("edit", {}, callback)
+    self:exec_command("edit", {}, callback)
 end
 
 --- Opens the selected entry in a horizontal split.
 function Select:select_horizontal(callback)
-    self:edit_entry("split", { horizontal = true }, callback)
+    self:exec_command("split", { horizontal = true }, callback)
 end
 
 --- Opens the selected entry in a vertical split.
 function Select:select_vertical(callback)
-    self:edit_entry("split", { vertical = true }, callback)
+    self:exec_command("split", { vertical = true }, callback)
 end
 
 --- Opens the selected entry in a new tab.
 function Select:select_tab(callback)
-    self:edit_entry("tabedit", {}, callback)
+    self:exec_command("tabedit", {}, callback)
 end
 
 --- Sends the selected entries to the quickfix list and opens it.
@@ -603,9 +632,9 @@ function Select:send_locliset(callback)
 end
 
 --- Gets the current query from the prompt input.
---- @return string|nil The current query string, or nil if the prompt is not available.
+--- @return string The current query string, the query must never be nil, otherwise that represents invalid state
 function Select:query()
-    return self:_prompt_getquery()
+    return assert(self._state.query)
 end
 
 --- Closes the selection interface.
@@ -669,15 +698,20 @@ function Select:open(opts)
     opts = assert(self._options)
 
     self.source_window = vim.api.nvim_get_current_win()
-    local size = vim.g.win_viewport_height * opts.window_ratio
+    local factor = opts.prompt_preview and 2.0 or 1.0
+    local ratio = math.abs(opts.window_ratio / factor)
+    local size = math.ceil(vim.o.lines * ratio)
+
     if opts.prompt_input then
         local prompt_buffer = self.prompt_buffer
         if not prompt_buffer or not vim.api.nvim_buf_is_valid(prompt_buffer) then
             prompt_buffer = vim.api.nvim_create_buf(false, true)
-            prompt_buffer = initialize_buffer(prompt_buffer, "prompt", "fuzzy")
+            prompt_buffer = initialize_buffer(prompt_buffer, "nofile", "fuzzy-prompt")
             self:_create_mappings(prompt_buffer, "i", opts.mappings)
             self:_create_mappings(prompt_buffer, "i", {
+                ["<cr>"] = opts.prompt_confirm,
                 ["<esc>"] = opts.prompt_cancel,
+                ["<c-c>"] = opts.prompt_cancel,
             })
             vim.bo[prompt_buffer].bufhidden = opts.ephemeral and "wipe" or "hide"
             vim.bo[prompt_buffer].modifiable = true
@@ -686,11 +720,16 @@ function Select:open(opts)
                 buffer = prompt_buffer,
                 callback = function(args)
                     if not args.buf or not vim.api.nvim_buf_is_valid(args.buf) then
-                        self:_prompt_input(nil, opts.prompt_input)
                         self:close_view()
-                    else
+                        self:_prompt_input(nil, opts.prompt_input)
+                    elseif self:isopen() then
                         local query = self:_prompt_getquery()
-                        self:_prompt_input(query, opts.prompt_input)
+                        if query and self._state.query ~= query then
+                            self:_prompt_input(query, opts.prompt_input)
+                            self._state.query = query
+                        else
+                            self._state.query = ""
+                        end
                     end
                 end
             })
@@ -703,7 +742,7 @@ function Select:open(opts)
             local mode_changed = vim.api.nvim_create_autocmd("ModeChanged", {
                 buffer = prompt_buffer,
                 callback = vim.schedule_wrap(function()
-                    vim.cmd.startinsert({ bang = true })
+                    vim.cmd.startinsert()
                 end)
             })
 
@@ -724,50 +763,43 @@ function Select:open(opts)
                 text = opts.prompt_prefix, priority = 10
             }) == 0, "failed to define sign")
 
-            if type(opts.prompt_query) == "string" and #opts.prompt_query > 0 then
-                self:_prompt_input(opts.prompt_query, opts.prompt_input)
-            end
+            assert(vim.fn.sign_place(
+                0,
+                "prompt_line_query_group",
+                sign_name,
+                prompt_buffer,
+                {
+                    lnum = 1,
+                    priority = 10,
+                }
+            ) == 1, "failed to place sign")
 
-            vim.fn.prompt_setprompt(prompt_buffer, opts.prompt_query or "")
-            vim.fn.prompt_setcallback(prompt_buffer, self:_make_callback(opts.prompt_confirm))
-            vim.fn.prompt_setinterrupt(prompt_buffer, self:_make_callback(opts.prompt_cancel))
+            if type(opts.prompt_query) == "string" and #opts.prompt_query > 0 then
+                vim.api.nvim_buf_set_lines(prompt_buffer, 0, 1, false, { opts.prompt_query })
+            end
         elseif opts.resume_view == false then
             populate_buffer(prompt_buffer, {})
         end
 
         local prompt_window = self.prompt_window
         if not prompt_window or not vim.api.nvim_win_is_valid(prompt_window) then
-            prompt_window = vim.api.nvim_open_win(prompt_buffer, true, {
+            prompt_window = vim.api.nvim_open_win(prompt_buffer, false, {
                 split = "below", win = -1, height = 1, noautocmd = false
             });
             vim.api.nvim_win_set_height(prompt_window, 1)
             prompt_window = initialize_window(prompt_window)
+            vim.wo[prompt_window][0].signcolumn = 'number'
+            vim.wo[prompt_window][0].cursorline = false
 
             vim.api.nvim_create_autocmd("WinClosed", {
                 pattern = tostring(prompt_window),
                 callback = function()
-                    -- pcall(vim.fn.sign_und())
                     self:close_view()
                     return true
                 end,
                 once = true,
             })
         end
-
-        local sign_name = string.format(
-            "prompt_line_query_sign_%d",
-            prompt_buffer
-        )
-        assert(vim.fn.sign_place(
-            1,
-            "prompt_line_query_group",
-            sign_name,
-            prompt_buffer,
-            {
-                lnum = 1,
-                priority = 10,
-            }
-        ) == 1, "failed to place sign")
 
         local query = self:query()
         if query and #query > 0 then
@@ -785,7 +817,7 @@ function Select:open(opts)
         local list_buffer = self.list_buffer
         if not list_buffer or not vim.api.nvim_buf_is_valid(list_buffer) then
             list_buffer = vim.api.nvim_create_buf(false, true)
-            list_buffer = initialize_buffer(list_buffer, "nofile", "list")
+            list_buffer = initialize_buffer(list_buffer, "nofile", "fuzzy-list")
             if not opts.prompt_input then
                 self:_create_mappings(list_buffer, "n", opts.mappings)
                 self:_create_mappings(list_buffer, "n", {
@@ -835,7 +867,7 @@ function Select:open(opts)
             })
 
             assert(vim.fn.sign_define(sign_name, {
-                text = "*", priority = 10
+                text = self._options.toggle_prefix, priority = 10
             }) == 0)
         elseif opts.resume_view == false then
             self._content.streaming = false
@@ -847,7 +879,7 @@ function Select:open(opts)
         local list_window = self.list_window
         if not list_window or not vim.api.nvim_win_is_valid(list_window) then
             local list_height = math.floor(math.ceil(size))
-            list_window = vim.api.nvim_open_win(list_buffer, true, {
+            list_window = vim.api.nvim_open_win(list_buffer, false, {
                 split = self.prompt_window and "above" or "below",
                 height = list_height,
                 noautocmd = false,
@@ -859,6 +891,7 @@ function Select:open(opts)
                 vim.api.nvim_win_set_cursor(list_window, { 1, 0 })
             end
             vim.wo[list_window][0].signcolumn = 'number'
+            vim.wo[list_window][0].cursorline = true
 
             local highlight_matches = vim.api.nvim_create_autocmd("WinScrolled", {
                 pattern = tostring(list_window),
@@ -887,7 +920,7 @@ function Select:open(opts)
         local preview_buffer = self.preview_buffer
         if not preview_buffer or not vim.api.nvim_buf_is_valid(preview_buffer) then
             preview_buffer = vim.api.nvim_create_buf(false, true)
-            preview_buffer = initialize_buffer(preview_buffer, "nofile", "preview")
+            preview_buffer = initialize_buffer(preview_buffer, "nofile", "fuzzy-preview")
             vim.bo[preview_buffer].bufhidden = opts.ephemeral and "wipe" or "hide"
             vim.bo[preview_buffer].modifiable = false
         elseif opts.resume_view == false then
@@ -897,7 +930,7 @@ function Select:open(opts)
         local preview_window = self.preview_window
         if not preview_window or not vim.api.nvim_win_is_valid(preview_window) then
             local preview_height = math.floor(math.ceil(size))
-            preview_window = vim.api.nvim_open_win(preview_buffer, true, {
+            preview_window = vim.api.nvim_open_win(preview_buffer, false, {
                 split = self.list_window and "above" or "below",
                 height = preview_height,
                 noautocmd = false,
@@ -913,12 +946,16 @@ function Select:open(opts)
 
     if self.prompt_window then
         vim.api.nvim_set_current_win(self.prompt_window)
-        vim.api.nvim_win_call(self.prompt_window, vim.cmd.startinsert)
-        self:_normalize_view()
+        vim.api.nvim_win_call(
+            self.prompt_window,
+            vim.cmd.startinsert
+        )
     elseif self.list_window then
         vim.api.nvim_set_current_win(self.list_window)
-        vim.api.nvim_win_call(self.list_window, vim.cmd.stopinsert)
-        self:_normalize_view()
+        vim.api.nvim_win_call(
+            self.list_window,
+            vim.cmd.stopinsert
+        )
     else
         vim.api.nvim_set_current_win(self.source_window)
     end
@@ -946,13 +983,14 @@ end
 --- @field prompt_query? string|nil The initial query to show in the prompt. Defaults to an empty string.
 --- @field prompt_input? boolean|function(line: string):(string[], string[])|nil Whether to show an input prompt. Can be a boolean or a function that takes the current input line and returns a list of entries and their positions optionally. Defaults to `true`.
 --- @field prompt_list? boolean|fun():(table, table)|nil Whether to show a list of entries. Can be a boolean or a function that returns a list of entries and their positions. Defaults to `true`.
---- @field prompt_prefix? string|nil The prefix to show in the prompt. Defaults to `"> "`.
+--- @field prompt_prefix? string|nil The prefix to show in the signcolumn for the prompt. Defaults to `"> "`.
+--- @field toggle_prefix? string|nil The prefix to show in the signcolumn when entry is toggled. Defaults to `"*"`.
 --- @field resume_view? boolean|nil Whether to resume the previous view state. Defaults to `false`.
 --- @field ephemeral? boolean|nil Whether to make the buffers ephemeral (deleted on close). Defaults to `true`.
 --- @field window_ratio? number The ratio of the screen height to use for the selection interface.
 --- @field listing_step? integer|nil The number of entries to render at a time when populating the list buffer. If nil, all entries are rendered at once.
 --- @field mappings? table<string, fun(self: Select)> The key mappings to use for the selection interface.
---- @field providers? table The decoration providers to use for list items.
+--- @field providers? table The decoration providers to use for the list of items.
 --- @field providers.icon_provider boolean|fun(entry: string):(string, string)|nil A boolean or function to provide icons for entries. Defaults to `false`.
 --- @field providers.status_provider boolean|fun(entry: string):(string, string)|nil A boolean or function to provide status indicators for entries. Defaults to `false`.
 
@@ -968,7 +1006,9 @@ function Select.new(opts)
         prompt_preview = false,
         prompt_input = true,
         prompt_list = true,
+        prompt_query = nil,
         prompt_prefix = "> ",
+        toggle_prefix = "✓",
         window_ratio = 0.15,
         resume_view = false,
         listing_step = nil,
@@ -984,9 +1024,9 @@ function Select.new(opts)
             ["<c-n>"] = Select.select_next,
             ["<c-k>"] = Select.select_prev,
             ["<c-j>"] = Select.select_next,
-            ["<c-s>"] = Select.select_horizontal,
-            ["<c-v>"] = Select.select_vertical,
             ["<c-t>"] = Select.select_tab,
+            ["<c-v>"] = Select.select_vertical,
+            ["<c-s>"] = Select.select_horizontal,
         },
     }, opts or {})
 
@@ -998,6 +1038,9 @@ function Select.new(opts)
         list_buffer = nil,
         list_window = nil,
         _options = opts,
+        _state = {
+            query = ""
+        },
         _content = {
             entries = nil,
             positions = nil,

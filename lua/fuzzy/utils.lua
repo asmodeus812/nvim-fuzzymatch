@@ -184,6 +184,29 @@ function M.time_execution(func, ...)
     return result
 end
 
+function M.print_stacktrace()
+    local level = 2  -- Start from caller of this function
+    vim.print("Stacktrace:")
+
+    while true do
+        local info = debug.getinfo(level, "nSl")
+        if not info then break end
+
+        local func_name = info.name or "anonymous"
+        local source = info.short_src or "unknown"
+        local line = info.currentline or 0
+
+        vim.print(string.format(
+            "- [%d] %s @ %s:%d",
+            level - 1,
+            func_name,
+            source,
+            line
+        ))
+        level = level + 1
+    end
+end
+
 --- Create a debounced version of a callback function, which delays its execution until after a specified wait time has elapsed since the last time it was invoked. If the wait time is 0, the original callback is returned.
 --- @param wait integer The wait time in milliseconds
 --- @param callback function The callback function to debounce
