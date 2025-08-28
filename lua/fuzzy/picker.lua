@@ -1,7 +1,7 @@
-local Stream = require("user.fuzzy.stream")
-local Select = require("user.fuzzy.select")
-local Match = require("user.fuzzy.match")
-local utils = require("user.fuzzy.utils")
+local Stream = require("fuzzy.stream")
+local Select = require("fuzzy.select")
+local Match = require("fuzzy.match")
+local utils = require("fuzzy.utils")
 
 --- @class Picker
 --- @field match Match
@@ -48,8 +48,27 @@ end
 
 function Picker:_close_stage()
     local stage = self._state.stage
-    stage.select:close()
-    stage.match:stop()
+    if stage and next(stage) then
+        stage.select:close()
+        stage.match:stop()
+    end
+end
+
+function Picker:_interactive_args(query)
+    local key = self._state.interactive
+    local args = vim.fn.copy(self._state.args)
+    if type(key) == "string" then
+        for _idx, _arg in ipairs(args or {}) do
+            if _arg == key then
+                args[_idx] = query
+                break
+            end
+            assert(_idx < #args)
+        end
+    else
+        table.insert(args or {}, 1, query)
+    end
+    return args
 end
 
 function Picker:_cancel_prompt()
@@ -68,6 +87,132 @@ function Picker:_confirm_prompt()
     end)
 end
 
+function Picker:_input_prompt()
+    -- debounce the user input to avoid flooding the matching and rendering logic with too many updates, especially when dealing
+    -- with large result sets or fast typers
+    return utils.debounce_callback(self._options.prompt_debounce, function(query)
+        if query == nil then
+            -- the input has been interrupted, so we need to stop everything
+            self.select:list(nil, nil)
+            self.select:close()
+            self.match:stop()
+        elseif self._state.interactive then
+            -- in interactive mode we need to restart the stream with the new query, so that the command can produce results
+            -- based on the query, for example when using find -name <query>, we do not perform fuzzy matching on the stream
+            -- in interactive mode, this is done on demand in the second stage
+            local content = self._state.content
+            assert(type(content) ~= "table")
+
+            if type(query) == "string" and #query > 0 then
+                self.stream:start(self._state.content, {
+                    -- when interactive is a string it means that the string is an argument placeholder, that should be replaced
+                    -- with the query, otherwise the query is just prepended to the args list
+                    args = self:_interactive_args(query),
+                    callback = function(_, all)
+                        if not all then
+                            -- notify that the streaming is done, so the renderer can update the status, the accumulated
+                            -- result here would directly represent the stream contents that have been collected, matching
+                            -- is not performed when the picker is interactive mode, the matching will be done in the
+                            -- second stage.
+                            self.select:list(nil, nil)
+                        else
+                            self.select:list(
+                                all, -- accum results
+                                nil, -- nohighlights
+                                self._state.display
+                            )
+                            self.select:list(nil, nil)
+                        end
+                    end
+                })
+            else
+                -- when there is no query we just render no results, there is nothing yet running, the stream is not
+                -- started on empty query in interactive mode
+                self.select:list({}, {})
+            end
+            -- clear the interactive second stage each time a new query arrives the old matches in the second stages would be invalid, the
+            -- query would re-start the command with new interactive args which would invalidate the previous results against the stage
+            -- might have been matching
+            self:_clear_stage()
+        elseif self.stream.results then
+            -- when there is a query we need to match against it, in this scenario the stream is non-interactive and the output is being
+            -- matched or filtered against the current stream results accumulation
+            if type(query) == "string" and #query > 0 then
+                self.match:match(self.stream.results, query, function(matching)
+                    if matching == nil then
+                        -- notify that there matching has finished, so the renderer can update the status, also
+                        -- check if there was actually nothing matched once the matching has signaled it has
+                        -- finished if that is the case clear the selection list
+                        if #self.match.results == 0 then
+                            self.select:list({}, {})
+                        end
+                        self.select:list(nil, nil)
+                    else
+                        -- render the new matching results, which would update the list view
+                        self.select:list(
+                            matching[1],
+                            matching[2],
+                            self._state.display
+                        )
+                    end
+                end, self._state.transform)
+            else
+                -- just render all the results as they are, when there is no query, nothing can be matched against, so we
+                -- dump all the results.
+                self.select:list(
+                    self.stream.results,
+                    nil, -- nohighlights
+                    self._state.display
+                )
+                self.select:list(nil, nil)
+            end
+        end
+    end)
+end
+
+function Picker:_flush_results()
+    -- no need to debounce here, because the stream is already debounced internally, it is going to be flushed only when the buffer
+    -- reaches a limit or all results are alreay in
+    return utils.debounce_callback(0, function(_, all)
+        if all == nil then
+            -- streaming is done, so we need to make sure that the renderer is notified about it
+            self.select:list(nil, nil)
+        else
+            local query = self.select:query()
+            if type(query) == "string" and #query > 0 then
+                -- when there is a query we need to match against it
+                self.match:match(all, query, function(matching)
+                    if matching == nil then
+                        -- notify that there matching has finished, so the renderer can update the status, also
+                        -- check if there was actually nothing matched once the matching has signaled it has
+                        -- finished if that is the case clear the selection list from previous matches
+                        if #self.match.results == 0 then
+                            self.select:list({}, {})
+                        end
+                        self.select:list(nil, nil)
+                    else
+                        -- render the new matching results, which would update the list view
+                        self.select:list(
+                            matching[1],
+                            matching[2],
+                            self._state.display
+                        )
+                    end
+                end, self._state.transform)
+            else
+                -- when there is no query yet, we just have to render all the results as they are, empty query means that
+                -- we can certainly show all results, that the stream produced so far.
+                self.select:list(
+                    all, nil,
+                    self._state.display
+                )
+                self.select:list(nil, nil)
+            end
+            self:_clear_stage()
+        end
+    end)
+end
+
 function Picker:_create_stage()
     self:_clear_stage()
 
@@ -75,19 +220,22 @@ function Picker:_create_stage()
         return utils.debounce_callback(self._options.prompt_debounce, function(query)
             local stage = self._state.stage
             if query == nil then
-                stage.select:render(nil, nil)
+                stage.select:list(nil, nil)
                 stage.select:close()
                 stage.match:stop()
-            elseif self.match.results then
+            elseif self.stream.results then
                 if type(query) == "string" and #query > 0 then
-                    stage.match:match(self.match.results[1], query, function(matching)
+                    stage.match:match(self.stream.results, query, function(matching)
                         if matching == nil then
+                            -- notify that there matching has finished, so the renderer can update the status, also
+                            -- check if there was actually nothing matched once the matching has signaled it has
+                            -- finished if that is the case clear the selection list from previous matches
                             if #stage.match.results == 0 then
-                                stage.select:render({}, {})
+                                stage.select:list({}, {})
                             end
-                            stage.select:render(nil, nil)
+                            stage.select:list(nil, nil)
                         else
-                            stage.select:render(
+                            stage.select:list(
                                 matching[1],
                                 matching[2],
                                 self._state.display
@@ -95,12 +243,12 @@ function Picker:_create_stage()
                         end
                     end, self._state.transform)
                 else
-                    stage.select:render(
-                        stage.match.results[1],
+                    stage.select:list(
+                        stage.stream.results,
                         nil, -- nohighlights
                         self._state.display
                     )
-                    stage.select:render(nil, nil)
+                    stage.select:list(nil, nil)
                 end
             end
         end)
@@ -138,7 +286,7 @@ function Picker:_create_stage()
             },
             mappings = {
                 ["<c-g>"] = function()
-                    self:_initiate_stage()
+                    self:_toggle_stage()
                 end
             }
         }),
@@ -151,16 +299,15 @@ function Picker:_create_stage()
     }
 end
 
-function Picker:_initiate_stage()
+function Picker:_toggle_stage()
     local stage = self._state.stage
     if self.select:isopen() then
         self:_close_picker()
         stage.select:open()
 
-        local matches = self.match.results
-        if stage.select:isempty() and matches and #matches > 0 then
-            stage.select:render(matches[1])
-            stage.select:render(nil, nil)
+        if stage.select:isempty() and self.stream.results then
+            stage.select:list(self.stream.results, nil)
+            stage.select:list(nil, nil)
         end
     elseif stage.select:isopen() then
         self:_close_stage()
@@ -168,155 +315,8 @@ function Picker:_initiate_stage()
     end
 end
 
-function Picker:_interactive_args(query)
-    local key = self._state.interactive
-    local args = vim.fn.copy(self._state.args)
-    if type(key) == "string" then
-        for _idx, _arg in ipairs(args or {}) do
-            if _arg == key then
-                args[_idx] = query
-                break
-            end
-            assert(_idx < #args)
-        end
-    else
-        table.insert(args or {}, 1, query)
-    end
-    return args
-end
-
-function Picker:_input_prompt()
-    -- debounce the user input to avoid flooding the matching and rendering logic with too many updates, especially when dealing
-    -- with large result sets or fast typers
-    return utils.debounce_callback(self._options.prompt_debounce, function(query)
-        if query == nil then
-            -- the input has been interrupted, so we need to stop everything
-            self.select:render(nil, nil)
-            self.select:close()
-            self.match:stop()
-        elseif self._state.interactive then
-            -- in interactive mode we need to restart the stream with the new query, so that the command can produce results based on the query, for example when using find -name <query>
-            local content = self._state.content
-            assert(type(content) ~= "table")
-
-            -- when interactive is a string it means that the string is an argument placeholder, that should be replaced
-            -- with the query, otherwise the query is just prepended to the args list
-            if type(query) == "string" and #query > 0 then
-                -- when there is a query we need to match against it, so we restart the stream with the new args, and match
-                -- the results as they come in
-                self.stream:start(self._state.content, {
-                    args = self:_interactive_args(query),
-                    callback = function(_, all)
-                        if not all then
-                            -- notify that the streaming is done, so the renderer can update the status
-                            self.select:render(nil, nil)
-                        else
-                            -- match the new results against the query and render them, which would update the list view
-                            self.match:match(all, query, function(matching)
-                                if matching == nil then
-                                    -- notify that there matching has finished, so the renderer can update the status, also
-                                    -- check if there was actually nothing matched once the matching has signaled it has
-                                    -- finished if that is the case clear the selection list
-                                    if #self.match.results == 0 then
-                                        self.select:render({}, {})
-                                    end
-                                    self.select:render(nil, nil)
-                                else
-                                    -- render the new matching results, which would update the list view
-                                    self.select:render(
-                                        matching[1],
-                                        matching[2],
-                                        self._state.display
-                                    )
-                                end
-                            end, self._state.transform)
-                        end
-                    end
-                })
-            else
-                -- when there is no query we just render no results, there is nothing yet running, the stream is not
-                -- started on empty query in interactive mode
-                self.select:render({}, {})
-            end
-        elseif self.stream.results then
-            if type(query) == "string" and #query > 0 then
-                -- when there is a query we need to match against it, note we are using the current stream.results, which hold the current most up to date results produced by the stream / command
-                self.match:match(self.stream.results, query, function(matching)
-                    if matching == nil then
-                        -- notify that there matching has finished, so the renderer can update the status, also
-                        -- check if there was actually nothing matched once the matching has signaled it has
-                        -- finished if that is the case clear the selection list
-                        if #self.match.results == 0 then
-                            self.select:render({}, {})
-                        end
-                        self.select:render(nil, nil)
-                    else
-                        -- render the new matching results, which would update the list view
-                        self.select:render(
-                            matching[1],
-                            matching[2],
-                            self._state.display
-                        )
-                    end
-                end, self._state.transform)
-            else
-                -- just render all the results as they are, when there is no query, nothing can be matched against, so we
-                -- dump all the results.
-                self.select:render(
-                    self.stream.results,
-                    nil, -- nohighlights
-                    self._state.display
-                )
-                self.select:render(nil, nil)
-            end
-        end
-        self:_clear_stage()
-    end)
-end
-
-function Picker:_flush_results()
-    -- no need to debounce here, because the stream is already debounced internally, it is going to be flushed only when the buffer
-    -- reaches a limit or all results are alreay in
-    return utils.debounce_callback(0, function(_, all)
-        if all == nil then
-            -- streaming is done, so we need to make sure that the renderer is notified about it
-            self.select:render(nil, nil)
-        else
-            local query = self.select:query()
-            if type(query) == "string" and #query > 0 then
-                -- when there is a query we need to match against it
-                self.match:match(all, query, function(matching)
-                    if matching == nil then
-                        -- notify that there matching has finished, so the renderer can update the status, also
-                        -- check if there was actually nothing matched once the matching has signaled it has
-                        -- finished if that is the case clear the selection list
-                        if #self.match.results == 0 then
-                            self.select:render({}, {})
-                        end
-                        self.select:render(nil, nil)
-                    else
-                        -- render the new matching results, which would update the list view
-                        self.select:render(
-                            matching[1],
-                            matching[2],
-                            self._state.display
-                        )
-                    end
-                end, self._state.transform)
-            else
-                -- when there is no query we just render all the results as they are
-                self.select:render(
-                    all, nil,
-                    self._state.display
-                )
-                self.select:render(nil, nil)
-            end
-            self:_clear_stage()
-        end
-    end)
-end
-
 function Picker:close()
+    self:_close_stage()
     self:_close_picker()
 end
 
@@ -325,40 +325,46 @@ end
 --- @field display? string|function when the content is table or function that consists of tables, match by this string table field name, or by an item produced by function, the function receives the item currently being tested for matches
 --- @field interactive? boolean|string when set to true the picker will restart the stream with the query as the first argument, when set to a string the string will be used as a placeholder in the args list to be replaced with the query, default is false
 
---- @param content string|function|table the content to use for the picker, can be a command string, a function that produces results, by calling a supplied callback as first argument, or a table of strings
---- @param opts PickerOpenOptions options to configure the picker with
+--- @param content string|function(function(string|table))|table<string|table> the content to use for the picker, can be a command string, a function that produces results, by calling a supplied callback as first argument, or a table. When a function or a table is provided the items produced by the function can be either a string or a table, or when table is supplied it can consists of raw strings or tables, in case a table is provided per entry, a display functiona must be supplied
+--- @param opts? PickerOpenOptions options to configure the picker with
 function Picker:open(content, opts)
     opts = opts or {}
+
+    -- holds the new updated properties for the select, selector may require update in case the arguments to the open command have
+    -- changed compared to last time, a new content source is provided, new arguments or options governing the picker state
+    local select_options = {}
     local args = opts.args or {}
 
     -- before each run make sure to clean all the current context, that has accumulated during the last run, note that we are not
-    -- hard destroying anything, just making sure that used up resources are back into circulation for future re-use, and that is
-    -- only done in the cases where the new open args are different from the last ones that was used to run the picker with
-    if self._state.content ~= content then
+    -- hard destroying anything, just making sure that used up resources are back into circulation for future re-use. The state
+    -- can be destroyed if the new content or args are differing from the old ones, which would prompt a new result generation
+    if self._state.content ~= content or not utils.compare_tables(self._state.args, args) or not self.select._options.resume_view then
         self:_clear_content(content, args)
-    elseif self._state.args ~= args then
-        if not utils.compare_tables(self._state.args, args) then
-            self:_clear_content(content, args)
+    end
+
+    if self._state.display ~= opts.display then
+        -- when there is a provided display transformer, executing for each entry, limit the number of rendered entries to a
+        -- specific limit or a cap, lines are going to be rendered in groups or batches
+        select_options.listing_step = self._options.display_step
+
+        -- update the display transformer, that can either be a string property name or a function, the step above will govern
+        -- how many entries are transformed in a batch at a given moment
+        if type(opts.display) == "function" then
+            self._state.transform = { text_cb = opts.display }
+        elseif type(opts.display) == "string" then
+            self._state.transform = { key = opts.display }
         end
-    elseif not self.select._options.resume_view then
-        self:_clear_content(content, args)
+        self._state.display = opts.display or nil
     end
 
-    self._state.display = opts.display
-    if type(opts.display) == "function" then
-        self._state.transform = { text_cb = opts.display }
-    elseif type(opts.display) == "string" then
-        self._state.transform = { key = opts.display }
-    end
-
-    local select_options = nil
     if opts.interactive ~= self._state.interactive then
-        select_options = {}
+        -- update the interactive state, re-create the second matching stage, along with updating the mappings, otherwise if
+        -- the new interactive state is not enabled or `false` we can simply clear old stages if there were any created
         if opts.interactive ~= nil and opts.interactive ~= false then
             self:_create_stage()
             select_options.mappings = {
                 ["<c-g>"] = function()
-                    self:_initiate_stage()
+                    self:_toggle_stage()
                 end
             }
         else
@@ -366,6 +372,7 @@ function Picker:open(content, opts)
         end
         self._state.interactive = opts.interactive or false
     end
+
     self.select:open(select_options)
 
     if type(content) ~= "table" then
@@ -378,20 +385,22 @@ function Picker:open(content, opts)
                     callback = self:_flush_results(),
                 })
         end
-    elseif #content > 0 then
+    elseif content and #content > 0 then
         -- when a table is provided the content is expected to be a list of strings, each string being a separate entry, and in
         -- this mode the interactive option is not supported, as there is no way to passk the query to the command, because
         -- there is no command
-        assert((content and #content > 0)
-            or type(content[1]) == "string"
+        assert(type(content[1]) == "string"
             or type(content[1]) == "table")
         assert(self._state.interactive == false)
+
+        -- the content is either going to be a table of strings or a table of tables, either way simply display it directly to
+        -- the select, as there is no async result loading happening at this moment
         if not self.stream.results then
-            self.select:render(
+            self.select:list(
                 content, nil,
                 self._state.display
             )
-            self.select:render(nil, nil)
+            self.select:list(nil, nil)
             self.stream.results = content
         end
     end
@@ -410,8 +419,9 @@ end
 --- @field stream_step integer the maximum number of elements to accumulate before flushing the stream
 --- @field window_size number size of the picker window as a ratio of the screen size, default is 0.15
 --- @field resume_view boolean whether to resume the view on close, default is true
+--- @field display_step integer the maximum number of elements to accumulate before display the selection matches, that is only relevant when using a display function for the data
 
---- @param opts PickerOptions options to configure the picker with
+--- @param opts? PickerOptions options to configure the picker with
 --- @return Picker
 function Picker.new(opts)
     opts = vim.tbl_deep_extend("force", {
@@ -426,6 +436,7 @@ function Picker.new(opts)
         stream_step = 100000,
         window_size = 0.15,
         resume_view = true,
+        display_step = 25000,
     }, opts or {})
 
     local is_lines = opts.stream_type == "lines"
@@ -470,7 +481,7 @@ function Picker.new(opts)
         prompt_list = true,
         providers = {
             icon_provider = true,
-            status_provider = false,
+            status_provider = true,
         }
     })
 

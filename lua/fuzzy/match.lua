@@ -1,4 +1,4 @@
-local utils = require("user.fuzzy.utils")
+local utils = require("fuzzy.utils")
 
 --- @class Match
 --- @field list string[]

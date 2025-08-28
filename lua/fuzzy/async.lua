@@ -6,7 +6,7 @@ Scheduler._executor = assert(vim.uv.new_check())
 
 function Scheduler.step()
     local start = vim.uv.hrtime()
-    local budget = 5 * 1e6
+    local budget = 2 * 1e6
 
     while #Scheduler._queue > 0 and vim.uv.hrtime() - start < budget do
         local a = table.remove(Scheduler._queue, 1)

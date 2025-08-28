@@ -1,5 +1,5 @@
-local utils = require("user.fuzzy.utils")
-local async = require("user.fuzzy.async")
+local utils = require("fuzzy.utils")
+local async = require("fuzzy.async")
 
 --- @class Stream
 --- @field results string[]|nil The results accumulated so far, this is only valid after the stream has finished, or if the stream is ephemeral and a new stream has not yet started.

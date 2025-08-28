@@ -2,7 +2,8 @@ local LIST_HIGHLIGHT_NAMESPACE = vim.api.nvim_create_namespace("list_highlight_n
 local LIST_DECORATED_NAMESPACE = vim.api.nvim_create_namespace("list_decorated_namespace")
 local highlight_extmark_opts = { limit = 1, type = "highlight", details = false, hl_name = false }
 local detailed_extmark_opts = { limit = 4, type = "highlight", details = true, hl_name = true }
-local utils = require("user.fuzzy.utils")
+local async = require("fuzzy.async")
+local utils = require("fuzzy.utils")
 
 --- @class Select
 --- @field source_window integer window where the selection was opened from
@@ -20,7 +21,6 @@ local utils = require("user.fuzzy.utils")
 --- @field _content.streaming boolean marks if the content is still streaming or receiving data
 local Select = {}
 Select.__index = Select
-local render_step = 25000
 
 local function icon_set()
     local ok, module = pcall(require, 'nvim-web-devicons')
@@ -37,8 +37,8 @@ end
 
 local function extract_match(entry, display)
     local match = entry
-    local typ = display and type(entry)
-    assert(not typ or typ == "table")
+    local _type = display and type(entry)
+    assert(not _type or _type == "table")
     if type(display) == "function" then
         match = display(assert(entry))
     elseif type(display) == "string" then
@@ -58,44 +58,32 @@ end
 local function compute_decoration(str, decoration)
     local content = {}
     local highlights = {}
-    local file_icons = icon_set()
+    local icons = icon_set()
 
+    local status, status_highlight
     if type(decoration.status_provider) == "function" then
-        local status, status_highlight = decoration.status_provider(str)
-        if type(status) == "string" and #status > 0 then
-            table.insert(content, status)
-            table.insert(highlights, status_highlight or "Normal")
-        end
-    elseif decoration.status_provider == true and file_icons then
-        local result = vim.system({
-            'git',
-            'status',
-            '--porcelain',
-            '-z',
-            '--',
-            str,
-        }):wait(50)
-        local modified = result.code == 0 and #result.stdout > 0
-        local status, status_highlight = modified and "~", "SpecialChar"
-        if type(status) == "string" and #status > 0 then
-            table.insert(content, status)
-            table.insert(highlights, status_highlight or "Normal")
-        end
+        status, status_highlight = decoration.status_provider(str)
+    elseif decoration.status_provider == true and icons then
+        local result = #str > 0 and vim.fn.bufnr(str, false) ~= -1
+        status, status_highlight = result and "[x]", "SpecialChar"
     end
 
+    local icon, icon_highlight
     if type(decoration.icon_provider) == "function" then
-        local icon, icon_highlight = decoration.icon_provider(str)
-        if type(icon) == "string" and #icon > 0 then
-            table.insert(content, icon)
-            table.insert(highlights, icon_highlight or "Normal")
-        end
-    elseif decoration.icon_provider == true and file_icons then
-        local icon, icon_highlight = file_icons.get_icon(str,
+        icon, icon_highlight = decoration.icon_provider(str)
+    elseif decoration.icon_provider == true and icons then
+        icon, icon_highlight = icons.get_icon(str,
             vim.fn.fnamemodify(str, ':e'), { default = true })
-        if type(icon) == "string" and #icon > 0 then
-            table.insert(content, icon)
-            table.insert(highlights, icon_highlight or "Normal")
-        end
+    end
+
+    if type(status) == "string" and #status > 0 then
+        table.insert(content, status)
+        table.insert(highlights, status_highlight or "Normal")
+    end
+
+    if type(icon) == "string" and #icon > 0 then
+        table.insert(content, icon)
+        table.insert(highlights, icon_highlight or "Normal")
     end
 
     return content, highlights
@@ -128,28 +116,34 @@ local function initialize_buffer(buffer, bt, ft)
     return buffer
 end
 
-local function populate_buffer(buffer, list, display)
+local function populate_buffer(buffer, list, display, step)
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
-    if display ~= nil then
+    if step ~= nil and step > 0 then
         local start = 1
-        local _end = math.min(#list, render_step)
-        local lines = utils.obtain_table(render_step)
+        local _end = math.min(#list, step)
+        local lines = utils.obtain_table(step)
 
         while start < _end do
             for i = start, _end, 1 do
                 lines[i] = extract_match(list[i], display)
+                async.yield()
             end
             vim.api.nvim_buf_set_lines(buffer, start - 1, _end - 1, false, lines)
             start = math.min(#list, _end + 1)
-            _end = math.min(#list, _end + render_step)
+            _end = math.min(#list, _end + step)
         end
         vim.api.nvim_buf_set_lines(buffer, _end, -1, false, {})
         utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
     else
-        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, list)
-        vim.bo[buffer].modifiable = oldma
+        if display ~= nil then
+            local mapper = function(entry) return extract_match(entry, display) end
+            vim.api.nvim_buf_set_lines(buffer, 0, -1, false, vim.tbl_map(mapper, list))
+        else
+            vim.api.nvim_buf_set_lines(buffer, 0, -1, false, list)
+        end
     end
+    vim.bo[buffer].modifiable = oldma
     vim.bo[buffer].modified = false
 end
 
@@ -359,12 +353,16 @@ function Select:_decorate_list()
     end
 end
 
+function Select:_render_preview()
+end
+
 function Select:_render_list()
     if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
         populate_buffer(
             self.list_buffer,
             self._content.entries,
-            self._content.display
+            self._content.display,
+            self._options.listing_step
         )
     end
 
@@ -589,13 +587,16 @@ function Select:isempty()
     return false
 end
 
-function Select:render(entries, positions, display)
+function Select:show(entry)
+end
+
+function Select:list(entries, positions, display)
     if entries ~= nil then
         self._content.positions = positions
         self._content.entries = entries
         self._content.display = display
         self._content.streaming = true
-        self:_render_list()
+        async.wrap(Select._render_list)(self)
     elseif positions == nil then
         self._content.streaming = false
     end
@@ -640,8 +641,8 @@ function Select:open(opts)
                             if not ok or ok == false then
                                 vim.notify(status, vim.log.levels.ERROR)
                             elseif entries ~= nil then
-                                self:render(entries, positions)
-                                self:render(nil, nil)
+                                self:list(entries, positions)
+                                self:list(nil, nil)
                             end
                         end
                     end
@@ -912,10 +913,11 @@ function Select.new(opts)
         prompt_prefix = "> ",
         window_ratio = 0.15,
         resume_view = false,
+        listing_step = nil,
         ephemeral = true,
         providers = {
-            status_provider = false,
             icon_provider = false,
+            status_provider = false,
         },
         mappings = {
             ["<c-q>"] = Select.send_quickfix,
