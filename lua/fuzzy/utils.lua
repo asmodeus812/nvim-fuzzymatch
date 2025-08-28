@@ -7,6 +7,10 @@ local M = {
     EMPTY_TABLE = {}
 }
 
+--- Obtain a table from the pool, optionally specifying a minimum size, to look for a table of at least that size If no such table is
+--- found, a new table is created
+--- @param size integer|nil Minimum size of the table to obtain
+--- @return table The obtained table
 function M.obtain_table(size)
     if #table_pool.tables > 0 then
         local tbl
@@ -32,6 +36,10 @@ function M.obtain_table(size)
     end
 end
 
+--- Return a table to the pool, making it available for reuse. The table becomes valid for reuse after this call, and can be pulled from
+--- the pool by using the obtain_table function.
+--- @param tbl table The table to return to the pool
+--- @return table The same table that was returned to the pool
 function M.return_table(tbl)
     assert(table_pool.used[tbl])
     table_pool.used[tbl] = nil
@@ -42,18 +50,28 @@ function M.return_table(tbl)
     return tbl
 end
 
+--- Detach a table from the pool without returning it, making it no longer tracked by the pool. The table becomes the caller's
+--- responsibility after this call, and will not be reused by the pool.
+--- @param tbl table The table to detach from the pool
 function M.detach_table(tbl)
     assert(table_pool.used[tbl])
     table_pool.used[tbl] = nil
     return tbl
 end
 
+--- Attach a table to the pool, making it tracked by the pool. The table is not returned to the pool yet, but can be returned later
+--- using the return_table function.
+--- @param tbl table The table to attach to the pool
 function M.attach_table(tbl)
     assert(not table_pool.used[tbl])
     table_pool.used[tbl] = true
     return tbl
 end
 
+--- Fill a table with a specified value. If the value is nil or the table is empty, the table is returned unchanged. The function
+--- asserts that the first and last elements of the table are equal after filling.
+--- @param tbl table The table to fill
+--- @param value any The value to fill the table with
 function M.fill_table(tbl, value)
     if value == nil or #tbl == 0 then
         return tbl
@@ -65,6 +83,9 @@ function M.fill_table(tbl, value)
     return tbl
 end
 
+--- Resize a table to a specified size, filling new elements with a default value if the table is expanded, or removing elements if the
+--- table is shrunk. If the size is nil, the table is returned unchanged.
+--- @param tbl table The table to resize
 function M.resize_table(tbl, size, default)
     assert(not size or size >= 0)
     if not size then
@@ -88,6 +109,11 @@ function M.resize_table(tbl, size, default)
     return tbl
 end
 
+--- Deeply compare two tables for equality, handling nested tables and circular references. The function returns true if the tables are equal, and false otherwise.
+--- @param t1 table The first table to compare
+--- @param t2 table The second table to compare
+--- @param visited? table|nil A table to track visited tables during recursion (used internally)
+--- @return boolean True if the tables are equal, false otherwise
 function M.compare_tables(t1, t2, visited)
     visited = visited or {}
 
@@ -137,6 +163,10 @@ function M.compare_tables(t1, t2, visited)
     return true
 end
 
+--- Measure and log the execution time of a function, including its name and definition location. The function is called with the provided arguments, and any errors during execution are propagated.
+--- @param func function The function to measure
+--- @param ... any Arguments to pass to the function
+--- @return any The result of the function call
 function M.time_execution(func, ...)
     local start_time = vim.loop.hrtime()
 
@@ -154,6 +184,10 @@ function M.time_execution(func, ...)
     return result
 end
 
+--- Create a debounced version of a callback function, which delays its execution until after a specified wait time has elapsed since the last time it was invoked. If the wait time is 0, the original callback is returned.
+--- @param wait integer The wait time in milliseconds
+--- @param callback function The callback function to debounce
+--- @return function The debounced callback function
 function M.debounce_callback(wait, callback)
     if assert(wait) and wait == 0 then
         return callback
@@ -171,6 +205,12 @@ function M.debounce_callback(wait, callback)
     end
 end
 
+--- Safely call a callback function with provided arguments, catching any errors and notifying the user if an error occurs. If the
+--- callback is nil or not a function, nil is returned. Both the success status and the result of the callback (if any) are returned.
+--- @param callback function|nil The callback function to call
+--- @param ... any Arguments to pass to the callback function
+--- @return boolean|nil, any|nil True if the call was successful, false if an error occurred, or nil if the callback was nil or not a
+--- function
 function M.safe_call(callback, ...)
     if callback ~= nil and type(callback) == "function" then
         local ok, res = pcall(callback, ...)

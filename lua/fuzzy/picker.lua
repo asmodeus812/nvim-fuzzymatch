@@ -4,12 +4,19 @@ local Match = require("fuzzy.match")
 local utils = require("fuzzy.utils")
 
 --- @class Picker
---- @field match Match
---- @field stream Stream
---- @field select Select
---- @field _options PickerOptions
---- @field _state table
---- @field _state.stage table
+--- @field match Match the matcher instance used to perform fuzzy matching on the stream results
+--- @field stream Stream the stream instance used to run commands or functions that produce results
+--- @field select Select the select instance used to render the results and handle user interactions
+--- @field _options PickerOptions the options used to configure the picker instance
+--- @field _state table internal state used to keep track of the current content, arguments, interactive mode, display transformer and second stage state
+--- @field _state.content string|function|table the current content source, can be a command string, a function or a table of strings or tables
+--- @field _state.args table the current arguments to pass to the command or function, default is {}
+--- @field _state.interactive boolean|string whether the picker is in interactive mode or not, when set to true the query is passed as the first argument to the command or function, when set to a string the string is used as a placeholder in the args list to be replaced with the query, default is false
+--- @field _state.display string|function|nil when the content is table or function that consists of tables, match by this string table field name, or by an item produced by function, the function receives the item currently being tested for matches
+--- @field _state.transform table|nil the current transform to apply to each entry, can be a table with either a `key` field or a `text_cb` field, when `key` is set the value is used as the table key to extract the text from each entry, when `text_cb` is set the value is a function that receives the entry and returns the text to use for matching
+--- @field _state.stage table|nil the current second stage state, when in interactive mode, contains the select and match instances for the second stage of matching
+--- @field _state.stage.select Select the select instance used to render the second stage results and handle user interactions
+--- @field _state.stage.match Match the matcher instance used to perform fuzzy matching on the stream results in the second stage
 local Picker = {}
 Picker.__index = Picker
 
@@ -315,6 +322,17 @@ function Picker:_toggle_stage()
     end
 end
 
+--- Check whether the picker or a running stage is open
+--- @return boolean whether the picker or any running stage is open
+function Picker:isopen()
+    return self.select:isopen() or (
+        self._state.stage
+        and self._state.stage.select
+        and self._state.stage.select:isopen()
+    )
+end
+
+--- Close the picker, along with any running stream or matching operations, and also close any running stage
 function Picker:close()
     self:_close_stage()
     self:_close_picker()
@@ -325,7 +343,7 @@ end
 --- @field display? string|function when the content is table or function that consists of tables, match by this string table field name, or by an item produced by function, the function receives the item currently being tested for matches
 --- @field interactive? boolean|string when set to true the picker will restart the stream with the query as the first argument, when set to a string the string will be used as a placeholder in the args list to be replaced with the query, default is false
 
---- @param content string|function(function(string|table))|table<string|table> the content to use for the picker, can be a command string, a function that produces results, by calling a supplied callback as first argument, or a table. When a function or a table is provided the items produced by the function can be either a string or a table, or when table is supplied it can consists of raw strings or tables, in case a table is provided per entry, a display functiona must be supplied
+--- @param content string|function(function(string|table))|table<string|table> the content to use for the picker, can be a command string, a function that produces results, by calling a supplied callback as first argument, or a table. When a function or a table is provided the items produced by the function can be either a string or a table, or when table is supplied it can consists of raw strings or tables, in case a table is provided per entry, a display functiona must be supplied, to tell the picker how to extract the text to match against from each table entry and also how to render each entry in the select view
 --- @param opts? PickerOpenOptions options to configure the picker with
 function Picker:open(content, opts)
     opts = opts or {}
@@ -373,6 +391,8 @@ function Picker:open(content, opts)
         self._state.interactive = opts.interactive or false
     end
 
+    -- finally open the select view, with the updated options if any, otherwise the select is going to re-use the current options it
+    -- has been configured and run with so far
     self.select:open(select_options)
 
     if type(content) ~= "table" then
@@ -407,7 +427,6 @@ function Picker:open(content, opts)
 end
 
 --- @class PickerOptions
---- @inlinedoc
 --- @field ephemeral boolean whether the picker should be ephemeral or not, default is false
 --- @field match_limit number? optional limit on the number of matches to return, default is
 --- @field match_timer number time in milliseconds to wait before returning partial matches, default is 100
@@ -421,6 +440,7 @@ end
 --- @field resume_view boolean whether to resume the view on close, default is true
 --- @field display_step integer the maximum number of elements to accumulate before display the selection matches, that is only relevant when using a display function for the data
 
+--- Create a new Picker instance, configured with the provided options, or default options are used instead
 --- @param opts? PickerOptions options to configure the picker with
 --- @return Picker
 function Picker.new(opts)
@@ -485,11 +505,7 @@ function Picker.new(opts)
         }
     })
 
-    if opts.resume_view == true then
-        -- ensure that if resume_view is enabled then ephemeral must be false, otherwise the behavior does not make sense, as
-        -- there is nothing to resume to when the state is destroyed
-        assert(opts.ephemeral == false)
-    end
+    assert(opts.resume_view or not opts.ephemeral)
     return self
 end
 

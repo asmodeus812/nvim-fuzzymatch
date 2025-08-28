@@ -4,7 +4,7 @@ local async = require("fuzzy.async")
 --- @class Stream
 --- @field results string[]|nil The results accumulated so far, this is only valid after the stream has finished, or if the stream is ephemeral and a new stream has not yet started.
 --- @field callback fun(buffer: string[], accum: string[]) The callback to be invoked when new data is available, this is only valid when the stream is running.
---- @field _options table The options for the stream.
+--- @field _options StreamOptions The options for the stream.
 --- @field _state table The internal state of the stream.
 --- @field _state.size integer The current size of the buffer.
 --- @field _state.total integer The total number of items accumulated so far.
@@ -214,13 +214,14 @@ function Stream:_handle_exit()
     utils.safe_call(callback)
 end
 
+--- Returns true if the stream is currently running, false otherwise
+--- @return boolean True if the stream is running, false otherwise
 function Stream:running()
     return self._state.handle ~= nil
 end
 
+--- Stops the stream if it is running, if the stream is ephemeral, also destroys the context and results, if ephemeral is true
 function Stream:stop()
-    -- close the stream handles, and if the stream is ephemeral, also destroy the context and results, this would invalidate any
-    -- references that the user might hold.
     self:_close_stream()
     if self._options.ephemeral then
         self:_destroy_context()
@@ -228,9 +229,10 @@ function Stream:stop()
     end
 end
 
+--- Waits for the stream to finish, or until the timeout is reached
+--- @param timeout integer|nil The maximum time to wait in milliseconds, defaults to the timeout specified in the options, or utils.MAX_TIMEOUT
+--- @return string[]|nil The results accumulated so far, or nil if the timeout was reached
 function Stream:wait(timeout)
-    -- wait util results are available, or the timeout expires, if the timeout expires the stream is stopped and whatever
-    -- results are available are returned
     local done = vim.wait(timeout or self._options.timeout or utils.MAX_TIMEOUT, function()
         return self.results ~= nil
     end, nil, true)
@@ -242,22 +244,24 @@ function Stream:wait(timeout)
 end
 
 --- @class StreamStartOpts
+--- @field cwd? string The current working directory to run the command in
 --- @field args? string[] The arguments to pass to the command
 --- @field env? table The environment variables to set for the command
 --- @field callback fun(buffer: string[], accum: string[]) The callback to invoke when new data is available, this is required
 
+--- Starts the stream with the given command and options, if a stream is already running it is stopped first, if the new stream is for new
+--- command the previous results and state are destroyed.
 --- @param cmd string|function The command to run, or a function which accepts a callback to be invoked with data chunks to supply data to the stream
 --- @param opts StreamStartOpts|nil The options for starting the stream
 function Stream:start(cmd, opts)
     opts = opts or {}
     self:stop()
 
-    -- prepare the state, make sure to re-claim state if it can be done
     self.callback = assert(opts.callback)
 
     -- based on the type of the stream the step either governs how many bytes to read, or how many lines into the buffer before
     -- flushing
-    local size = self._options.lines and self._options.step
+    local size = self._options.lines and self._options.step or 16
 
     -- ensure that a buffer is claimed from the pool, a buffer with the required size, or close to it will be pulled from the pool
     -- for future use
@@ -302,10 +306,11 @@ function Stream:start(cmd, opts)
         executor()
     else
         local stdio = self:_make_stream()
+        assert(vim.fn.executable(cmd) == 1)
 
         -- crreate the handles for the stream, and bind
-        self._state.handle = assert(vim.loop.spawn(assert(cmd), {
-            cwd = vim.fn.getcwd(),
+        self._state.handle = assert(vim.loop.spawn(cmd, {
+            cwd = opts.cwd or vim.loop.cwd(),
             args = opts.args or {},
             detached = false,
             env = opts.env,
@@ -335,6 +340,18 @@ function Stream:start(cmd, opts)
     return self
 end
 
+--- @class StreamOptions
+--- @field ephemeral? boolean If true, the stream context and results are destroyed when the stream stops, defaults to true
+--- @field bytes? boolean If true, the stream processes data in byte chunks, mutually exclusive with lines, defaults to false
+--- @field lines? boolean If true, the stream processes data in line chunks, mutually exclusive with bytes, defaults to true
+--- @field step? integer The number of bytes or lines to accumulate before flushing to the user callback, defaults to 100000
+--- @field timeout? integer The maximum time to wait for results in milliseconds, defaults to utils.MAX_TIMEOUT
+--- @field transform? fun(data: string): string An optional transform function to apply to each chunk of data before processing it, defaults to nil
+--- @field callback? fun(buffer: string[], accum: string[]) An optional callback to invoke when new data is available, defaults to nil
+
+--- Creates a new Stream instance with the given options, or default options if none are provided
+--- @param opts StreamOptions|nil The options for the stream
+--- @return Stream The new Stream instance
 function Stream.new(opts)
     opts = vim.tbl_deep_extend("force", {
         ephemeral = true,

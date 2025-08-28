@@ -105,17 +105,27 @@ local tt = {
     { name = "test101" },
 }
 
-local function print_50_lines(cb)
+local function generate_table(cb)
+    for i = 1, 500000 do
+        cb({ name = "test" .. i })
+    end
+    cb(nil)
+end
+
+local function generate_lines(cb)
     for i = 1, 500000 do
         cb("line " .. i)
     end
-    -- cb(nil)
+    cb(nil)
 end
 
 vim.keymap.set("n", "gz", function()
-    -- picker:open("find", { interactive = false, args = { vim.fn.getcwd(), "-type", "f" } })
-    -- picker:open("rg", { args = { }, interactive = true })
+    picker:open("find", { args = { ".", "-type", "f" } })
+    -- picker:open("rg", { args = { "--column", "--line-number", "--no-heading", "class" } })
+
+    -- picker:open("rg", { args = { "--column", "--line-number", "--no-heading", "{prompt}" }, interactive = "{prompt}" })
     -- picker:open("find", { interactive = "{prompt}", args = { vim.fn.getcwd(), "-type", "f", "-name", "{prompt}" } })
-    picker:open(print_50_lines, {})
+
+    -- picker:open(print_50_lines, {})
     -- picker:open(tt, { display = function(e) return e.name end })
 end)
