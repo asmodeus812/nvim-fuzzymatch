@@ -4,7 +4,7 @@ for i = 1, 16, 1 do table.insert(table_pool.tables, i, {}) end
 local M = {
     MAX_TIMEOUT = 2 ^ 31 - 1,
     EMPTY_STRING = "",
-    EMPTY_TABLE = {}
+    EMPTY_TABLE = {},
 }
 
 --- Obtain a table from the pool, optionally specifying a minimum size, to look for a table of at least that size If no such table is

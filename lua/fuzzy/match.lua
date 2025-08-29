@@ -58,7 +58,8 @@ function Match:_populate_chunks()
             -- chunks, instead we use a smaller tail table which accepts the very last items
             iteration_limit = #self.list
             local new_size = iteration_limit - self._state.offset
-            -- if the new size is invalid return false to signal there is nothing more to process into the chunks of the tail
+            -- if the new size is invalid return false to signal there is nothing more to process into the chunks of the
+            -- tail
             if not new_size or new_size <= 0 then return false end
 
             self._state.tail = utils.obtain_table(new_size)
@@ -87,24 +88,6 @@ function Match:_stop_processing()
 end
 
 function Match:_destroy_context()
-    if self._state.buffer then
-        -- destroy the buffer, returning all sublists to the pool, the buffer will always point to 3 sublists which were originally obtained
-        -- from the pool
-        for _, value in ipairs(self._state.buffer) do
-            utils.return_table(value)
-        end
-        self._state.buffer = nil
-    end
-
-    if self._state.chunks then
-        -- destroy the chunks, returning them to the pool, the chunks will always point to a single list which was originally obtained from
-        -- the pool
-        utils.return_table(self._state.chunks)
-        self._state.chunks = nil
-    end
-end
-
-function Match:_destroy_results()
     if self.results then
         -- destroy the results, returning them to the pool, this is only done to forcefully free internally used tables, and reuse them
         -- again, the results consists of 3 sublists, strings, positions, and scores, each we return to the pool, each we fill with a
@@ -134,19 +117,38 @@ end
 
 function Match:_clean_context()
     if self._state.buffer then
-        -- clear the buffer tables to avoid holding references to old data, however do not return them to the pool since they will be reused
-        utils.fill_table(
-            self._state.buffer[1],
-            utils.EMPTY_STRING
-        )
+        -- clear the buffer to avoid holding references to old data, do return them to the pool, from where we can easily pull them back
+        for i, value in ipairs(self._state.buffer) do
+            if i == 1 then
+                utils.fill_table(
+                    value,
+                    utils.EMPTY_STRING
+                )
+            elseif i == 2 then
+                utils.fill_table(
+                    value,
+                    utils.EMPTY_TABLE
+                )
+            else
+                utils.fill_table(
+                    value, 0
+                )
+            end
+            utils.return_table(value)
+        end
+        self._state.buffer = nil
     end
 
     if self._state.chunks then
-        -- clear the chunks to avoid holding references to old data, however do not return them to the pool since they will be reused
+        -- clear the chunks to avoid holding references to old data, do return them to the pool, from where we can easily pull them back
         utils.fill_table(
             self._state.chunks,
             utils.EMPTY_STRING
         )
+        -- destroy the chunks, returning them to the pool, the chunks will always point to a single list which was originally obtained from
+        -- the pool
+        utils.return_table(self._state.chunks)
+        self._state.chunks = nil
     end
 
     if self._state.tail then
@@ -171,6 +173,7 @@ function Match:_clean_context()
         self.results = self._state.accum
         self._state.accum = nil
     end
+
     -- reset the rest of the state
     self.list = nil
     self.pattern = nil
@@ -259,15 +262,16 @@ function Match:wait(timeout)
     return self.results
 end
 
+-- Destroys the matcher and any pending state that is currently being allocated into the matcher, note that this is done automatically for ephemeral matcher when a new matching is started the resources for the previous ones are invalidated
+function Match:destroy()
+    self:_destroy_context()
+end
+
 --- Stops any ongoing match operation, cleans up the context, and if ephemeral option is set destroys the context as well This will make
 --- sure that any ongoing processing is aborted, the callback will be called one final time with nil to signal
 function Match:stop()
     self:_stop_processing()
     self:_clean_context()
-    if self._options.ephemeral == true then
-        self:_destroy_context()
-        self:_destroy_results()
-    end
 end
 
 --- Starts a new match operation on the given list with the specified pattern and callback
@@ -278,7 +282,12 @@ end
 function Match:match(list, pattern, callback, transform)
     -- each time we start a new match we make sure to stop any ongoing processing and clean up the context, any old state will be lost,
     -- depending on the ephemeral option more aggressive clean up might be done
-    self:stop()
+    if self:running() then
+        self:stop()
+        if self._options.ephemeral == true then
+            self:destroy()
+        end
+    end
 
     -- there is nothing to match against or no pattern to match
     if not list or #list == 0 or not pattern or #pattern == 0 then

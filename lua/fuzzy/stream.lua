@@ -22,7 +22,7 @@ local function close_handle(handle)
     end
 end
 
-function Stream:_destroy_results()
+function Stream:_destroy_stream()
     -- the results can be re-claimed back into the pool, when a new stream is starting up, this ensures that old references to the
     -- _state.accum which are now pointing to stream.results are re-used.
     if self.results then
@@ -33,16 +33,6 @@ function Stream:_destroy_results()
         utils.attach_table(self.results)
         utils.return_table(self.results)
         self.results = nil
-    end
-end
-
-function Stream:_destroy_context()
-    if self._state.buffer then
-        -- make sure that the buffer itself is also returned back to the pool, this will ensure that future stream instances, or this
-        -- one can pick it from the pool and use it.
-        utils.return_table(self._state.buffer)
-        self._state.buffer = nil
-        self._state.size = 0
     end
 end
 
@@ -65,12 +55,16 @@ function Stream:_close_stream()
     end
 
     if self._state.buffer then
-        -- we do not want to return the buffer back to the pool, just clean up the string references to avoid any memory leaks, the
-        -- buffer could still be reused in future calls to start new streams, see `ephemeral`
+        -- clean up the string references to avoid any memory leaks, the buffer could still be reused in future calls to start
+        -- new streams, see `ephemeral`
         utils.fill_table(
             self._state.buffer,
             utils.EMPTY_STRING
         )
+        -- make sure that the buffer itself is also returned back to the pool, this will ensure that future stream instances, or this
+        -- one can pick it from the pool and use it.
+        utils.return_table(self._state.buffer)
+        self._state.buffer = nil
         self._state.size = 0
     end
 
@@ -82,6 +76,8 @@ function Stream:_close_stream()
         self._state.accum = nil
         self._state.total = 0
     end
+
+    self.mapper = nil
     self.callback = nil
 end
 
@@ -108,10 +104,11 @@ function Stream:_bind_method(method)
 end
 
 function Stream:_transform_data(data)
-    if type(self._options.transform) == "function" then
-        return self._options.transform(data)
+    if type(self.mapper) == "function" then
+        return self.mapper(data)
+    else
+        return data
     end
-    return data
 end
 
 function Stream:_flush_results()
@@ -150,25 +147,34 @@ function Stream:_flush_results()
     self._state.size = 0
 end
 
+function Stream:_handle_data(data, size)
+    if size == self._options.step then
+        -- when the size has reached the maximum allowed, flush the buffer, and send it over for processing to
+        -- the user provided callback
+        self:_flush_results()
+    end
+
+    data = self:_transform_data(data)
+    if data ~= nil then
+        -- keep accumulating non blank lines into the buffer, eventually the buffer size will be enough to be
+        -- flushed, see above
+        self._state.buffer[self._state.size + 1] = data
+        self._state.size = self._state.size + 1
+    end
+end
+
 function Stream:_handle_stdout(err, chunk)
     if err or not chunk then return end
+
+    assert(type(chunk) == "string")
     if self._options.lines == true then
         -- when the type of stream is defined as lines, split the output based on new lines, this might produce some empty lines
         -- which are filtered afterwards.
         local content = vim.split(chunk, "\n")
         for _, line in ipairs(content) do
-            if self._state.size == self._options.step then
-                -- when the size has reached the maximum allowed, flush the buffer, and send it over for processing to
-                -- the user provided callback
-                self:_flush_results()
-            end
-
-            line = self:_transform_data(line)
             if line and #line > 0 then
-                -- keep accumulating non blank lines into the buffer, eventually the buffer size will be enough to be
-                -- flushed, see above
-                self._state.buffer[self._state.size + 1] = line
-                self._state.size = self._state.size + 1
+                local size = self._state.size
+                self:_handle_data(line, size)
             end
         end
     elseif self._options.bytes == true then
@@ -180,20 +186,7 @@ function Stream:_handle_stdout(err, chunk)
         for i = 1, self._state.size, 1 do
             length = length + #buffer[i]
         end
-        if length >= self._options.step then
-            -- the length is more than the size so we flush the buffer, note that this might flush more bytes than the size,
-            -- we have intentionally not strictly clamped the buffer to the allowed size to avoid extra string re-allocation
-            -- and copying.
-            self:_flush_results()
-        end
-
-        chunk = self:_transform_data(chunk)
-        if chunk and #chunk > 0 then
-            -- keep adding the chunks that are non empty to the buffer eventually the buffer will contain enough chunks
-            -- whose total length exeeds or equals the maximum allowed size
-            self._state.buffer[self._state.size + 1] = chunk
-            self._state.size = self._state.size + 1
-        end
+        self:_handle_data(chunk, length)
     end
 end
 
@@ -220,13 +213,15 @@ function Stream:running()
     return self._state.handle ~= nil
 end
 
+-- Destroys the stream and any pending state that is currently being allocated into the stream, note that this is done automatically for
+-- ephemeral streams when a new stream is started the resources for the previous ones are invalidated
+function Stream:destroy()
+    self:_destroy_stream()
+end
+
 --- Stops the stream if it is running, if the stream is ephemeral, also destroys the context and results, if ephemeral is true
 function Stream:stop()
     self:_close_stream()
-    if self._options.ephemeral then
-        self:_destroy_context()
-        self:_destroy_results()
-    end
 end
 
 --- Waits for the stream to finish, or until the timeout is reached
@@ -244,24 +239,31 @@ function Stream:wait(timeout)
 end
 
 --- @class StreamStartOpts
---- @field cwd? string The current working directory to run the command in
 --- @field args? string[] The arguments to pass to the command
+--- @field cwd? string The current working directory to run the command in
 --- @field env? table The environment variables to set for the command
 --- @field callback fun(buffer: string[], accum: string[]) The callback to invoke when new data is available, this is required
+--- @field mapper? fun(data: string): string An optional transform function to apply to each chunk of data before processing it, defaults to nil
 
 --- Starts the stream with the given command and options, if a stream is already running it is stopped first, if the new stream is for new
 --- command the previous results and state are destroyed.
 --- @param cmd string|function The command to run, or a function which accepts a callback to be invoked with data chunks to supply data to the stream
 --- @param opts StreamStartOpts|nil The options for starting the stream
 function Stream:start(cmd, opts)
-    opts = opts or {}
-    self:stop()
+    if self:running() then
+        self:stop()
+        if self._options.ephemeral then
+            self:destroy()
+        end
+    end
 
+    opts = opts or {}
+    self.mapper = opts.mapper
     self.callback = assert(opts.callback)
 
     -- based on the type of the stream the step either governs how many bytes to read, or how many lines into the buffer before
     -- flushing
-    local size = self._options.lines and self._options.step or 16
+    local size = self._options.lines and self._options.step or 8
 
     -- ensure that a buffer is claimed from the pool, a buffer with the required size, or close to it will be pulled from the pool
     -- for future use
@@ -285,9 +287,13 @@ function Stream:start(cmd, opts)
 
     if type(cmd) == "function" then
         local did_exit = false
+        assert(self._options.lines)
         local callback = function(data)
             if not did_exit and data ~= nil then
-                self:_handle_stdout(nil, data)
+                self:_handle_data(
+                    data,
+                    self._state.size
+                )
             else
                 self:_handle_exit()
                 did_exit = true
@@ -308,7 +314,6 @@ function Stream:start(cmd, opts)
         local stdio = self:_make_stream()
         assert(vim.fn.executable(cmd) == 1)
 
-        -- crreate the handles for the stream, and bind
         self._state.handle = assert(vim.loop.spawn(cmd, {
             cwd = opts.cwd or vim.loop.cwd(),
             args = opts.args or {},
@@ -319,7 +324,6 @@ function Stream:start(cmd, opts)
             Stream._handle_exit
         ))))
 
-        -- start reading from the stdout/err pipes attached to the stream
         vim.loop.read_start(
             self._state.stdout,
             vim.schedule_wrap(self:_bind_method(
@@ -337,7 +341,6 @@ function Stream:start(cmd, opts)
     -- make sure the state is clear for the processing to start from the start
     self._state.total = 0
     self._state.size = 0
-    return self
 end
 
 --- @class StreamOptions
@@ -346,7 +349,6 @@ end
 --- @field lines? boolean If true, the stream processes data in line chunks, mutually exclusive with bytes, defaults to true
 --- @field step? integer The number of bytes or lines to accumulate before flushing to the user callback, defaults to 100000
 --- @field timeout? integer The maximum time to wait for results in milliseconds, defaults to utils.MAX_TIMEOUT
---- @field transform? fun(data: string): string An optional transform function to apply to each chunk of data before processing it, defaults to nil
 --- @field callback? fun(buffer: string[], accum: string[]) An optional callback to invoke when new data is available, defaults to nil
 
 --- Creates a new Stream instance with the given options, or default options if none are provided
@@ -361,6 +363,7 @@ function Stream.new(opts)
     }, opts or {})
 
     local self = setmetatable({
+        mapper = nil,
         results = nil,
         callback = nil,
         _options = opts,

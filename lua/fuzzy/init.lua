@@ -1,7 +1,8 @@
+local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
-local picker = Picker.new()
+local utils  = require("fuzzy.utils")
 
-local tt = {
+local items_table     = {
     { name = "test1", },
     { name = "test2", },
     { name = "test3", },
@@ -105,27 +106,54 @@ local tt = {
     { name = "test101" },
 }
 
-local function generate_table(cb)
-    for i = 1, 500000 do
-        cb({ name = "test" .. i })
+local function items_stream(cb)
+    for i = 1, 25000 do
+        cb({ name = "line " .. i })
     end
     cb(nil)
 end
 
-local function generate_lines(cb)
-    for i = 1, 500000 do
-        cb("line " .. i)
-    end
-    cb(nil)
+local function displayer(e)
+    return e.name
 end
+
+local picker = Picker.new({
+    -- ephemeral = true,
+    -- display = nil,
+    -- display = displayer,
+    -- content = items_table,
+    -- content = items_stream,
+    -- content = "find",
+    -- content = "ls",
+    content = "rg",
+    args = {
+        -- "-1A",
+        -- ".",
+        -- "-type",
+        -- "f",
+        -- "-name",
+        -- "{prompt}",
+        -- "test",
+        "--column",
+        "--line-number",
+        "--no-heading",
+        "{prompt}",
+        -- "test",
+    },
+    interactive = "{prompt}",
+    prompt_confirm = Select.action(Select.default_select, function(e)
+        vim.print(vim.tbl_map(Picker.grep_converter, e))
+        return e
+    end),
+    actions = {
+        ["<c-f>"] = Select.default_select,
+        ["<c-q>"] = Select.send_quickfix,
+        ["<c-t>"] = Select.select_tab,
+        ["<c-v>"] = Select.select_vertical,
+        ["<c-s>"] = Select.select_horizontal,
+    }
+})
 
 vim.keymap.set("n", "gz", function()
-    -- picker:open("find", { args = { ".", "-type", "f" } })
-    -- picker:open("rg", { converter = Picker.grep_converter, args = { "--column", "--line-number", "--no-heading", "class" } })
-
-    picker:open("rg", { converter = Picker.grep_converter, args = { "--column", "--line-number", "--no-heading", "{prompt}" }, interactive = "{prompt}" })
-    -- picker:open("find", { interactive = "{prompt}", args = { vim.fn.getcwd(), "-type", "f", "-name", "{prompt}" } })
-
-    -- picker:open(print_50_lines, {})
-    -- picker:open(tt, { display = function(e) return e.name end })
+    picker:open()
 end)
