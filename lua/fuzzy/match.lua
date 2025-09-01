@@ -1,19 +1,13 @@
 local utils = require("fuzzy.utils")
 
 --- @class Match
---- @field list string[] The list of strings to match against.
---- @field results (string[]|integer[]|number[])[] The results of the last match operation, valid only when after matching is done.
---- @field pattern string The pattern to match.
---- @field callback fun(results: (string[]|integer[]|number[])[]|nil) The callback function to be called on each match iteration.
---- @field transform? table A table of transformation rules to apply to the strings before matching, if items are of type table, using matchfuzzypos options, key and text_cb
---- @field _options MatchOptions The options for the match operation.
---- @field _state table The internal state of the match operation.
---- @field _state.timer uv_timer_t|nil The timer handle for the match iterations.
---- @field _state.tail string[]|nil The tail chunk for the last match operation.
---- @field _state.chunks string[]|nil The current chunk for the match operation.
---- @field _state.offset integer The current offset in the input list for matching
---- @field _state.buffer (string[]|integer[]|number[])[]|nil A buffer for intermediate results during matching.
---- @field _state.accum (string[]|integer[]|number[])[]|nil The accumulated results during matching.
+--- @field public results (string[]|integer[]|number[])[] The results of the matching operation, containing matched strings, their positions, and scores.
+--- @field private list string[] The list of strings to match against.
+--- @field private pattern string The pattern to match.
+--- @field private callback fun(results: (string[]|integer[]|number[])[]|nil) The callback function to be called on each match iteration.
+--- @field private transform? table A table of transformation rules to apply to the strings before matching, if items are of type table, using matchfuzzypos options, key or/and text_cb
+--- @field private _options MatchOptions The options for the matcher.
+--- @field private _state table The internal state of the matcher, used for managing the matching process.
 local Match = {}
 Match.__index = Match
 
@@ -242,13 +236,13 @@ function Match:_match_worker()
     end
 end
 
---- Checks if there is an ongoing matching operation
+--- Checks if there is an ongoing matching operation, i.e., if the timer is active, which indicates that matching is in progress.
 --- @return boolean True if a matching operation is currently running, false otherwise.
 function Match:running()
     return self._state.timer ~= nil
 end
 
---- Waits for the matching operation to complete or until the specified timeout is reached
+--- Waits for the matching operation to complete or until the specified timeout is reached, and returns the results.
 --- @param timeout? integer The maximum time in milliseconds to wait for the matching operation to complete. If not provided, uses the timeout from options or a default maximum timeout.
 --- @return (string[]|integer[]|number[])[]|nil The results of the matching operation, or nil if the operation timed out.
 function Match:wait(timeout)
@@ -262,7 +256,8 @@ function Match:wait(timeout)
     return self.results
 end
 
--- Destroys the matcher and any pending state that is currently being allocated into the matcher, note that this is done automatically for ephemeral matcher when a new matching is started the resources for the previous ones are invalidated
+-- Destroys the matcher and any pending state that is currently being allocated into the matcher, note that this is done automatically
+-- for ephemeral matcher when a new matching is started the resources for the previous ones are invalidated
 function Match:destroy()
     self:_destroy_context()
 end
@@ -275,11 +270,17 @@ function Match:stop()
 end
 
 --- Starts a new match operation on the given list with the specified pattern and callback
---- @param list string[] The list of strings to match against.
---- @param pattern string The pattern to match.
---- @param callback fun(results: (string[]|integer[]|number[])[]|nil) The callback function to be called on each match iteration.
---- @param transform? table A table of transformation fields to obtain the source for matching, if items are of type table, using matchfuzzypos options, key and text_cb
+--- @param list? string[] The list of strings to match against.
+--- @param pattern? string The pattern to match.
+--- @param callback? fun(results: (string[]|integer[]|number[])[]|nil) The callback function to be called on each match iteration.
+--- @param transform? table A table of transformation rules to apply to the strings before matching, if items are of type table, using matchfuzzypos options, key or/and text_cb
 function Match:match(list, pattern, callback, transform)
+    vim.validate({
+        list = { list, "table" },
+        pattern = { pattern, "string" },
+        callback = { callback, {  "function" }, true },
+        transform = { transform, { "table", "nil" }, true },
+    })
     -- each time we start a new match we make sure to stop any ongoing processing and clean up the context, any old state will be lost,
     -- depending on the ephemeral option more aggressive clean up might be done
     if self:running() then
@@ -347,6 +348,11 @@ end
 -- then they are merged into the source list also sorted in descending order
 --- @param source (string[]|integer[]|number[])[]
 function Match.merge(source, left, right)
+    vim.validate({
+        source = { source, "table" },
+        left = { left, "table" },
+        right = { right, "table" },
+    })
     -- ensure source has enough capacity to hold all items from left and right
     local final_size = #left[1] + #right[1]
     for sub_index = 1, 3 do
@@ -384,22 +390,30 @@ function Match.merge(source, left, right)
 end
 
 --- @class MatchOptions
---- @field ephemeral? boolean Whether to destroy the context and results after matching is done. If true, the context and results will be destroyed after matching is complete
---- @field step? integer Number of items to process in each chunk.
---- @field limit? integer Maximum number of items to process.
---- @field timer? integer Time in milliseconds between processing chunks.
---- @field timeout? integer Maximum time in milliseconds to wait for matching to complete.
+--- @field ephemeral? boolean If true, the matcher will clean up its context after each match operation, making it suitable for one-off matches. Default is true.
+--- @field step? integer The number of items to process in each iteration. Default is 50000.
+--- @field limit? integer The maximum number of results to keep. Default is 4096.
+--- @field timer? integer The interval in milliseconds between each match iteration. Default is 100.
+--- @field timeout? integer The maximum time in milliseconds to wait for the matching operation to complete when using the wait method. Default is 5000.
 
 --- Creates a new Match instance with the specified options, or default options if none are provided.
 --- @param opts? MatchOptions
 --- @return Match
 function Match.new(opts)
+    opts = opts or {}
+    vim.validate({
+        ephemeral = { opts.ephemeral, "boolean", true },
+        step = { opts.step, "number", true },
+        limit = { opts.limit, "number", true },
+        timer = { opts.timer, "number", true },
+        timeout = { opts.timeout, "number", true },
+    })
     opts = vim.tbl_deep_extend("force", {
         ephemeral = true,
         step = 50000,
         limit = 4096,
         timer = 100,
-    }, opts or {})
+    }, opts)
 
     local self = setmetatable({
         list = nil,

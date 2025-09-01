@@ -6,16 +6,15 @@ local async = require("fuzzy.async")
 local utils = require("fuzzy.utils")
 
 --- @class Select
---- @field source_window integer The window from which the selection was opened.
---- @field prompt_window integer The window ID of the prompt window.
---- @field prompt_buffer integer The buffer ID of the prompt buffer.
---- @field list_window integer The window ID of the list window.
---- @field list_buffer integer The buffer ID of the list buffer.
---- @field preview_window integer|nil The window ID of the preview window.
---- @field preview_buffer integer|nil The buffer ID of the preview buffer.
---- @field _options SelectOptions The options used to configure the selection interface.
---- @field _state { query: string } The state of the select holds different internal state components
---- @field _content { entries: any[]|nil, positions: integer[][]|nil, display: (string|fun(entry: any): string)? , streaming: boolean } The current content of the selection interface.
+--- @field private source_window integer|nil The window ID of the source window where the selection interface was opened from.
+--- @field private prompt_window integer|nil The window ID of the prompt input window.
+--- @field private prompt_buffer integer|nil The buffer ID of the prompt input buffer.
+--- @field private list_window integer|nil The window ID of the list display window.
+--- @field private list_buffer integer|nil The buffer ID of the list display buffer.
+--- @field private preview_window integer|nil The window ID of the preview display window.
+--- @field private preview_buffer integer|nil The buffer ID of the preview display buffer.
+--- @field private _options SelectOptions The configuration options for the selection interface.
+--- @field private _state table The internal state of the selection interface.
 local Select = {}
 Select.__index = Select
 
@@ -307,12 +306,12 @@ function Select:_list_selection(lnum)
     })
     if placed and #placed > 0 and placed[1].signs and #placed[1].signs > 0 then
         return vim.tbl_map(function(s)
-            assert(s.lnum <= #self._content.entries)
-            return self._content.entries[s.lnum]
+            assert(s.lnum <= #self._state.entries)
+            return self._state.entries[s.lnum]
         end, placed[1].signs)
     else
-        assert(lnum <= #self._content.entries)
-        return { self._content.entries[lnum] }
+        assert(lnum <= #self._state.entries)
+        return { self._state.entries[lnum] }
     end
 end
 
@@ -337,8 +336,8 @@ function Select:_create_mappings(buffer, mode, mappings)
 end
 
 function Select:_highlight_list()
-    local entries = self._content.entries
-    local positions = self._content.positions
+    local entries = self._state.entries
+    local positions = self._state.positions
     if entries and #entries > 0 and positions and #positions > 0 then
         local cursor = vim.api.nvim_win_get_cursor(self.list_window)
         local height = vim.api.nvim_win_get_height(self.list_window)
@@ -348,13 +347,13 @@ function Select:_highlight_list()
             math.max(1, cursor[1] - height),
             math.min(#entries, cursor[1] + height),
             entries, positions,
-            self._content.display,
-            self._content.streaming)
+            self._state.display,
+            self._state.streaming)
     end
 end
 
 function Select:_decorate_list()
-    local entries = self._content.entries
+    local entries = self._state.entries
     local providers = self._options.providers
     if entries and #entries > 0 and providers and next(providers) then
         local cursor = vim.api.nvim_win_get_cursor(self.list_window)
@@ -365,8 +364,8 @@ function Select:_decorate_list()
             math.max(1, cursor[1] - height),
             math.min(#entries, cursor[1] + height),
             entries, providers,
-            self._content.display,
-            self._content.streaming)
+            self._state.display,
+            self._state.streaming)
     end
 end
 
@@ -377,8 +376,8 @@ function Select:_render_list()
     if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
         populate_buffer(
             self.list_buffer,
-            self._content.entries,
-            self._content.display,
+            self._state.entries,
+            self._state.display,
             self._options.listing_step
         )
     end
@@ -409,9 +408,9 @@ function Select:_destroy_view()
         self.preview_buffer = nil
     end
 
-    self._content.streaming = false
-    self._content.positions = nil
-    self._content.entries = nil
+    self._state.streaming = false
+    self._state.positions = nil
+    self._state.entries = nil
 end
 
 function Select:_close_view()
@@ -470,7 +469,7 @@ function Select:exec_command(command, mods, callback)
         return
     else
         result = vim.tbl_map(entry_mapper(
-            self._content.display
+            self._state.display
         ), result or selection)
     end
 
@@ -513,7 +512,7 @@ function Select:send_fixlist(type, callback)
         return
     else
         result = vim.tbl_map(entry_mapper(
-            self._content.display
+            self._state.display
         ), result or selection)
     end
 
@@ -537,7 +536,9 @@ function Select:send_fixlist(type, callback)
         else
             target = vim.fn.winnr("#")
         end
-        vim.fn.setloclist(target, {}, " ", args)
+        vim.fn.setloclist(assert(
+            target
+        ), {}, " ", args)
         self._options.loclist_open()
     end
 end
@@ -632,12 +633,12 @@ function Select:query()
     return assert(self._state.query)
 end
 
--- Destroy the selection interface.
+-- Destroy the selection interface, closing all associated windows and buffers.
 function Select:destroy()
     self:_destroy_view()
 end
 
---- Closes the selection interface.
+--- Closes the selection interface, if the ephemeral option is set to true, the buffers associated with the interface will be destroyed as well.
 function Select:close()
     self:_close_view()
     if self._options.ephemeral == true then
@@ -645,53 +646,64 @@ function Select:close()
     end
 end
 
---- Checks if the selection interface is currently open.
+--- Checks if the selection interface is currently open, this is determined by checking if both the prompt and list windows are valid.
 --- @return boolean True if the selection interface is open, false otherwise.
 function Select:isopen()
     local prompt = self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window)
     local list = self.list_window and vim.api.nvim_win_is_valid(self.list_window)
-    return prompt and list
+    return list ~= nil and prompt ~= nil and list and prompt
 end
 
---- Checks if the list has any entries rendered.
+--- Checks if the list has any entries rendered, if the list is not valid or has no lines, it is considered empty, otherwise it is not.
 --- @return boolean True if the list is empty, false otherwise.
 function Select:isempty()
     if not self.list_buffer or not vim.api.nvim_buf_is_valid(self.list_buffer) then
         return true
     end
     if vim.api.nvim_buf_line_count(self.list_buffer) == 1 then
+        -- @Speed: use get_text with minimal col offsets to get a smaller chunk
         local lines = vim.api.nvim_buf_get_lines(self.list_buffer, 0, 1, false)
         return not lines or #lines == 0 or #lines[1] == 0
     end
     return false
 end
 
--- Show the entry in the preview window.
+-- Render a preview of the given entry in the preview window, if the preview window is not open, this function will open it
 -- @param entry any[]|string|nil The entry to show in the preview window.
 function Select:show(entry)
+    vim.validate {
+        entry = { entry, { "table", "string", "nil" }, true },
+    }
 end
 
--- Render a list of entries in the list window.
+-- Render a list of entries in the list window, with optional highlighting positions and display formatting function or property.
 -- @param entries any[]|string[]|nil The list of entries to display.
 -- @param positions integer[][]|nil The list of positions for highlighting
 -- @param display string|fun(entry: any): string|nil The field or function to use for displaying entries.
 function Select:list(entries, positions, display)
     if entries ~= nil then
-        self._content.positions = positions
-        self._content.entries = entries
-        self._content.display = display
-        self._content.streaming = true
+        vim.validate {
+            entries = { entries, "table" },
+            positions = { positions, { "table", "nil" }, true },
+            display = { display, { "string", "function", "nil" }, true },
+        }
+        self._state.positions = positions
+        self._state.entries = entries
+        self._state.display = display
+        self._state.streaming = true
         async.wrap(Select._render_list)(self)
     elseif positions == nil then
-        self._content.streaming = false
+        self._state.streaming = false
     end
 end
 
+--- Opens the selection interface, creating necessary buffers and windows as needed, and sets up autocommands and mappings, if not
+--- already open.
 function Select:open()
+    local opts = assert(self._options)
     if self:isopen() then
         self:close()
     end
-    local opts = assert(self._options)
 
     self.source_window = vim.api.nvim_get_current_win()
     local factor = opts.prompt_preview and 2.0 or 1.0
@@ -771,6 +783,9 @@ function Select:open()
             ) == 1, "failed to place sign")
 
             if type(opts.prompt_query) == "string" and #opts.prompt_query > 0 then
+                self._state.query = opts.prompt_query -- initialize query, and set the line
+                -- will trigger the prompt input callback, due to the TextChanged autocommand
+                -- being set, so we don't need to call it manually here, just set the line
                 vim.api.nvim_buf_set_lines(prompt_buffer, 0, 1, false, { opts.prompt_query })
             end
         elseif opts.resume_view == false then
@@ -837,9 +852,9 @@ function Select:open()
                 end
             end
             if entries == nil then
-                self._content.positions = positions
-                self._content.entries = entries
-                self._content.streaming = false
+                self._state.positions = positions
+                self._state.entries = entries
+                self._state.streaming = false
                 self:_render_list()
             end
 
@@ -852,9 +867,9 @@ function Select:open()
                 buffer = list_buffer,
                 callback = function()
                     assert(vim.fn.sign_undefine(sign_name) == 0)
-                    self._content.streaming = false
-                    self._content.positions = nil
-                    self._content.entries = nil
+                    self._state.streaming = false
+                    self._state.positions = nil
+                    self._state.entries = nil
                     self.list_buffer = nil
                     self.list_window = nil
                     return true
@@ -866,9 +881,9 @@ function Select:open()
                 text = self._options.toggle_prefix, priority = 10
             }) == 0)
         elseif opts.resume_view == false then
-            self._content.streaming = false
-            self._content.positions = nil
-            self._content.entries = nil
+            self._state.streaming = false
+            self._state.positions = nil
+            self._state.entries = nil
             populate_buffer(list_buffer, {})
         end
 
@@ -969,31 +984,51 @@ function Select.action(action, callback)
     end
 end
 
---- Creates a new Select instance.
+--- Creates a new Select instance, which provides an interactive selection interface.
 --- @class SelectOptions
---- @field quickfix_open? fun()|nil The function to open the quickfix list. Defaults to `:copen`.
---- @field loclist_open? fun()|nil The function to open the location list. Defaults to `:lopen`.
---- @field prompt_confirm? fun(self: Select)|nil The function to call when confirming a selection. Defaults to `Select.select_entry`.
---- @field prompt_cancel? fun(self: Select)|nil The function to call when cancelling the selection. Defaults to `Select.close_view`.
---- @field prompt_preview? boolean|nil Whether to show a preview window. Defaults to `false`.
---- @field prompt_query? string|nil The initial query to show in the prompt. Defaults to an empty string.
---- @field prompt_input? boolean|function(line: string):(string[], string[])|nil Whether to show an input prompt. Can be a boolean or a function that takes the current input line and returns a list of entries and their positions optionally. Defaults to `true`.
---- @field prompt_list? boolean|fun():(table, table)|nil Whether to show a list of entries. Can be a boolean or a function that returns a list of entries and their positions. Defaults to `true`.
---- @field prompt_prefix? string|nil The prefix to show in the signcolumn for the prompt. Defaults to `"> "`.
---- @field toggle_prefix? string|nil The prefix to show in the signcolumn when entry is toggled. Defaults to `"*"`.
---- @field resume_view? boolean|nil Whether to resume the previous view state. Defaults to `false`.
---- @field ephemeral? boolean|nil Whether to make the buffers ephemeral (deleted on close). Defaults to `true`.
---- @field window_ratio? number The ratio of the screen height to use for the selection interface.
---- @field listing_step? integer|nil The number of entries to render at a time when populating the list buffer. If nil, all entries are rendered at once.
---- @field mappings? table<string, fun(self: Select)> The key mappings to use for the selection interface.
---- @field providers? table The decoration providers to use for the list of items.
---- @field providers.icon_provider boolean|fun(entry: string):(string, string)|nil A boolean or function to provide icons for entries. Defaults to `false`.
---- @field providers.status_provider boolean|fun(entry: string):(string, string)|nil A boolean or function to provide status indicators for entries. Defaults to `false`.
+--- @inlinedoc
+--- @field quickfix_open? fun() Function to open the quickfix list. Default: vim.cmd.copen
+--- @field loclist_open? fun() Function to open the location list. Default: vim.cmd.lopen
+--- @field prompt_confirm? fun() Function to confirm the selection. Default: Select.select_entry
+--- @field prompt_cancel? fun() Function to cancel the selection. Default: Select.close_view
+--- @field prompt_preview? boolean|fun() Whether to show the preview window. Default: false
+--- @field prompt_list? boolean|fun()|any[] Whether to show the list window or a function to provide initial entries. Default: true
+--- @field prompt_input? boolean|fun() Whether to show the input prompt, when function is provided it is used as the input callback. Default: true
+--- @field prompt_query? string|nil Initial query to populate the prompt input with. Default: nil
+--- @field prompt_prefix? string Prefix to display in the prompt input. Default: "> "
+--- @field toggle_prefix? string Prefix to display for toggled entries in the list. Default: "✓"
+--- @field window_ratio? number Ratio of the window height to the total editor height. Default: 0.15
+--- @field resume_view? boolean Whether to resume the view with existing buffers. Default: false
+--- @field listing_step? integer|nil Number of entries to render at a time when populating the list. Default: nil
+--- @field ephemeral? boolean Whether to destroy buffers when closing the selection interface. Default: true
+--- @field mappings? table Key mappings with keys as the key combination and values as the Select method to invoke, the method will be called with the Select instance as the first argument
+--- @field providers? table Providers for additional decorations in the list.
+--- @field providers.icon_provider? boolean|fun() Whether to show icons in the list. Default: false
+--- @field providers.status_provider? boolean|fun() Whether to show git status in the list. Default: false
 
 --- Creates a new Select instance with the given options.
---- @param opts SelectOptions|nil The options to configure the selection interface.
+--- @param opts? SelectOptions|nil The options to configure the selection interface.
 --- @return Select The new Select instance.
 function Select.new(opts)
+    opts = opts or {}
+    vim.validate({
+        quickfix_open = { opts.quickfix_open, "function", true },
+        loclist_open = { opts.loclist_open, "function", true },
+        prompt_confirm = { opts.prompt_confirm, "function", true },
+        prompt_cancel = { opts.prompt_cancel, "function", true },
+        prompt_preview = { opts.prompt_preview, { "boolean", "function" }, true },
+        prompt_list = { opts.prompt_list, { "boolean", "function", "table" }, true },
+        prompt_input = { opts.prompt_input, { "boolean", "function" }, true },
+        prompt_query = { opts.prompt_query, { "string", "nil" }, true },
+        prompt_prefix = { opts.prompt_prefix, "string", true },
+        toggle_prefix = { opts.toggle_prefix, "string", true },
+        window_ratio = { opts.window_ratio, "number", true },
+        resume_view = { opts.resume_view, "boolean", true },
+        listing_step = { opts.listing_step, { "number", "nil" }, true },
+        ephemeral = { opts.ephemeral, "boolean", true },
+        providers = { opts.providers, "table", true },
+        mappings = { opts.mappings, "table", true },
+    })
     opts = vim.tbl_deep_extend("force", {
         quickfix_open = vim.cmd.copen,
         loclist_open = vim.cmd.lopen,
@@ -1020,7 +1055,7 @@ function Select.new(opts)
             ["<c-k>"] = Select.select_prev,
             ["<c-j>"] = Select.select_next,
         },
-    }, opts or {})
+    }, opts)
 
     local self = setmetatable({
         preview_buffer = nil,
@@ -1031,13 +1066,11 @@ function Select.new(opts)
         list_window = nil,
         _options = opts,
         _state = {
-            query = ""
-        },
-        _content = {
+            query = "",
             entries = nil,
             positions = nil,
             streaming = false
-        }
+        },
     }, Select)
 
     return self

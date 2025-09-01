@@ -2,17 +2,11 @@ local utils = require("fuzzy.utils")
 local async = require("fuzzy.async")
 
 --- @class Stream
---- @field results string[]|nil The results accumulated so far, this is only valid after the stream has finished, or if the stream is ephemeral and a new stream has not yet started.
---- @field callback fun(buffer: string[], accum: string[]) The callback to be invoked when new data is available, this is only valid when the stream is running.
---- @field _options StreamOptions The options for the stream.
---- @field _state table The internal state of the stream.
---- @field _state.size integer The current size of the buffer.
---- @field _state.total integer The total number of items accumulated so far.
---- @field _state.stdout userdata|nil The stdout pipe of the stream.
---- @field _state.stderr userdata|nil The stderr pipe of the stream.
---- @field _state.handle userdata|nil The handle of the stream.
---- @field _state.buffer string[]|nil The buffer to hold the current batch of data.
---- @field _state.accum string[]|nil The accumulator to hold all the data accumulated so far.
+--- @field public results string[]|nil The results accumulated so far, this is only valid after the stream has finished, or if the stream is ephemeral and a new stream has not yet started.
+--- @field private callback fun(buffer: string[], accum: string[]) The callback function to be called when new data is available, this function receives two arguments, the first is the current buffer of data, the second is the accumulation of all data so far.
+--- @field private mapper? fun(data: string): string|nil A function to transform each line or chunk of data before it is added to the results, defaults to nil
+--- @field private _options StreamOptions The options for the stream
+--- @field private _state table The internal state of the stream, used to manage the stream's lifecycle
 local Stream = {}
 Stream.__index = Stream
 
@@ -207,7 +201,7 @@ function Stream:_handle_exit()
     utils.safe_call(callback)
 end
 
---- Returns true if the stream is currently running, false otherwise
+--- Returns true if the stream is currently running, i.e. has been started and not yet stopped or exited, false otherwise
 --- @return boolean True if the stream is running, false otherwise
 function Stream:running()
     return self._state.handle ~= nil
@@ -239,17 +233,22 @@ function Stream:wait(timeout)
 end
 
 --- @class StreamStartOpts
---- @field args? string[] The arguments to pass to the command
---- @field cwd? string The current working directory to run the command in
---- @field env? table The environment variables to set for the command
---- @field callback fun(buffer: string[], accum: string[]) The callback to invoke when new data is available, this is required
---- @field mapper? fun(data: string): string An optional transform function to apply to each chunk of data before processing it, defaults to nil
+--- @field cwd? string The current working directory to run the command in, defaults to the current working directory of Neovim
+--- @field args? string[] The arguments to pass to the command, defaults to an empty table
+--- @field env? string[] The environment variables to set for the command, defaults to nil
+--- @field mapper? fun(data: string): string|nil A function to transform each line or chunk of data before it is added to the results, defaults to nil
+--- @field callback fun(buffer: string[], accum: string[]) A function to be called when new data is available, this function receives two arguments, the first is the current buffer of data, the second is the accumulation of all data so far, this function is required
 
---- Starts the stream with the given command and options, if a stream is already running it is stopped first, if the new stream is for new
---- command the previous results and state are destroyed.
+--- Starts the stream with the given command and options, if a stream is already running it is stopped first, if the new stream is for
+--- new command the previous results and state are destroyed.
 --- @param cmd string|function The command to run, or a function which accepts a callback to be invoked with data chunks to supply data to the stream
---- @param opts StreamStartOpts|nil The options for starting the stream
+--- @param opts StreamStartOpts|nil The options for starting the stream, see StreamStartOpts for details
 function Stream:start(cmd, opts)
+    opts = opts or {}
+    vim.validate({
+        cmd = { cmd, { "string", "function" }, false },
+        opts = { opts, "table", true },
+    })
     if self:running() then
         self:stop()
         if self._options.ephemeral then
@@ -257,7 +256,6 @@ function Stream:start(cmd, opts)
         end
     end
 
-    opts = opts or {}
     self.mapper = opts.mapper
     self.callback = assert(opts.callback)
 
@@ -344,23 +342,30 @@ function Stream:start(cmd, opts)
 end
 
 --- @class StreamOptions
---- @field ephemeral? boolean If true, the stream context and results are destroyed when the stream stops, defaults to true
---- @field bytes? boolean If true, the stream processes data in byte chunks, mutually exclusive with lines, defaults to false
---- @field lines? boolean If true, the stream processes data in line chunks, mutually exclusive with bytes, defaults to true
---- @field step? integer The number of bytes or lines to accumulate before flushing to the user callback, defaults to 100000
---- @field timeout? integer The maximum time to wait for results in milliseconds, defaults to utils.MAX_TIMEOUT
---- @field callback? fun(buffer: string[], accum: string[]) An optional callback to invoke when new data is available, defaults to nil
+--- @field ephemeral? boolean Whether the stream is ephemeral, if true, starting a new stream will destroy the previous results and state, defaults to true
+--- @field bytes? boolean Whether the stream processes data in bytes, mutually exclusive with `lines`, defaults to false
+--- @field lines? boolean Whether the stream processes data in lines, mutually exclusive with `bytes`, defaults to true
+--- @field step? integer The number of lines or bytes to accumulate before flushing to the callback, defaults to 100000
+--- @field timeout? integer The maximum time to wait in milliseconds when calling :wait, defaults to utils.MAX_TIMEOUT
 
 --- Creates a new Stream instance with the given options, or default options if none are provided
 --- @param opts StreamOptions|nil The options for the stream
 --- @return Stream The new Stream instance
 function Stream.new(opts)
+    opts = opts or {}
+    vim.validate({
+        ephemeral = { opts.ephemeral, "boolean", true },
+        bytes = { opts.bytes, "boolean", true },
+        lines = { opts.lines, "boolean", true },
+        step = { opts.step, "number", true },
+        timeout = { opts.timeout, "number", true },
+    })
     opts = vim.tbl_deep_extend("force", {
         ephemeral = true,
         bytes = false,
         lines = true,
         step = 100000,
-    }, opts or {})
+    }, opts)
 
     local self = setmetatable({
         mapper = nil,

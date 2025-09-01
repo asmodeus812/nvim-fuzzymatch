@@ -3,6 +3,12 @@ local Select = require("fuzzy.select")
 local Match = require("fuzzy.match")
 local utils = require("fuzzy.utils")
 
+--- @class Picker
+--- @field private select Select
+--- @field private stream Stream
+--- @field private match Match
+--- @field private _options PickerOptions
+--- @field private _state table
 local Picker = {}
 Picker.__index = Picker
 
@@ -35,16 +41,17 @@ function Picker:_close_stage()
 end
 
 function Picker:_interactive_args(query)
-    local key = self._state.interactive
-    local args = vim.fn.copy(self._state.args)
-    if type(key) == "string" then
+    local args = vim.fn.copy(self._state.context.args)
+    if type(self._state.interactive) == "string" then
         for _idx, _arg in ipairs(args or {}) do
-            if _arg == key then
+            if _arg == self._state.interactive then
                 args[_idx] = query
                 break
             end
             assert(_idx < #args)
         end
+    elseif type(self._state.interactive) == "number" then
+        table.insert(assert(args), self._state.interactive, query)
     else
         table.insert(assert(args), query)
     end
@@ -113,7 +120,7 @@ function Picker:_input_prompt()
             stage.match:stop()
             stage.select:close()
             stage.select:destroy()
-        else
+        elseif not self.stream:running() then
             -- when there is a query we need to match against it, in this scenario the picker is non-interactive, there are
             -- two options, either it was configured to use a stream or a user provided table of entries - strings, or other
             -- tables
@@ -142,7 +149,7 @@ function Picker:_input_prompt()
                 -- dump all the results into the list
                 self.select:list(
                     data, -- fill in data
-                    nil, -- no highlights
+                    nil,  -- no highlights
                     self._state.display
                 )
                 self.select:list(nil, nil)
@@ -241,9 +248,10 @@ function Picker:_create_stage()
     end
 
     local picker_options = self._options
-    local select_options = self.select._options
     self._state.stage = {
         select = Select.new({
+            mappings = picker_options.actions,
+            providers = picker_options.providers,
             ephemeral = picker_options.ephemeral,
             resume_view = not picker_options.ephemeral,
             window_ratio = picker_options.window_size,
@@ -251,8 +259,6 @@ function Picker:_create_stage()
             prompt_confirm = picker_options.prompt_confirm,
             prompt_cancel = _cancel_prompt(),
             prompt_input = _input_prompt(),
-            providers = select_options.providers,
-            mappings = select_options.mappings
         }),
         match = Match.new({
             ephemeral = picker_options.ephemeral,
@@ -321,9 +327,9 @@ function Picker:open()
         if not self.stream.results and not self:_is_interactive() then
             self.stream:start(
                 self._state.content, {
-                    args = self._state.args,
                     cwd = self._state.context.cwd,
                     env = self._state.context.env,
+                    args = self._state.context.args,
                     callback = self:_flush_results(),
                     transform = self._state.context.mapper,
                 })
@@ -336,7 +342,7 @@ function Picker:open()
         -- this mode the interactive option is not supported, as there is no way to passk the query to the command, because
         -- there is no command
         assert(type(self._state.content[1]) == "string" or type(self._state.content[1]) == "table")
-        assert(not self._state.args or not next(self._state.args))
+        assert(not self._state.context.args or not next(self._state.context.args))
         assert(not self:_is_interactive())
 
         -- the content is either going to be a table of strings or a table of tables, either way simply display it directly to
@@ -395,9 +401,53 @@ function Picker.err_converter(entry)
     return false
 end
 
+--- @class PickerOptions
+--- @field content string|function|table the content to use for the picker, can be a command string, a function that takes a callback and calls it for each entry, or a table of entries, if a string or function is provided the content is streamed, if a table is provided the content is static, and the picker can not be interactive. When a table or function is provided the entries can be either strings or tables, when tables are used the display option must be provided to extract a valid matching string from the table. The display function will be used for both displaying in the list and matching the entries against the user query, internally.
+--- @field context? table a table of context to pass to the content function, can contain the following keys - cwd - string, env - table, args - table, and mapper, a function that transforms each entry before it is added to the stream. The mapper function is useful when the content function produces complex entries, that need to be transformed into useable entries for the picker components downstream. It is independent of the display function, which is used to extract a string from the entry (at which point it may already mapped with the mapper function) for displaying and matching. The mapper function is used to transform the stream entries before they are added to the stream itself. It is less versatile than the display function, as it may be called only once per entry per unique stream evaluation, while the display is called when matching and displaying interactively.
+--- @field interactive? boolean|string|number|nil whether the picker is interactive, meaning that it will restart the stream with the query as an argument, if a string is provided it is used as a placeholder in the args list to replace with the query, if number, the user input is inserted in the provided <index> in the args table, if nil or false the picker is non-interactive, during the interactive mode the matching is done in a second stage, that can be toggled with <c-g>
+--- @field display? function|string|nil a custom function to use for displaying the entries, if nil the entry itself is used, if a string is provided it is used as a key to extract from the entry table
+--- @field display_step? number the number of entries to process in each display step, this is useful when dealing with large result sets, and using the display function.
+--- @field ephemeral? boolean whether the picker should be ephemeral, meaning that it will be destroyed when closed
+--- @field match_limit? number|nil the maximum number of matches to keep, nil means no limit
+--- @field match_timer? number the time in milliseconds to wait before flushing the matching results, this is useful when dealing with large result sets
+--- @field match_step? number the number of entries to process in each matching step, this is useful when dealing with large result sets
+--- @field prompt_debounce? number the time in milliseconds to debounce the user input, this is useful to avoid flooding the matching and streaming with too many updates at once
+--- @field prompt_confirm? function|nil a custom function to call when the user confirms the prompt, if nil the default action is used
+--- @field prompt_prefix? string the prefix to use for the prompt
+--- @field prompt_query? string the initial query to use for the prompt
+--- @field stream_type? "lines"|"bytes" whether the stream produces lines or bytes, when lines is used the stream will be split on newlines, when bytes is used the stream will be split on byte size
+--- @field stream_step? number the number of bytes or lines to read in each streaming step, this is useful when dealing with large result sets
+--- @field window_size? number the size of the window to use for the picker, this is a ratio between 0 and 1, where 1 is the full screen
+--- @field actions? table a table of key mappings to actions to use for the picker, see Select.mappings for the usage
+--- @field providers? table a table of providers to use for the select, can contain icon_provider and status_provider, see Select.providers for the usage
+
+--- Create a new picker instance
+--- @param opts PickerOptions
+--- @return Picker
 function Picker.new(opts)
-    assert(opts.content)
+    opts = opts or {}
+    vim.validate({
+        content = { opts.content, { "string", "function", "table" } },
+        context = { opts.context, "table", true },
+        display = { opts.display, { "function", "string", "nil" }, true },
+        interactive = { opts.interactive, { "boolean", "string", "number", "nil" }, true },
+        ephemeral = { opts.ephemeral, "boolean", true },
+        match_limit = { opts.match_limit, { "number", "nil" }, true },
+        match_timer = { opts.match_timer, "number", true },
+        match_step = { opts.match_step, "number", true },
+        prompt_debounce = { opts.prompt_debounce, "number", true },
+        prompt_confirm = { opts.prompt_confirm, { "function", "nil" }, true },
+        prompt_prefix = { opts.prompt_prefix, "string", true },
+        prompt_query = { opts.prompt_query, "string", true },
+        stream_type = { opts.stream_type, { "string", "nil" }, true, { "lines", "bytes" } },
+        stream_step = { opts.stream_step, "number", true },
+        window_size = { opts.window_size, "number", true },
+        display_step = { opts.display_step, "number", true },
+        actions = { opts.actions, "table", true },
+        providers = { opts.providers, "table", true },
+    })
     opts = vim.tbl_deep_extend("force", {
+        interactive = false,
         ephemeral = false,
         match_limit = nil,
         match_timer = 100,
@@ -409,7 +459,6 @@ function Picker.new(opts)
         stream_type = "lines",
         stream_step = 100000,
         window_size = 0.15,
-        resume_view = true,
         display_step = 25000,
         content = nil,
         display = nil,
@@ -419,7 +468,7 @@ function Picker.new(opts)
             icon_provider = true,
             status_provider = true,
         },
-    }, opts or {})
+    }, opts)
 
     local transform
     local is_lines = opts.stream_type == "lines"
@@ -437,11 +486,10 @@ function Picker.new(opts)
         _options = opts,
         _state = {
             interactive = opts.interactive,
-            transform = transform,
             display = opts.display,
             content = opts.content,
             context = opts.context,
-            args = opts.args,
+            transform = transform,
         },
     }, Picker)
 

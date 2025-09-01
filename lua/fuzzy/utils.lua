@@ -1,9 +1,14 @@
 local table_pool = { tables = {}, used = {} }
 for i = 1, 16, 1 do table.insert(table_pool.tables, i, {}) end
 
+--- @class Utils
+--- A collection of utility functions and constants for various operations.
 local M = {
+    --- maximum timeout value for operations, set to the maximum positive 32-bit integer
     MAX_TIMEOUT = 2 ^ 31 - 1,
+    --- An empty string constant, useful for avoiding repeated allocations
     EMPTY_STRING = "",
+    --- An empty table constant, useful for avoiding repeated allocations
     EMPTY_TABLE = {},
 }
 
@@ -109,7 +114,8 @@ function M.resize_table(tbl, size, default)
     return tbl
 end
 
---- Deeply compare two tables for equality, handling nested tables and circular references. The function returns true if the tables are equal, and false otherwise.
+--- Deeply compare two tables for equality, handling nested tables and circular references. The function returns true if the tables are
+--- equal, and false otherwise.
 --- @param t1 table The first table to compare
 --- @param t2 table The second table to compare
 --- @param visited? table|nil A table to track visited tables during recursion (used internally)
@@ -184,8 +190,11 @@ function M.time_execution(func, ...)
     return result
 end
 
+--- Print the current stack trace to the Neovim message area, starting from the caller of this function. Each stack frame includes the
+--- function name, source file, and line number. Anonymous functions are labeled as "anonymous", and missing information is indicated as
+--- "unknown".
 function M.print_stacktrace()
-    local level = 2  -- Start from caller of this function
+    local level = 2 -- Start from caller of this function
     vim.print("Stacktrace:")
 
     while true do
@@ -207,7 +216,8 @@ function M.print_stacktrace()
     end
 end
 
---- Create a debounced version of a callback function, which delays its execution until after a specified wait time has elapsed since the last time it was invoked. If the wait time is 0, the original callback is returned.
+--- Create a debounced version of a callback function, which delays its execution until after a specified wait time has elapsed since
+--- the last time it was invoked. If the wait time is 0, the original callback is returned.
 --- @param wait integer The wait time in milliseconds
 --- @param callback function The callback function to debounce
 --- @return function The debounced callback function
@@ -229,10 +239,9 @@ function M.debounce_callback(wait, callback)
 end
 
 --- Safely call a callback function with provided arguments, catching any errors and notifying the user if an error occurs. If the
---- callback is nil or not a function, nil is returned. Both the success status and the result of the callback (if any) are returned.
 --- @param callback function|nil The callback function to call
 --- @param ... any Arguments to pass to the callback function
---- @return boolean|nil, any|nil True if the call was successful, false if an error occurred, or nil if the callback was nil or not a
+--- @return boolean|nil, any|nil True if the call was successful, False if an error occurred, or nil if the callback was nil or not a
 --- function
 function M.safe_call(callback, ...)
     if callback ~= nil and type(callback) == "function" then
