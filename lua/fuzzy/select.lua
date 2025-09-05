@@ -1,5 +1,6 @@
 local LIST_HIGHLIGHT_NAMESPACE = vim.api.nvim_create_namespace("list_highlight_namespace")
 local LIST_DECORATED_NAMESPACE = vim.api.nvim_create_namespace("list_decorated_namespace")
+local LIST_STATUS_NAMESPACE = vim.api.nvim_create_namespace("list_status_namespace")
 local highlight_extmark_opts = { limit = 1, type = "highlight", details = false, hl_name = false }
 local detailed_extmark_opts = { limit = 4, type = "highlight", details = true, hl_name = true }
 local async = require("fuzzy.async")
@@ -921,6 +922,26 @@ function Select:list(entries, positions)
     elseif positions == nil then
         self._state.streaming = false
     end
+end
+
+--- Render the current status of the select, providing information about the selection list, preview or prompt, as virtual text in the select interface
+--- @param status string the status data to render in the window
+function Select:status(status)
+    vim.validate {
+        status = { status, "string" },
+    }
+    vim.api.nvim_buf_clear_namespace(self.prompt_buffer, LIST_STATUS_NAMESPACE, 0, 1)
+    vim.api.nvim_buf_set_extmark(self.prompt_buffer, LIST_STATUS_NAMESPACE, 0, 0, {
+        priority = 1000,
+        hl_mode = "combine",
+        right_gravity = false,
+        virt_text_pos = "eol",
+        virt_text_win_col = nil,
+        virt_text = {
+            -- { self._options.prompt_prefix, "Normal" },
+            { assert(status), "NonText" },
+        },
+    })
 end
 
 --- Opens the selection interface, creating necessary buffers and windows as needed, and sets up autocommands and mappings, if not

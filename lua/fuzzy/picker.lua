@@ -98,9 +98,12 @@ function Picker:_input_prompt()
                             -- second stage.
                             self.select:list(nil, nil)
                         else
+                            self.select:status(string.format(
+                                "%d/%d", #all, #all
+                            ))
                             self.select:list(
                                 all, -- accum results
-                                nil -- no highlights
+                                nil  -- no highlights
                             )
                             self.select:list(nil, nil)
                         end
@@ -110,6 +113,7 @@ function Picker:_input_prompt()
                 -- when there is no query we just render no results, there is nothing yet running, the stream is not
                 -- started on empty query in interactive mode
                 self.select:list({}, {})
+                self.select:status("0/0")
             end
             -- clear the interactive second stage each time a new query arrives the old matches in the second stages would be invalid, the
             -- query would re-start the command with new interactive args which would invalidate the previous results against the stage
@@ -132,9 +136,13 @@ function Picker:_input_prompt()
                         -- finished if that is the case clear the selection list
                         if #self.match.results == 0 then
                             self.select:list({}, {})
+                            self.select:status("0/0")
                         end
                         self.select:list(nil, nil)
                     else
+                        self.select:status(string.format(
+                            "%d/%d", #matching[1], #data
+                        ))
                         -- render the new matching results, which would update the list view
                         self.select:list(
                             matching[1],
@@ -145,9 +153,12 @@ function Picker:_input_prompt()
             else
                 -- just render all the results as they are, when there is no query, nothing can be matched against, so we
                 -- dump all the results into the list
+                self.select:status(string.format(
+                    "%d/%d", #data, #data
+                ))
                 self.select:list(
                     data, -- fill in data
-                    nil  -- no highlights
+                    nil   -- no highlights
                 )
                 self.select:list(nil, nil)
             end
@@ -173,10 +184,14 @@ function Picker:_flush_results()
                         -- finished if that is the case clear the selection list from previous matches
                         if #self.match.results == 0 then
                             self.select:list({}, {})
+                            self.select:status("0/0")
                         end
                         self.select:list(nil, nil)
                     else
                         -- render the new matching results, which would update the list view
+                        self.select:status(string.format(
+                            "%d/%d", #matching[1], #all
+                        ))
                         self.select:list(
                             matching[1],
                             matching[2]
@@ -186,6 +201,9 @@ function Picker:_flush_results()
             else
                 -- when there is no query yet, we just have to render all the results as they are, empty query means that
                 -- we can certainly show all results, that the stream produced so far.
+                self.select:status(string.format(
+                    "%d/%d", #all, #all
+                ))
                 self.select:list(
                     all, nil
                 )
@@ -213,9 +231,15 @@ function Picker:_create_stage()
                             -- finished if that is the case clear the selection list from previous matches
                             if #stage.match.results == 0 then
                                 stage.select:list({}, {})
+                                stage.select:status("0/0")
                             end
                             stage.select:list(nil, nil)
                         else
+                            stage.select:status(string.format(
+                                "%d/%d",
+                                #matching[1],
+                                #self.stream.results
+                            ))
                             stage.select:list(
                                 matching[1],
                                 matching[2]
@@ -223,6 +247,11 @@ function Picker:_create_stage()
                         end
                     end, self._state.transform)
                 else
+                    stage.select:status(string.format(
+                        "%d/%d",
+                        #self.stream.results,
+                        #self.stream.results
+                    ))
                     stage.select:list(
                         self.stream.results,
                         nil -- no highlights
@@ -269,6 +298,10 @@ function Picker:_toggle_stage()
         stage.select:open()
 
         if stage.select:isempty() and self.stream.results then
+            stage.select:status(string.format(
+                "%d/%d", #self.stream.results,
+                #self.stream.results
+            ))
             stage.select:list(self.stream.results, nil)
             stage.select:list(nil, nil)
         end
@@ -329,6 +362,10 @@ function Picker:open()
         elseif self.stream.results and self.select:isempty() then
             self.select:list(self.stream.results, nil)
             self.select:list(nil, nil)
+            self.select:status(string.format(
+                "%d/%d", #self.stream.results,
+                #self.stream.results
+            ))
         end
     else
         -- when a table is provided the content is expected to be a list of strings, each string being a separate entry, and in
@@ -342,6 +379,10 @@ function Picker:open()
         -- the select, as there is no async result loading happening at this moment
         self.select:list(self._state.content, nil)
         self.select:list(nil, nil)
+        self.select:status(string.format(
+            "%d/%d", #self._state.content,
+            #self._state.content
+        ))
     end
 end
 
