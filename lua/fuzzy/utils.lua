@@ -1,5 +1,10 @@
+local TEMPLATE = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
+
 local table_pool = { tables = {}, used = {} }
 for i = 1, 16, 1 do table.insert(table_pool.tables, i, {}) end
+
+math.randomseed(os.clock())
+local random = math.random
 
 --- @class Utils
 --- A collection of utility functions and constants for various operations.
@@ -254,6 +259,13 @@ function M.safe_call(callback, ...)
         end
     end
     return nil, nil
+end
+
+function M.generate_uuid()
+    return random and string.gsub(TEMPLATE, '[xy]', function (c)
+        local v = (c == 'x') and random(0, 0xf) or random(8, 0xb)
+        return string.format('%x', v)
+    end)
 end
 
 return M

@@ -100,8 +100,7 @@ function Picker:_input_prompt()
                         else
                             self.select:list(
                                 all, -- accum results
-                                nil, -- no highlights
-                                self._state.display
+                                nil -- no highlights
                             )
                             self.select:list(nil, nil)
                         end
@@ -139,8 +138,7 @@ function Picker:_input_prompt()
                         -- render the new matching results, which would update the list view
                         self.select:list(
                             matching[1],
-                            matching[2],
-                            self._state.display
+                            matching[2]
                         )
                     end
                 end, self._state.transform)
@@ -149,8 +147,7 @@ function Picker:_input_prompt()
                 -- dump all the results into the list
                 self.select:list(
                     data, -- fill in data
-                    nil,  -- no highlights
-                    self._state.display
+                    nil  -- no highlights
                 )
                 self.select:list(nil, nil)
             end
@@ -182,8 +179,7 @@ function Picker:_flush_results()
                         -- render the new matching results, which would update the list view
                         self.select:list(
                             matching[1],
-                            matching[2],
-                            self._state.display
+                            matching[2]
                         )
                     end
                 end, self._state.transform)
@@ -191,8 +187,7 @@ function Picker:_flush_results()
                 -- when there is no query yet, we just have to render all the results as they are, empty query means that
                 -- we can certainly show all results, that the stream produced so far.
                 self.select:list(
-                    all, nil,
-                    self._state.display
+                    all, nil
                 )
                 self.select:list(nil, nil)
             end
@@ -223,16 +218,14 @@ function Picker:_create_stage()
                         else
                             stage.select:list(
                                 matching[1],
-                                matching[2],
-                                self._state.display
+                                matching[2]
                             )
                         end
                     end, self._state.transform)
                 else
                     stage.select:list(
                         self.stream.results,
-                        nil, -- no highlights
-                        self._state.display
+                        nil -- no highlights
                     )
                     stage.select:list(nil, nil)
                 end
@@ -347,10 +340,7 @@ function Picker:open()
 
         -- the content is either going to be a table of strings or a table of tables, either way simply display it directly to
         -- the select, as there is no async result loading happening at this moment
-        self.select:list(
-            self._state.content, nil,
-            self._state.display
-        )
+        self.select:list(self._state.content, nil)
         self.select:list(nil, nil)
     end
 end
@@ -401,16 +391,22 @@ function Picker.err_converter(entry)
     return false
 end
 
+function Picker.many(converter)
+    return function(e)
+        return vim.tbl_map(converter, e)
+    end
+end
+
 --- @class PickerOptions
 --- @field content string|function|table the content to use for the picker, can be a command string, a function that takes a callback and calls it for each entry, or a table of entries, if a string or function is provided the content is streamed, if a table is provided the content is static, and the picker can not be interactive. When a table or function is provided the entries can be either strings or tables, when tables are used the display option must be provided to extract a valid matching string from the table. The display function will be used for both displaying in the list and matching the entries against the user query, internally.
 --- @field context? table a table of context to pass to the content function, can contain the following keys - cwd - string, env - table, args - table, and mapper, a function that transforms each entry before it is added to the stream. The mapper function is useful when the content function produces complex entries, that need to be transformed into useable entries for the picker components downstream. It is independent of the display function, which is used to extract a string from the entry (at which point it may already mapped with the mapper function) for displaying and matching. The mapper function is used to transform the stream entries before they are added to the stream itself. It is less versatile than the display function, as it may be called only once per entry per unique stream evaluation, while the display is called when matching and displaying interactively.
 --- @field interactive? boolean|string|number|nil whether the picker is interactive, meaning that it will restart the stream with the query as an argument, if a string is provided it is used as a placeholder in the args list to replace with the query, if number, the user input is inserted in the provided <index> in the args table, if nil or false the picker is non-interactive, during the interactive mode the matching is done in a second stage, that can be toggled with <c-g>
 --- @field display? function|string|nil a custom function to use for displaying the entries, if nil the entry itself is used, if a string is provided it is used as a key to extract from the entry table
---- @field display_step? number the number of entries to process in each display step, this is useful when dealing with large result sets, and using the display function.
 --- @field ephemeral? boolean whether the picker should be ephemeral, meaning that it will be destroyed when closed
 --- @field match_limit? number|nil the maximum number of matches to keep, nil means no limit
 --- @field match_timer? number the time in milliseconds to wait before flushing the matching results, this is useful when dealing with large result sets
 --- @field match_step? number the number of entries to process in each matching step, this is useful when dealing with large result sets
+--- @field prompt_preview? Select.Preview|boolean speficies the preview strategy to be used when entries are focused, false means no preview will be active, and a correct instance of a child class derived from Select.Preview will use that preview instead, Select.BufferPreview is used by default if the value of this field is true.
 --- @field prompt_debounce? number the time in milliseconds to debounce the user input, this is useful to avoid flooding the matching and streaming with too many updates at once
 --- @field prompt_confirm? function|nil a custom function to call when the user confirms the prompt, if nil the default action is used
 --- @field prompt_prefix? string the prefix to use for the prompt
@@ -427,43 +423,43 @@ end
 function Picker.new(opts)
     opts = opts or {}
     vim.validate({
+        actions = { opts.actions, "table", true },
         content = { opts.content, { "string", "function", "table" } },
         context = { opts.context, "table", true },
         display = { opts.display, { "function", "string", "nil" }, true },
-        interactive = { opts.interactive, { "boolean", "string", "number", "nil" }, true },
         ephemeral = { opts.ephemeral, "boolean", true },
+        interactive = { opts.interactive, { "boolean", "string", "number", "nil" }, true },
         match_limit = { opts.match_limit, { "number", "nil" }, true },
-        match_timer = { opts.match_timer, "number", true },
         match_step = { opts.match_step, "number", true },
-        prompt_debounce = { opts.prompt_debounce, "number", true },
+        match_timer = { opts.match_timer, "number", true },
         prompt_confirm = { opts.prompt_confirm, { "function", "nil" }, true },
+        prompt_debounce = { opts.prompt_debounce, "number", true },
         prompt_prefix = { opts.prompt_prefix, "string", true },
+        prompt_preview = { opts.prompt_preview, { "table", "boolean" }, true },
         prompt_query = { opts.prompt_query, "string", true },
-        stream_type = { opts.stream_type, { "string", "nil" }, true, { "lines", "bytes" } },
-        stream_step = { opts.stream_step, "number", true },
-        window_size = { opts.window_size, "number", true },
-        display_step = { opts.display_step, "number", true },
-        actions = { opts.actions, "table", true },
         providers = { opts.providers, "table", true },
+        stream_step = { opts.stream_step, "number", true },
+        stream_type = { opts.stream_type, { "string", "nil" }, true, { "lines", "bytes" } },
+        window_size = { opts.window_size, "number", true },
     })
     opts = vim.tbl_deep_extend("force", {
-        interactive = false,
-        ephemeral = false,
-        match_limit = nil,
-        match_timer = 100,
-        match_step = 50000,
-        prompt_debounce = 250,
-        prompt_confirm = nil,
-        prompt_prefix = "> ",
-        prompt_query = "",
-        stream_type = "lines",
-        stream_step = 100000,
-        window_size = 0.15,
-        display_step = 25000,
-        content = nil,
-        display = nil,
-        context = {},
         actions = {},
+        content = nil,
+        context = {},
+        display = nil,
+        ephemeral = false,
+        interactive = false,
+        match_limit = nil,
+        match_step = 50000,
+        match_timer = 100,
+        prompt_confirm = nil,
+        prompt_debounce = 250,
+        prompt_prefix = "> ",
+        prompt_preview = false,
+        prompt_query = "",
+        stream_step = 100000,
+        stream_type = "lines",
+        window_size = 0.15,
         providers = {
             icon_provider = true,
             status_provider = true,
@@ -472,7 +468,7 @@ function Picker.new(opts)
 
     local transform
     local is_lines = opts.stream_type == "lines"
-    local list_step = opts.display and opts.display_step or nil
+    local list_step = opts.display and 25000 or nil
     if type(opts.display) == "function" then
         transform = { text_cb = opts.display }
     elseif type(opts.display) == "string" then
@@ -521,17 +517,19 @@ function Picker.new(opts)
     })
 
     self.select = Select.new({
-        listing_step = list_step,
-        mappings = opts.actions,
-        providers = opts.providers,
         ephemeral = opts.ephemeral,
-        resume_view = not opts.ephemeral,
-        window_ratio = opts.window_size,
-        prompt_query = opts.prompt_query,
-        prompt_prefix = opts.prompt_prefix,
+        list_display = opts.display,
+        list_step = list_step,
+        mappings = opts.actions,
+        prompt_cancel = self:_cancel_prompt(),
         prompt_confirm = opts.prompt_confirm,
         prompt_input = self:_input_prompt(),
-        prompt_cancel = self:_cancel_prompt(),
+        prompt_prefix = opts.prompt_prefix,
+        prompt_preview = opts.prompt_preview,
+        prompt_query = opts.prompt_query,
+        providers = opts.providers,
+        resume_view = not opts.ephemeral,
+        window_ratio = opts.window_size,
     })
 
     if self:_is_interactive() then
