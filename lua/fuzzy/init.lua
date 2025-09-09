@@ -119,39 +119,40 @@ end
 local picker = Picker.new({
     -- ephemeral = true,
     -- display = nil,
-    display = displayer,
-    content = items_table,
+    -- display = displayer,
+    -- content = items_table,
     -- content = items_stream,
     -- prompt_preview = { "bat", "--plain", "--paging=never" },
     -- prompt_preview = "cat",
     -- prompt_preview = true,
+    prompt_preview = Select.BufferPreview.new(),
     -- prompt_preview = Select.BufferPreview.new(Picker.grep_converter),
     -- prompt_preview = Select.CommandPreview.new({ "bat", "--plain", "--paging=never" }, Picker.grep_converter),
     -- prompt_preview = Select.CommandPreview.new("cat", Picker.grep_converter),
-    prompt_preview = Select.CustomPreview.new(function(entry, buffer, window)
-        return { entry.name }, "nofile", "test"
-    end),
-    -- content = "find",
+    -- prompt_preview = Select.CustomPreview.new(function(entry, buffer, window)
+        -- return { entry.name }, "nofile", "test"
+    -- end),
+    content = "find",
     -- content = "ls",
     -- content = "rg",
-    -- context = {
-        -- args = {
+    context = {
+        args = {
             -- "-1A",
             -- ".",
-            -- "-type",
-            -- "f",
-            -- "-name",
+            "-type",
+            "f",
+            "-name",
             -- "{prompt}",
             -- "test",
             -- "--column",
             -- "--line-number",
             -- "--no-heading",
             -- "{prompt}",
-            -- "test",
-        -- },
-    -- },
+            "test",
+        },
+    },
     -- interactive = "{prompt}",
-    prompt_confirm = Select.action(Select.default_select, Picker.many(Picker.grep_converter)),
+    -- prompt_confirm = Select.action(Select.default_select, Picker.many(Picker.grep_converter)),
     actions = {
         ["<c-q>"] = Select.send_quickfix,
         ["<c-t>"] = Select.select_tab,

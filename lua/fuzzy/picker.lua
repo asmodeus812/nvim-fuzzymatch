@@ -71,6 +71,9 @@ function Picker:_input_prompt()
     return utils.debounce_callback(self._options.prompt_debounce, function(query)
         if query == nil then
             -- the input has been interrupted, so we need to stop everything
+            if self.select:isempty() then
+                self.select:status("0/0")
+            end
             self.select:list(nil, nil)
             self.select:close()
             self.match:stop()
@@ -96,6 +99,9 @@ function Picker:_input_prompt()
                             -- result here would directly represent the stream contents that have been collected, matching
                             -- is not performed when the picker is interactive mode, the matching will be done in the
                             -- second stage.
+                            if self.select:isempty() then
+                                self.select:status("0/0")
+                            end
                             self.select:list(nil, nil)
                         else
                             self.select:status(string.format(
@@ -112,7 +118,10 @@ function Picker:_input_prompt()
             else
                 -- when there is no query we just render no results, there is nothing yet running, the stream is not
                 -- started on empty query in interactive mode
-                self.select:list({}, {})
+                self.select:list(
+                    utils.EMPTY_TABLE,
+                    utils.EMPTY_TABLE
+                )
                 self.select:status("0/0")
             end
             -- clear the interactive second stage each time a new query arrives the old matches in the second stages would be invalid, the
@@ -128,7 +137,7 @@ function Picker:_input_prompt()
             -- two options, either it was configured to use a stream or a user provided table of entries - strings, or other
             -- tables
             local data = assert(self.stream.results or self._state.content)
-            if type(query) == "string" and #query > 0 then
+            if #data > 0 and type(query) == "string" and #query > 0 then
                 self.match:match(data, query, function(matching)
                     if matching == nil then
                         -- notify that there matching has finished, so the renderer can update the status, also
@@ -172,10 +181,13 @@ function Picker:_flush_results()
     return utils.debounce_callback(0, function(_, all)
         if all == nil then
             -- streaming is done, so we need to make sure that the renderer is notified about it
+            if self.select:isempty() then
+                self.select:status("0/0")
+            end
             self.select:list(nil, nil)
         else
             local query = self.select:query()
-            if type(query) == "string" and #query > 0 then
+            if #all > 0 and type(query) == "string" and #query > 0 then
                 -- when there is a query we need to match against it
                 self.match:match(all, query, function(matching)
                     if matching == nil then
@@ -360,12 +372,13 @@ function Picker:open()
                     transform = self._state.context.mapper,
                 })
         elseif self.stream.results and self.select:isempty() then
-            self.select:list(self.stream.results, nil)
-            self.select:list(nil, nil)
             self.select:status(string.format(
-                "%d/%d", #self.stream.results,
+                "%d/%d",
+                #self.stream.results,
                 #self.stream.results
             ))
+            self.select:list(self.stream.results, nil)
+            self.select:list(nil, nil)
         end
     else
         -- when a table is provided the content is expected to be a list of strings, each string being a separate entry, and in
@@ -562,9 +575,9 @@ function Picker.new(opts)
         list_display = opts.display,
         list_step = list_step,
         mappings = opts.actions,
+        prompt_input = self:_input_prompt(),
         prompt_cancel = self:_cancel_prompt(),
         prompt_confirm = opts.prompt_confirm,
-        prompt_input = self:_input_prompt(),
         prompt_prefix = opts.prompt_prefix,
         prompt_preview = opts.prompt_preview,
         prompt_query = opts.prompt_query,

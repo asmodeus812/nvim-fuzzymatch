@@ -64,8 +64,13 @@ function Stream:_close_stream()
 
     if self._state.accum then
         -- the accumulator must be detached from the pool, as closing the stream now implies no more results will come in, this frees
-        -- the accumulator from the pool, allowing users to use the results as they see fit, through stream.results.
+        -- the accumulator from the pool, allowing users to use the results as they see fit, through stream.results. The accumulator is also resized to ensure the total number of elements, this is useful if the stream did not find any results, in which case _flush_results would never be called, in all other cases this is a no op.
         utils.detach_table(self._state.accum)
+        utils.resize_table(
+            self._state.accum,
+            self._state.total,
+            utils.EMPTY_STRING
+        )
         self.results = self._state.accum
         self._state.accum = nil
         self._state.total = 0
