@@ -41,7 +41,7 @@ end
 
 function Match:_populate_chunks()
     local size = 0
-    if self.list and #self.list > 0 then
+    if assert(self.list) and #self.list > 0 then
         -- each time we are called we fill the chunks with the next step of items from the source list, the chynks aer always
         -- the  same size except for the last one which can be smaller.
         local range = self._state.offset + self._options.step
@@ -56,11 +56,15 @@ function Match:_populate_chunks()
             -- tail
             if not new_size or new_size <= 0 then return false end
 
+            -- quickly pull a table from the pool, we are going to use for the tail eleements, to avoid nuking the size of
+            -- the main chunk table re-used for the bulk of the results and matches
             self._state.tail = utils.obtain_table(new_size)
             utils.resize_table(self._state.tail, new_size)
             destination = self._state.tail
         end
-        -- move the items into the destination chunk, either the regular chunks or the tail chunk, and update the offsets
+
+        -- move the items into the destination chunk, either the regular chunks or the tail chunk, based on the left over size
+        -- of the total items in the list, and update the offsets accordingly
         for i = self._state.offset, iteration_limit do
             destination[size + 1] = self.list[i]
             size = size + 1
@@ -290,18 +294,13 @@ function Match:match(list, pattern, callback, transform)
         end
     end
 
-    -- there is nothing to match against or no pattern to match
-    if not list or #list == 0 or not pattern or #pattern == 0 then
-        return
-    end
-
     -- initialize the core matching context
     self.list = assert(list)
     self.pattern = assert(pattern)
     self.callback = assert(callback)
     self.transform = transform or nil
 
-    self._state.offset = 1
+    self._state.offset = 0
 
     if not self._state.accum then
         -- prepare accumulator for results, these will hold the results across multiple matches, together with the buffer we are

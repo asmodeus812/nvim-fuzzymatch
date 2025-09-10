@@ -235,7 +235,7 @@ function Picker:_create_stage()
                 stage.select:close()
                 stage.match:stop()
             elseif self.stream.results then
-                if type(query) == "string" and #query > 0 then
+                if #self.stream.results > 0 and type(query) == "string" and #query > 0 then
                     stage.match:match(self.stream.results, query, function(matching)
                         if matching == nil then
                             -- notify that there matching has finished, so the renderer can update the status, also
@@ -421,7 +421,7 @@ function Picker.ls_converter(entry)
     assert(type(entry) == "string" and #entry > 0)
     local trimmed = entry:gsub("^%s*(.-)%s*$", "%1")
     local filename = trimmed:match("([^%s]+)$")
-    if filename then
+    if filename and #filename > 0 then
         return {
             col = 1,
             lnum = 1,
@@ -435,11 +435,11 @@ function Picker.err_converter(entry)
     assert(type(entry) == "string" and #entry > 0)
     local pat = "^([^:]+):(%d+):(%d+):%s*[^:]+:%s*(.+)$"
     local filename, line_num, col_num = entry:match(pat)
-    if filename then
+    if filename and #filename > 0 then
         return {
             filename = filename,
             col = col_num and tonumber(col_num),
-            line = line_num and tonumber(line_num),
+            lnum = line_num and tonumber(line_num),
         }
     end
     return false

@@ -162,5 +162,5 @@ local picker = Picker.new({
 })
 
 vim.keymap.set("n", "gz", function()
-    picker:open()
+    require("fuzzy.sources.buffer").buffers({})
 end)

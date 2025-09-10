@@ -72,15 +72,26 @@ end
 local function entry_mapper(entry)
     local col = 1
     local lnum = 1
+    local fname = nil
+    local bufnr = nil
 
-    if type(entry) == "table" and assert(entry.filename) then
+    if type(entry) == "table" then
         col = entry.col or 1
         lnum = entry.lnum or 1
-        entry = entry.filename
+        bufnr = entry.bufnr
+        fname = entry.filename
     end
 
-    assert(type(entry) == "string" and #entry > 0)
-    return { col = col, lnum = lnum, filename = entry }
+    assert(fname ~= nil or bufnr ~= nil)
+    assert(not fname or #fname > 0)
+    assert(not bufnr or bufnr > 0)
+
+    return {
+        col = col,
+        lnum = lnum,
+        bufnr = bufnr,
+        filename = fname,
+    }
 end
 
 local function compute_offsets(str, start_char, char_len)
@@ -158,15 +169,15 @@ local function populate_buffer(buffer, list, display, step)
         local _end = math.min(#list, step)
         local lines = utils.obtain_table(step)
 
-        while start < _end do
+        repeat
             for i = start, _end, 1 do
                 lines[i] = line_mapper(list[i], display)
                 async.yield()
             end
-            vim.api.nvim_buf_set_lines(buffer, start - 1, _end - 1, false, lines)
+            vim.api.nvim_buf_set_lines(buffer, start - 1, _end, false, lines)
             start = math.min(#list, _end + 1)
             _end = math.min(#list, _end + step)
-        end
+        until start == #list or start > _end
         vim.api.nvim_buf_set_lines(buffer, _end, -1, false, {})
         utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
     else
@@ -297,9 +308,11 @@ end
 local function display_entry(strategy, entry, window, buffers)
     local old_ignore = vim.o.eventignore
     vim.o.eventignore = "all"
-    local buf = strategy:preview(entry, window)
-    if not vim.tbl_contains(buffers, buf) then
-        table.insert(buffers, buf)
+    local ok, res = pcall(strategy.preview, strategy, entry, window)
+    if ok and res and not vim.tbl_contains(buffers, res) then
+        table.insert(buffers, res)
+    elseif not ok and res then
+        vim.notify(res, vim.log.levels.ERROR)
     end
     vim.o.eventignore = old_ignore
 end
@@ -312,17 +325,24 @@ function Select.BufferPreview.new(converter)
 end
 
 function Select.BufferPreview:preview(entry, window)
-    local buffer
     entry = self.converter(entry)
-    if vim.fn.bufexists(entry.filename) ~= 0 then
+
+    local buffer, exists
+    if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
+        buffer = entry.bufnr
+        exists = true
+    elseif entry.filename and vim.fn.bufexists(entry.filename) ~= 0 then
         buffer = vim.fn.bufnr(entry.filename, false)
-    elseif vim.fn.filereadable(entry.filename) ~= 0 then
+        exists = true
+    elseif entry.filename and vim.fn.filereadable(entry.filename) ~= 0 then
         buffer = vim.fn.bufadd(entry.filename)
         vim.bo[buffer].buflisted = false
+        exists = false
     end
 
     local cursor = { entry.lnum or 1, entry.col and (entry.col - 1) or 0 }
-    assert(buffer and buffer > 0 and vim.fn.bufload(buffer))
+    assert(buffer ~= nil and vim.api.nvim_buf_is_valid(buffer))
+    assert(type(buffer) == "number" and vim.fn.bufload(buffer))
 
     vim.api.nvim_win_set_buf(window, buffer)
     pcall(vim.api.nvim_win_set_cursor, window, cursor)
@@ -341,7 +361,7 @@ function Select.BufferPreview:preview(entry, window)
         end)
     end
 
-    return buffer
+    return not exists and buffer
 end
 
 function Select.CustomPreview.new(callback)
@@ -352,10 +372,10 @@ function Select.CustomPreview.new(callback)
 end
 
 function Select.CustomPreview:preview(entry, window)
+    assert(type(entry) == "string" or type(entry) == "table")
+
     local id = tostring(entry):gsub("table: ", "")
-    local name = string.format(
-        "%s#fuzzy-custom-preview-entry", id
-    )
+    local name = string.format("%s#fuzzy-custom-preview-entry", id)
 
     local buffer
     if vim.fn.bufexists(name) == 0 then
@@ -384,12 +404,11 @@ function Select.CustomPreview:preview(entry, window)
                 "Unable to display or preview entry"
             })
         end
+        return buffer
     else
         buffer = assert(vim.fn.bufnr(name, false))
         vim.api.nvim_win_set_buf(window, buffer)
     end
-
-    return buffer
 end
 
 function Select.CommandPreview.new(command, converter)
@@ -401,14 +420,36 @@ function Select.CommandPreview.new(command, converter)
 end
 
 function Select.CommandPreview:preview(entry, window)
-    local cursor = { entry.lnum or 1, entry.col and (entry.col - 1) or 0 }
-    local name = string.format("%s#fuzzy-command-preview-entry", entry.filename)
+    entry = self.converter(entry)
+
+    local cursor = {
+        entry.lnum or 1,
+        entry.col and (entry.col - 1) or 0,
+    }
+
+    local name = string.format(
+        "%s#fuzzy-command-preview-entry",
+        tostring(entry.bufnr or entry.filename)
+    )
 
     local buffer
-    entry = self.converter(entry)
-    if vim.fn.bufexists(name) == 0 then
-        buffer = vim.api.nvim_create_buf(false, true)
-        buffer = initialize_buffer(buffer, "nofile", "fuzzy-preview")
+    if vim.fn.bufexists(name) == 1 then
+        buffer = assert(vim.fn.bufnr(name, false))
+        vim.api.nvim_win_set_buf(window, buffer)
+        pcall(vim.api.nvim_win_set_cursor, window, cursor)
+    else
+        local exists
+        if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
+            buffer = entry.bufnr
+            exists = true
+        else
+            buffer = vim.api.nvim_create_buf(false, true)
+            buffer = initialize_buffer(
+                buffer, "nofile", "fuzzy-preview"
+            )
+            exists = false
+        end
+
         vim.api.nvim_win_set_buf(window, buffer)
         vim.api.nvim_win_call(window, function()
             local cmd
@@ -439,13 +480,8 @@ function Select.CommandPreview:preview(entry, window)
                 vim.fn.bufnr("#"), { force = true }
             )
         end)
-    else
-        buffer = assert(vim.fn.bufnr(name, false))
-        vim.api.nvim_win_set_buf(window, buffer)
-        pcall(vim.api.nvim_win_set_cursor, window, cursor)
+        return not exists and buffer
     end
-
-    return buffer
 end
 
 function Select:_prompt_input(input, callback)
@@ -692,20 +728,13 @@ function Select:exec_command(command, mods, callback)
 
         local col = 1
         local lnum = 1
-        local fname = value
-
-        if type(value) == "table" then
-            col = assert(value.col)
-            lnum = assert(value.lnum)
-            fname = assert(value.filename)
-        end
 
         vim.cmd[command]({
-            args = { fname },
+            args = { value.filename or value.bufnr },
             mods = mods,
             bang = true,
         })
-        vim.api.nvim_win_set_cursor(0, { lnum, col - 1 })
+        pcall(vim.api.nvim_win_set_cursor, 0, { lnum, col - 1 })
 
         ::continue::
     end
@@ -732,7 +761,7 @@ function Select:send_fixlist(type, callback)
     local args = {
         nr = "$",
         items = vim.tbl_filter(function(item)
-            return item ~= nil and item.filename
+            return item ~= nil and (item.filename or item.bufnr)
         end, result),
         title = "[Selection]",
     }
@@ -1062,7 +1091,7 @@ function Select:open()
 
         local query = self:query()
         if query and #query > 0 then
-            vim.api.nvim_win_set_cursor(prompt_window, {
+            pcall(vim.api.nvim_win_set_cursor, prompt_window, {
                 1, -- set cursor on the first line
                 vim.str_byteindex(query, #query),
             })
@@ -1147,7 +1176,7 @@ function Select:open()
             vim.api.nvim_win_set_height(list_window, list_height)
             list_window = initialize_window(list_window)
             if not opts.resume_view then
-                vim.api.nvim_win_set_cursor(list_window, { 1, 0 })
+                pcall(vim.api.nvim_win_set_cursor, list_window, { 1, 0 })
             end
             vim.wo[list_window][0].signcolumn = 'number'
             vim.wo[list_window][0].cursorline = true
