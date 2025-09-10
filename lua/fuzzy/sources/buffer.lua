@@ -3,11 +3,7 @@ local FUTURE = os.time({ year = 2038, month = 1, day = 1, hour = 0, minute = 00 
 local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
 
-local M = {
-    _state = {
-        buffers = nil
-    }
-}
+local M = {}
 
 function M.buf_is_qf(bufnr, bufinfo)
     bufinfo = bufinfo or (vim.api.nvim_buf_is_valid(bufnr) and M.getbufinfo(bufnr))
@@ -151,7 +147,6 @@ function M.buffers(opts)
     buffers = enrich_buffers(opts, buffers, nil)
 
     local picker = Picker.new({
-        ephemeral = true,
         content = buffers,
         display = function(e)
             return e.info.display or e.info.name or e.name

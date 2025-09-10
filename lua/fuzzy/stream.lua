@@ -76,8 +76,8 @@ function Stream:_close_stream()
         self._state.total = 0
     end
 
-    self.mapper = nil
     self.callback = nil
+    self.transform = nil
 end
 
 function Stream:_make_stream()
@@ -103,8 +103,8 @@ function Stream:_bind_method(method)
 end
 
 function Stream:_transform_data(data)
-    if type(self.mapper) == "function" then
-        return self.mapper(data)
+    if type(self.transform) == "function" then
+        return self.transform(data)
     else
         return data
     end
@@ -241,7 +241,7 @@ end
 --- @field cwd? string The current working directory to run the command in, defaults to the current working directory of Neovim
 --- @field args? string[] The arguments to pass to the command, defaults to an empty table
 --- @field env? string[] The environment variables to set for the command, defaults to nil
---- @field mapper? fun(data: string): string|nil A function to transform each line or chunk of data before it is added to the results, defaults to nil
+--- @field transform? fun(data: string): string|nil A function to transform each line or chunk of data before it is added to the results, defaults to nil
 --- @field callback fun(buffer: string[], accum: string[]) A function to be called when new data is available, this function receives two arguments, the first is the current buffer of data, the second is the accumulation of all data so far, this function is required
 
 --- Starts the stream with the given command and options, if a stream is already running it is stopped first, if the new stream is for
@@ -254,6 +254,8 @@ function Stream:start(cmd, opts)
         cmd = { cmd, { "string", "function" }, false },
         opts = { opts, "table", true },
     })
+    -- each time we start a new stream we make sure to stop any ongoing streams and clean up the context, any old state will be lost,
+    -- depending on the ephemeral option more aggressive clean up might be done
     if self:running() then
         self:stop()
         if self._options.ephemeral then
@@ -261,7 +263,7 @@ function Stream:start(cmd, opts)
         end
     end
 
-    self.mapper = opts.mapper
+    self.transform = opts.transform
     self.callback = assert(opts.callback)
 
     -- based on the type of the stream the step either governs how many bytes to read, or how many lines into the buffer before

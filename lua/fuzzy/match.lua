@@ -44,16 +44,15 @@ function Match:_populate_chunks()
     if assert(self.list) and #self.list > 0 then
         -- each time we are called we fill the chunks with the next step of items from the source list, the chynks aer always
         -- the  same size except for the last one which can be smaller.
-        local range = self._state.offset + self._options.step
-        local iteration_limit = range - 1
+        local iteration_range = self._state.offset + self._options.step
+        local iteration_limit = iteration_range - 1
         local destination = self._state.chunks
-        if #self.list < range then
+        if #self.list < iteration_range then
             -- in case the list has less items than the current step we create a smaller tail chunk to avoid re-sizing the
-            -- chunks, instead we use a smaller tail table which accepts the very last items
+            -- chunks, instead we use a smaller tail table which accepts the very last items, if the new size is invalid
+            -- return false to signal there is nothing more to process for the matching process
             iteration_limit = #self.list
             local new_size = iteration_limit - self._state.offset
-            -- if the new size is invalid return false to signal there is nothing more to process into the chunks of the
-            -- tail
             if not new_size or new_size <= 0 then return false end
 
             -- quickly pull a table from the pool, we are going to use for the tail eleements, to avoid nuking the size of
@@ -62,6 +61,9 @@ function Match:_populate_chunks()
             utils.resize_table(self._state.tail, new_size)
             destination = self._state.tail
         end
+        -- ensure that the iteration range is within the iteration range for each step, the range has to be valid and only
+        -- within the absolute size of the list passed for filtering
+        assert(self._state.offset < iteration_limit and iteration_limit <= #self.list)
 
         -- move the items into the destination chunk, either the regular chunks or the tail chunk, based on the left over size
         -- of the total items in the list, and update the offsets accordingly
@@ -69,9 +71,12 @@ function Match:_populate_chunks()
             destination[size + 1] = self.list[i]
             size = size + 1
         end
-        self._state.offset = self._state.offset + self._options.step
+
+        -- update the offset to pick the next chunk of items from the source list, each match step processes a given amount of
+        -- items from the list as defined by the step option
+        self._state.offset = iteration_range
     end
-    return size > 0
+    return size and size > 0
 end
 
 function Match:_stop_processing()

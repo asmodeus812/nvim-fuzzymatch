@@ -1,10 +1,12 @@
 local LIST_HIGHLIGHT_NAMESPACE = vim.api.nvim_create_namespace("list_highlight_namespace")
 local LIST_DECORATED_NAMESPACE = vim.api.nvim_create_namespace("list_decorated_namespace")
 local LIST_STATUS_NAMESPACE = vim.api.nvim_create_namespace("list_status_namespace")
+local LIST_HEADER_NAMESPACE = vim.api.nvim_create_namespace("list_header_namespace")
 local highlight_extmark_opts = { limit = 1, type = "highlight", details = false, hl_name = false }
 local detailed_extmark_opts = { limit = 4, type = "highlight", details = true, hl_name = true }
 local async = require("fuzzy.async")
 local utils = require("fuzzy.utils")
+local padding = { " ", "NonText" }
 
 --- @class Select
 --- @field private source_window integer|nil The window ID of the source window where the selection interface was opened from.
@@ -13,7 +15,6 @@ local utils = require("fuzzy.utils")
 --- @field private list_window integer|nil The window ID of the list display window.
 --- @field private list_buffer integer|nil The buffer ID of the list display buffer.
 --- @field private preview_window integer|nil The window ID of the preview display window.
---- @field private preview_buffer integer|nil The buffer ID of the preview display buffer.
 --- @field private _options SelectOptions The configuration options for the selection interface.
 --- @field private _state table The internal state of the selection interface.
 local Select = {}
@@ -78,8 +79,17 @@ local function entry_mapper(entry)
     if type(entry) == "table" then
         col = entry.col or 1
         lnum = entry.lnum or 1
-        bufnr = entry.bufnr
-        fname = entry.filename
+        bufnr = entry.bufnr or nil
+        fname = entry.filename or nil
+    elseif type(entry) == "number" then
+        assert(entry > 0 and vim.api.nvim_buf_is_valid(entry))
+        bufnr = entry
+        fname = vim.api.nvim_buf_get_name(bufnr)
+    elseif type(entry) == "string" then
+        assert(#entry > 0 and vim.loop.fs_stat(entry) ~= nil)
+        fname = entry
+        bufnr = vim.fn.bufnr(fname, false)
+        bufnr = bufnr <= 0 and nil
     end
 
     assert(fname ~= nil or bufnr ~= nil)
@@ -334,10 +344,23 @@ function Select.BufferPreview:preview(entry, window)
     elseif entry.filename and vim.fn.bufexists(entry.filename) ~= 0 then
         buffer = vim.fn.bufnr(entry.filename, false)
         exists = true
-    elseif entry.filename and vim.fn.filereadable(entry.filename) ~= 0 then
+    elseif entry.filename and vim.loop.fs_stat(entry.filename) then
         buffer = vim.fn.bufadd(entry.filename)
         vim.bo[buffer].buflisted = false
         exists = false
+    else
+        local name = "#fuzzy-no-preview-entry"
+        if vim.fn.bufexists(name) ~= 0 then
+            buffer = vim.fn.bufnr(name)
+        else
+            buffer = vim.api.nvim_create_buf(false, true)
+            buffer = initialize_buffer(buffer, "nofile", "fuzzy-preview")
+            populate_buffer(buffer, { "Unable to display or preview entry" })
+            vim.api.nvim_buf_set_name(buffer, name)
+        end
+        pcall(vim.api.nvim_win_set_cursor, window, { 1, 0 })
+        vim.api.nvim_win_set_buf(window, buffer)
+        return buffer
     end
 
     local cursor = { entry.lnum or 1, entry.col and (entry.col - 1) or 0 }
@@ -377,9 +400,8 @@ function Select.CustomPreview:preview(entry, window)
     local id = tostring(entry):gsub("table: ", "")
     local name = string.format("%s#fuzzy-custom-preview-entry", id)
 
-    local buffer
     if vim.fn.bufexists(name) == 0 then
-        buffer = vim.api.nvim_create_buf(false, true)
+        local buffer = vim.api.nvim_create_buf(false, true)
         buffer = initialize_buffer(buffer, "nofile", "fuzzy-preview")
         vim.api.nvim_win_set_buf(window, buffer)
         vim.api.nvim_buf_set_name(buffer, name)
@@ -400,13 +422,11 @@ function Select.CustomPreview:preview(entry, window)
                 pcall(vim.api.nvim_win_set_cursor, window, cursor)
             end
         else
-            populate_buffer(buffer, {
-                "Unable to display or preview entry"
-            })
+            populate_buffer(buffer, { "Unable to display or preview entry" })
         end
         return buffer
     else
-        buffer = assert(vim.fn.bufnr(name, false))
+        local buffer = assert(vim.fn.bufnr(name, false))
         vim.api.nvim_win_set_buf(window, buffer)
     end
 end
@@ -432,13 +452,13 @@ function Select.CommandPreview:preview(entry, window)
         tostring(entry.bufnr or entry.filename)
     )
 
-    local buffer
     if vim.fn.bufexists(name) == 1 then
-        buffer = assert(vim.fn.bufnr(name, false))
+        local buffer = assert(vim.fn.bufnr(name, false))
         vim.api.nvim_win_set_buf(window, buffer)
         pcall(vim.api.nvim_win_set_cursor, window, cursor)
     else
         local exists
+        local buffer
         if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
             buffer = entry.bufnr
             exists = true
@@ -625,10 +645,11 @@ function Select:_destroy_view()
     self._state.streaming = false
     self._state.positions = nil
     self._state.entries = nil
+    self._state.query = ""
 end
 
 function Select:_clean_preview()
-    if self._state.buffers then
+    if #self._state.buffers > 0 then
         local valid = vim.tbl_filter(
             vim.api.nvim_buf_is_valid,
             self._state.buffers
@@ -912,6 +933,41 @@ function Select:close()
     end
 end
 
+-- Hides the select interface, does not enforce any resource de-allocation taken up by the select interface, even if the ephemeral option is set to true, to enforce this either use `close` or manually call `destroy`
+function Select:hide()
+    self:_close_view()
+    self:_clean_preview()
+end
+
+-- Clears the select interface, from any content and state, that includes the query, list and preview interfaces which are the core parts of the selection interface
+function Select:clear()
+    if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
+        populate_buffer(self.prompt_buffer, {})
+    end
+    if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
+        populate_buffer(self.list_buffer, {})
+    end
+
+    if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
+        vim.api.nvim_win_set_cursor(self.list_window, { 1, 0 })
+    end
+    if self.preview_window and vim.api.nvim_win_is_valid(self.preview_window) then
+        local buffer = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_win_set_buf(self.preview_window, buffer)
+
+        buffer = initialize_buffer(buffer, "nofile", "fuzzy-preview")
+        vim.bo[buffer].bufhidden = "wipe"
+        vim.bo[buffer].modifiable = false
+        populate_buffer(buffer, {})
+    end
+
+    self._state.streaming = false
+    self._state.positions = nil
+    self._state.entries = nil
+    self._state.query = ""
+    self:_clean_preview()
+end
+
 --- Checks if the selection interface is currently open, this is determined by checking if both the prompt and list windows are valid.
 --- @return boolean True if the selection interface is open, false otherwise.
 function Select:isopen()
@@ -920,18 +976,10 @@ function Select:isopen()
     return list ~= nil and prompt ~= nil and list and prompt
 end
 
---- Checks if the list has any entries rendered, if the list is not valid or has no lines, it is considered empty, otherwise it is not.
+--- Checks if the selection interface is showing any entries, the entries can be rendered or set using the `list` method, which renders the specified entries into the list.
 --- @return boolean True if the list is empty, false otherwise.
 function Select:isempty()
-    if not self.list_buffer or not vim.api.nvim_buf_is_valid(self.list_buffer) then
-        return true
-    end
-    if vim.api.nvim_buf_line_count(self.list_buffer) == 1 then
-        -- @Speed: use get_text with minimal col offsets to get a smaller chunk
-        local lines = vim.api.nvim_buf_get_lines(self.list_buffer, 0, 1, false)
-        return not lines or #lines == 0 or #lines[1] == 0
-    end
-    return false
+    return not self._state.entries or #self._state.entries == 0
 end
 
 -- Render a list of entries in the list window, with optional highlighting positions and display formatting function or property.
@@ -955,10 +1003,15 @@ end
 
 --- Render the current status of the select, providing information about the selection list, preview or prompt, as virtual text in the select interface
 --- @param status string the status data to render in the window
-function Select:status(status)
+function Select:status(status, hl)
     vim.validate {
         status = { status, "string" },
+        hl = { hl, { "string", "nil" }, true },
     }
+
+    local prefix = self._options.prompt_decor or nil
+    local p = type(prefix) == "table" and assert(prefix[2])
+
     vim.api.nvim_buf_clear_namespace(self.prompt_buffer, LIST_STATUS_NAMESPACE, 0, 1)
     vim.api.nvim_buf_set_extmark(self.prompt_buffer, LIST_STATUS_NAMESPACE, 0, 0, {
         priority = 1000,
@@ -967,19 +1020,71 @@ function Select:status(status)
         virt_text_pos = "eol",
         virt_text_win_col = nil,
         virt_text = {
-            -- { self._options.prompt_prefix, "Normal" },
-            { assert(status), "NonText" },
+            p and p ~= nil and { p, "Normal" },
+            { assert(status), hl or "NonText" },
         },
     })
+end
+
+-- Render a single header line in the prompt buffer and window, which is represented by the headers arguments passed in to this method. The headers can either be a table of strings or tuples, representing the text of the header and the highlight group.
+--- @param header table|string the header or headers to render in the query prompt buffer window
+function Select:header(header)
+    vim.validate {
+        header = { header, { "table", "string" } },
+    }
+
+    local header_items
+    if type(header) == "table" then
+        header_items = {}
+        for _, value in ipairs(header) do
+            local item = {}
+            if type(value) == "table" then
+                assert(#value == 2 and #value[1] > 0 and #value[2] > 0)
+                table.insert(item, value[1])
+                table.insert(item, value[2])
+            elseif type(value) == "string" then
+                assert(#value > 0)
+                table.insert(item, value)
+                table.insert(item, "Normal")
+            end
+            assert(#item == 2 and #item[1] and #item[2])
+            table.insert(header_items, padding)
+            table.insert(header_items, item)
+        end
+    elseif type(header) == "string" then
+        header_items = { { header, "Normal" } }
+    end
+
+    if vim.api.nvim_win_get_height(self.prompt_window) == 1 then
+        vim.api.nvim_win_set_height(self.prompt_window, 2)
+    end
+
+    vim.api.nvim_buf_clear_namespace(self.prompt_buffer, LIST_HEADER_NAMESPACE, 0, 1)
+    vim.api.nvim_buf_set_extmark(self.prompt_buffer, LIST_HEADER_NAMESPACE, 0, 0, {
+        priority = 2000,
+        hl_mode = "combine",
+        virt_lines_above = true,
+        virt_lines_leftcol = true,
+        virt_lines_overflow = "trunc",
+        virt_lines = { header_items }
+    })
+
+    -- TODO: https://github.com/neovim/neovim/issues/27967
+    vim.api.nvim_win_call(self.prompt_window, function()
+        local scroll_up = vim.api.nvim_replace_termcodes(
+            assert("<c-b>"), false, false, true
+        )
+        vim.cmd.normal({ args = { scroll_up }, bang = true })
+    end)
 end
 
 --- Opens the selection interface, creating necessary buffers and windows as needed, and sets up autocommands and mappings, if not
 --- already open.
 function Select:open()
-    local opts = assert(self._options)
     if self:isopen() then
-        self:close()
+        return
     end
+    local opts = assert(self._options)
 
     self.source_window = vim.api.nvim_get_current_win()
     local factor = opts.prompt_preview and 2.0 or 1.0
@@ -997,7 +1102,7 @@ function Select:open()
                 ["<esc>"] = opts.prompt_cancel,
                 ["<c-c>"] = opts.prompt_cancel,
             })
-            vim.bo[prompt_buffer].bufhidden = opts.ephemeral and "wipe" or "hide"
+            vim.bo[prompt_buffer].bufhidden = "hide"
             vim.bo[prompt_buffer].modifiable = true
 
             local prompt_trigger = vim.api.nvim_create_autocmd({ "TextChangedP", "TextChangedI" }, {
@@ -1043,8 +1148,12 @@ function Select:open()
                 once = true,
             })
 
+            local prefix = opts.prompt_decor or nil
             assert(vim.fn.sign_define(sign_name, {
-                text = opts.prompt_prefix, priority = 10
+                ---@diagnostic disable-next-line: assign-type-mismatch
+                text = type(prefix) == "table"
+                    and assert(prefix[1])
+                    or assert(prefix),
             }) == 0, "failed to define sign")
 
             assert(vim.fn.sign_place(
@@ -1064,8 +1173,6 @@ function Select:open()
                 -- being set, so we don't need to call it manually here, just set the line
                 vim.api.nvim_buf_set_lines(prompt_buffer, 0, 1, false, { opts.prompt_query })
             end
-        elseif opts.resume_view == false then
-            populate_buffer(prompt_buffer, {})
         end
 
         local prompt_window = self.prompt_window
@@ -1093,12 +1200,15 @@ function Select:open()
         if query and #query > 0 then
             pcall(vim.api.nvim_win_set_cursor, prompt_window, {
                 1, -- set cursor on the first line
-                vim.str_byteindex(query, #query),
+                vim.str_byteindex(query, #query) + 1,
             })
         end
 
         self.prompt_buffer = prompt_buffer
         self.prompt_window = prompt_window
+        if opts.prompt_headers ~= nil then
+            self:header(opts.prompt_headers)
+        end
     end
 
     if opts.prompt_list then
@@ -1114,7 +1224,7 @@ function Select:open()
                     ["<c-c>"] = opts.prompt_cancel,
                 })
             end
-            vim.bo[list_buffer].bufhidden = opts.ephemeral and "wipe" or "hide"
+            vim.bo[list_buffer].bufhidden = "hide"
             vim.bo[list_buffer].modifiable = false
 
             local entries, positions
@@ -1157,11 +1267,6 @@ function Select:open()
             assert(vim.fn.sign_define(sign_name, {
                 text = self._options.toggle_prefix, priority = 10
             }) == 0)
-        elseif opts.resume_view == false then
-            self._state.streaming = false
-            self._state.positions = nil
-            self._state.entries = nil
-            populate_buffer(list_buffer, {})
         end
 
         local list_window = self.list_window
@@ -1175,9 +1280,6 @@ function Select:open()
             });
             vim.api.nvim_win_set_height(list_window, list_height)
             list_window = initialize_window(list_window)
-            if not opts.resume_view then
-                pcall(vim.api.nvim_win_set_cursor, list_window, { 1, 0 })
-            end
             vim.wo[list_window][0].signcolumn = 'number'
             vim.wo[list_window][0].cursorline = true
             vim.wo[list_window][0].winfixbuf = true
@@ -1224,6 +1326,7 @@ function Select:open()
         end
 
         self.preview_window = preview_window
+        self:_display_preview()
     end
 
     if self.prompt_window then
@@ -1261,14 +1364,14 @@ end
 --- @field prompt_preview? Select.Preview|boolean speficies the preview strategy to be used when entries are focused, through different actions which move the cursor in the window showing the list of items
 --- @field prompt_list? boolean|fun()|any[] Whether to show the list window or a function to provide initial entries. Default: true
 --- @field prompt_input? boolean|fun() Whether to show the input prompt, when function is provided it is used as the input callback. Default: true
+--- @field prompt_headers? table|string|nil Initial information headers to populate the prompt with. Default: nil
 --- @field prompt_query? string|nil Initial query to populate the prompt input with. Default: nil
---- @field prompt_prefix? string Prefix to display in the prompt input. Default: "> "
+--- @field prompt_decor? table|string Symbol decoration to display in the prompt. A table of two items can be provided show around the prompt query, or a single string to show in front of the prompt query. Default: "› "
 --- @field toggle_prefix? string Prefix to display for toggled entries in the list. Default: "✓"
 --- @field preview_timeout? number timeout in milliseconds after which the preview window will unlock the user interface
 --- @field window_ratio? number Ratio of the window height to the total editor height. Default: 0.15
---- @field resume_view? boolean Whether to resume the view with existing buffers. Default: false
 --- @field list_step? integer|nil Number of entries to render at a time when populating the list. Default: nil
---- @field list_display? function|nil Function governing how the entries in the list are going to be displayed in case they represent complex structures
+--- @field list_display? string|function|nil Function governing how the entries in the list are going to be displayed in case they represent complex structures
 --- @field ephemeral? boolean Whether to destroy buffers when closing the selection interface. Default: true
 --- @field mappings? table Key mappings with keys as the key combination and values as the Select method to invoke, the method will be called with the Select instance as the first argument
 --- @field providers? table Providers for additional decorations in the list.
@@ -1288,11 +1391,11 @@ function Select.new(opts)
         prompt_preview = { opts.prompt_preview, { "boolean", "table", "function" }, true },
         prompt_list = { opts.prompt_list, { "boolean", "function", "table" }, true },
         prompt_input = { opts.prompt_input, { "boolean", "function" }, true },
+        prompt_headers = { opts.prompt_headers, { "table", "string", "nil" }, true },
         prompt_query = { opts.prompt_query, { "string", "nil" }, true },
-        prompt_prefix = { opts.prompt_prefix, "string", true },
+        prompt_decor = { opts.prompt_decor, { "table", "string" }, true },
         toggle_prefix = { opts.toggle_prefix, "string", true },
         window_ratio = { opts.window_ratio, "number", true },
-        resume_view = { opts.resume_view, "boolean", true },
         preview_timeout = { opts.preview_timeout, { "number", "nil" }, true },
         list_display = { opts.list_display, { "function", "string", "nil" }, true },
         list_step = { opts.list_step, { "number", "nil" }, true },
@@ -1308,12 +1411,12 @@ function Select.new(opts)
         prompt_preview = false,
         prompt_list = true,
         prompt_input = true,
+        prompt_headers = nil,
         prompt_query = nil,
-        prompt_prefix = "> ",
+        prompt_decor = "› ",
         toggle_prefix = "✓",
         preview_timeout = 500,
         window_ratio = 0.15,
-        resume_view = false,
         list_display = nil,
         list_step = nil,
         ephemeral = true,
@@ -1339,7 +1442,6 @@ function Select.new(opts)
     }, opts)
 
     local self = setmetatable({
-        preview_buffer = nil,
         preview_window = nil,
         prompt_buffer = nil,
         prompt_window = nil,
