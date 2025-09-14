@@ -57,8 +57,8 @@ function M.files(opts)
             args = {
                 "--files",
                 "--hidden",
-                "--no-ignore",
-            }
+            },
+            cwd = opts.cwd,
         },
         prompt_confirm = Select.select_entry,
         prompt_preview = Select.BufferPreview.new(),
@@ -86,6 +86,7 @@ function M.dirs(opts)
                 "-type",
                 "d",
             },
+            cwd = opts.cwd,
             map = function(e)
                 if e:match("%.$") then
                     return nil
@@ -93,6 +94,8 @@ function M.dirs(opts)
                 return e
             end
         },
+        -- find`s a bit slow
+        stream_step = 50000,
         prompt_confirm = Select.select_entry,
         prompt_preview = Select.CommandPreview.new({
             "ls", "-lah"
@@ -121,6 +124,7 @@ function M.ls(opts)
                 "-lah",
                 ".",
             },
+            cwd = opts.cwd,
             map = function(e)
                 if e:match("%.$") or e:match("%.%.$") or e:match("^total") then
                     return nil
@@ -155,6 +159,7 @@ function M.grep(opts)
                 "--no-heading",
                 "{prompt}",
             },
+            cwd = opts.cwd,
             interactive = "{prompt}",
         },
         prompt_confirm = Select.action(Select.select_entry, Picker.many(grep_converter)),

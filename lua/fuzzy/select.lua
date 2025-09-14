@@ -2,11 +2,14 @@ local LIST_HIGHLIGHT_NAMESPACE = vim.api.nvim_create_namespace("list_highlight_n
 local LIST_DECORATED_NAMESPACE = vim.api.nvim_create_namespace("list_decorated_namespace")
 local LIST_STATUS_NAMESPACE = vim.api.nvim_create_namespace("list_status_namespace")
 local LIST_HEADER_NAMESPACE = vim.api.nvim_create_namespace("list_header_namespace")
+
 local highlight_extmark_opts = { limit = 1, type = "highlight", details = false, hl_name = false }
 local detailed_extmark_opts = { limit = 4, type = "highlight", details = true, hl_name = true }
-local async = require("fuzzy.async")
-local utils = require("fuzzy.utils")
 local padding = { " ", "NonText" }
+
+local utils = require("fuzzy.utils")
+local Async = require("fuzzy.async")
+local Scheduler = require("fuzzy.scheduler")
 
 --- @class Select
 --- @field private source_window integer|nil The window ID of the source window where the selection interface was opened from.
@@ -81,6 +84,9 @@ local function entry_mapper(entry)
         lnum = entry.lnum or 1
         bufnr = entry.bufnr or nil
         fname = entry.filename or nil
+        if bufnr and not fname and assert(vim.api.nvim_buf_is_valid(bufnr)) then
+            fname = vim.api.nvim_buf_get_name(bufnr)
+        end
     elseif type(entry) == "number" then
         assert(entry > 0 and vim.api.nvim_buf_is_valid(entry))
         bufnr = entry
@@ -89,12 +95,13 @@ local function entry_mapper(entry)
         assert(#entry > 0 and vim.loop.fs_stat(entry) ~= nil)
         fname = entry
         bufnr = vim.fn.bufnr(fname, false)
-        bufnr = bufnr <= 0 and nil
+        bufnr = bufnr > 0 and bufnr or nil
     end
-
+    -- TODO: normalize the fname to be absolute, vim.fn.expand ?
+    -- buf_get_name and expand can differ based on the cwd, this
+    -- needs to be taken care of when taking the full buffer name
     assert(fname ~= nil or bufnr ~= nil)
-    assert(not fname or #fname > 0)
-    assert(not bufnr or bufnr > 0)
+    assert(#fname > 0 or bufnr > 0)
 
     return {
         col = col,
@@ -121,7 +128,7 @@ local function compute_decoration(str, decoration)
         status, status_highlight = decoration.status_provider(str)
     elseif decoration.status_provider == true and icons then
         local result = #str > 0 and vim.fn.bufnr(str, false) ~= -1
-        status, status_highlight = result and "[x]", "SpecialChar"
+        status, status_highlight = result and "[x]", "Special"
     end
 
     local icon, icon_highlight
@@ -171,33 +178,57 @@ local function initialize_buffer(buffer, bt, ft)
     return buffer
 end
 
-local function populate_buffer(buffer, list, display, step)
+local function populate_buffer(buffer, entries, display, step)
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
     if step ~= nil and step > 0 then
         local start = 1
-        local _end = math.min(#list, step)
+        local _end = math.min(#entries, step)
         local lines = utils.obtain_table(step)
+        utils.resize_table(lines, step, utils.EMPTY_STRING)
 
         repeat
-            for i = start, _end, 1 do
-                lines[i] = line_mapper(list[i], display)
-                async.yield()
+            for target = start, _end, 1 do
+                lines[(target - start) + 1] = line_mapper(entries[target], display)
             end
+            assert(#lines == step)
+            Async.yield()
+
             vim.api.nvim_buf_set_lines(buffer, start - 1, _end, false, lines)
-            start = math.min(#list, _end + 1)
-            _end = math.min(#list, _end + step)
-        until start == #list or start > _end
+            start = math.min(#entries, _end + 1)
+            _end = math.min(#entries, _end + step)
+        until start == #entries or start > _end
         vim.api.nvim_buf_set_lines(buffer, _end, -1, false, {})
         utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
     else
         if display ~= nil then
-            local mapper = function(entry) return line_mapper(entry, display) end
-            vim.api.nvim_buf_set_lines(buffer, 0, -1, false, vim.tbl_map(mapper, list))
-        else
-            vim.api.nvim_buf_set_lines(buffer, 0, -1, false, list)
+            local mapper = function(entry)
+                return line_mapper(entry, display)
+            end
+            entries = vim.tbl_map(mapper, entries)
         end
+        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, entries)
     end
+    vim.bo[buffer].modifiable = oldma
+    vim.bo[buffer].modified = false
+end
+
+local function populate_range(buffer, start, _end, entries, display)
+    assert(start <= _end and start > 0)
+    local diff = math.abs(_end - start) + 1
+    local lines = utils.obtain_table(diff)
+    utils.resize_table(lines, diff, utils.EMPTY_STRING)
+
+    for target = start, _end, 1 do
+        lines[(target - start) + 1] = line_mapper(entries[target], display)
+    end
+    assert(#lines == diff)
+    Async.yield()
+
+    local oldma = vim.bo[buffer].modifiable
+    vim.bo[buffer].modifiable = true
+    vim.api.nvim_buf_set_lines(buffer, start - 1, _end, false, lines)
+    utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
     vim.bo[buffer].modifiable = oldma
     vim.bo[buffer].modified = false
 end
@@ -262,7 +293,7 @@ local function decorate_range(buffer, start, _end, entries, decoration, display,
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
     for target = start, _end, 1 do
-        local marks = vim.api.nvim_buf_get_extmarks(
+        local marks = (override == false) and vim.api.nvim_buf_get_extmarks(
             buffer, LIST_DECORATED_NAMESPACE,
             { target - 1, 0 }, { target - 1, -1 },
             highlight_extmark_opts
@@ -277,8 +308,8 @@ local function decorate_range(buffer, start, _end, entries, decoration, display,
 
                 -- prefix the line with the decorations, they are concatenated in order from the content table,
                 -- afterwards the matching highlights are inserted as extmarks, this will make sure that this append
-                -- is going to shift the extmarks forward,
-                table.insert(content, "")
+                -- is going to shift the extmarks forward
+                table.insert(content, "") -- extra padding
                 local decor = table.concat(content, " ")
                 vim.api.nvim_buf_set_text(buffer,
                     target - 1, 0, target - 1, 0, { decor }
@@ -316,15 +347,17 @@ local function decorate_range(buffer, start, _end, entries, decoration, display,
 end
 
 local function display_entry(strategy, entry, window, buffers)
-    local old_ignore = vim.o.eventignore
-    vim.o.eventignore = "all"
-    local ok, res = pcall(strategy.preview, strategy, entry, window)
-    if ok and res and not vim.tbl_contains(buffers, res) then
-        table.insert(buffers, res)
-    elseif not ok and res then
-        vim.notify(res, vim.log.levels.ERROR)
-    end
-    vim.o.eventignore = old_ignore
+    vim.schedule(function()
+        local old_ignore = vim.o.eventignore
+        vim.o.eventignore = "all"
+        local ok, res = pcall(strategy.preview, strategy, entry, window)
+        if ok and res and not vim.tbl_contains(buffers, res) then
+            table.insert(buffers, res)
+        elseif not ok and res then
+            vim.notify(res, vim.log.levels.ERROR)
+        end
+        vim.o.eventignore = old_ignore
+    end)
 end
 
 function Select.BufferPreview.new(converter)
@@ -351,37 +384,43 @@ function Select.BufferPreview:preview(entry, window)
     else
         local name = "#fuzzy-no-preview-entry"
         if vim.fn.bufexists(name) ~= 0 then
-            buffer = vim.fn.bufnr(name)
+            buffer = vim.fn.bufnr(name, false)
         else
             buffer = vim.api.nvim_create_buf(false, true)
             buffer = initialize_buffer(buffer, "nofile", "fuzzy-preview")
             populate_buffer(buffer, { "Unable to display or preview entry" })
             vim.api.nvim_buf_set_name(buffer, name)
         end
-        pcall(vim.api.nvim_win_set_cursor, window, { 1, 0 })
         vim.api.nvim_win_set_buf(window, buffer)
+        vim.api.nvim_win_set_cursor(window, { 1, 0 })
         return buffer
     end
 
     local cursor = { entry.lnum or 1, entry.col and (entry.col - 1) or 0 }
     assert(buffer ~= nil and vim.api.nvim_buf_is_valid(buffer))
-    assert(type(buffer) == "number" and vim.fn.bufload(buffer))
 
-    vim.api.nvim_win_set_buf(window, buffer)
-    pcall(vim.api.nvim_win_set_cursor, window, cursor)
+    local done = vim.wait(1000, function()
+        local ok, err = pcall(vim.fn.bufadd, buffer)
+        if not ok and err ~= nil then error(ok) end
+        return ok
+    end, 100, false)
 
-    if not vim.b[buffer].ts_highlight then
-        vim.api.nvim_win_call(window, function()
-            local ft = vim.filetype.match({ buf = buffer, filename = entry.filename })
-            local lang = vim.treesitter.language.get_lang(ft or '')
-            local loaded = lang and vim.treesitter.language.add(lang)
-            if loaded and lang then
-                local ok, err = pcall(vim.treesitter.start, buffer, lang)
-                if not ok and err then
-                    vim.notify(err, vim.log.levels.ERROR)
+    if done then
+        vim.api.nvim_win_set_buf(window, buffer)
+        local ok, err = pcall(vim.api.nvim_win_set_cursor, window, cursor)
+        if not ok and err ~= nil then error(err) end
+
+        if not vim.b[buffer].ts_highlight then
+            vim.api.nvim_win_call(window, function()
+                local ft = vim.filetype.match({ buf = buffer, filename = entry.filename })
+                local lang = vim.treesitter.language.get_lang(ft or '')
+                local loaded = lang and vim.treesitter.language.add(lang)
+                if loaded and lang then
+                    ok, err = pcall(vim.treesitter.start, buffer, lang)
+                    if not ok and err ~= nil then error(err) end
                 end
-            end
-        end)
+            end)
+        end
     end
 
     return not exists and buffer
@@ -419,7 +458,8 @@ function Select.CustomPreview:preview(entry, window)
                 vim.bo[buffer].filetype = ft
             end
             if cursor and type(cursor) == "table" then
-                pcall(vim.api.nvim_win_set_cursor, window, cursor)
+                local ok, err = pcall(vim.api.nvim_win_set_cursor, window, cursor)
+                if not ok and err ~= nil then error(err) end
             end
         else
             populate_buffer(buffer, { "Unable to display or preview entry" })
@@ -442,64 +482,95 @@ end
 function Select.CommandPreview:preview(entry, window)
     entry = self.converter(entry)
 
-    local cursor = {
-        entry.lnum or 1,
-        entry.col and (entry.col - 1) or 0,
-    }
-
     local name = string.format(
         "%s#fuzzy-command-preview-entry",
         tostring(entry.bufnr or entry.filename)
     )
 
+    local cursor = { entry.lnum or 1, 0 }
     if vim.fn.bufexists(name) == 1 then
         local buffer = assert(vim.fn.bufnr(name, false))
         vim.api.nvim_win_set_buf(window, buffer)
-        pcall(vim.api.nvim_win_set_cursor, window, cursor)
+        local streaming = vim.b[buffer].streaming
+        if not streaming or streaming == false then
+            pcall(vim.api.nvim_win_set_cursor, window, cursor)
+        else
+            vim.api.nvim_buf_attach(buffer, false, {
+                on_lines = function(_, buf)
+                    if vim.api.nvim_buf_line_count(buf) >= cursor[1] and vim.api.nvim_win_get_buf(window) == buf then
+                        pcall(vim.api.nvim_win_set_cursor, window, cursor)
+                        return true
+                    end
+                    return false
+                end
+            })
+        end
     else
-        local exists
-        local buffer
+        local exists, buffer
         if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
+            vim.bo[buffer].modifiable = true
+            vim.bo[buffer].modified = false
             buffer = entry.bufnr
             exists = true
         else
             buffer = vim.api.nvim_create_buf(false, true)
-            buffer = initialize_buffer(
-                buffer, "nofile", "fuzzy-preview"
-            )
+            buffer = initialize_buffer(buffer, "nofile", "fuzzy-preview")
+            vim.api.nvim_buf_set_name(buffer, name)
             exists = false
         end
 
+        local chan = vim.api.nvim_open_term(buffer, {
+            force_crlf = true, on_input = nil,
+        })
         vim.api.nvim_win_set_buf(window, buffer)
-        vim.api.nvim_win_call(window, function()
-            local cmd
-            if type(self.command) == "table" then
-                cmd = assert(vim.fn.copy(self.command))
-                table.insert(cmd, entry.filename)
-            else
-                cmd = { self.command, entry.filename }
+        vim.api.nvim_buf_set_var(buffer, "streaming", true)
+
+        local cmd
+        if type(self.command) == "table" then
+            cmd = assert(vim.fn.copy(self.command))
+            table.insert(cmd, entry.filename)
+        else
+            cmd = { self.command, entry.filename }
+        end
+        assert(vim.fn.executable(cmd[1]) == 1)
+
+        local on_stdata = function(_, data)
+            for _, value in ipairs(data or {}) do
+                if value and #value > 0 then
+                    vim.api.nvim_chan_send(chan, value)
+                    vim.api.nvim_chan_send(chan, "\r\n")
+                end
             end
-            assert(vim.fn.executable(cmd[1]) == 1)
-            vim.fn.jobstart(cmd, {
-                pty = true,
-                term = true,
-                detach = false,
-                cwd = vim.loop.cwd(),
-                on_exit = function()
-                    pcall(
-                        vim.api.nvim_win_set_cursor,
-                        window,
-                        cursor
-                    )
-                end,
-                stdout_buffered = true,
-                stderr_buffered = true,
-            })
-            vim.api.nvim_buf_set_name(buffer, name)
-            vim.api.nvim_buf_delete(
-                vim.fn.bufnr("#"), { force = true }
-            )
-        end)
+        end
+
+        vim.api.nvim_buf_attach(buffer, false, {
+            on_lines = function(_, buf)
+                if vim.api.nvim_buf_line_count(buf) >= cursor[1] and vim.api.nvim_win_get_buf(window) == buf then
+                    pcall(vim.api.nvim_win_set_cursor, window, cursor)
+                    return true
+                end
+                return false
+            end
+        })
+
+        vim.fn.jobstart(cmd, {
+            pty = true,
+            detach = false,
+            clear_env = true,
+            on_stdout = on_stdata,
+            on_stderr = on_stdata,
+            on_exit = function()
+                vim.api.nvim_buf_set_var(buffer, "streaming", false)
+                if vim.api.nvim_win_get_buf(window) == buffer then
+                    pcall(vim.api.nvim_win_set_cursor, window, cursor)
+                end
+                vim.bo[buffer].modifiable = false
+                vim.bo[buffer].modified = false
+            end,
+            stdout_buffered = false,
+            stderr_buffered = false,
+        })
+
         return not exists and buffer
     end
 end
@@ -536,8 +607,9 @@ function Select:_list_selection(lnum)
             return self._state.entries[s.lnum]
         end, placed[1].signs)
     else
-        assert(lnum <= #self._state.entries)
-        return { self._state.entries[lnum] }
+        local entries = self._state.entries
+        assert(#entries == 0 or lnum <= #entries)
+        return #entries > 0 and { entries[lnum] } or {}
     end
 end
 
@@ -558,6 +630,34 @@ function Select:_create_mappings(buffer, mode, mappings)
             replace_keycodes = false,
             callback = self:_make_callback(action)
         })
+    end
+end
+
+function Select:_populate_list(full)
+    local entries = self._state.entries
+    local streaming = self._state.streaming
+    if streaming == true and entries and #entries >= 0 then
+        if #entries == 0 then
+            populate_buffer(
+                self.list_buffer,
+                utils.EMPTY_TABLE
+            )
+        elseif full == true then
+            populate_buffer(
+                self.list_buffer, entries,
+                self._options.list_display,
+                self._options.list_step
+            )
+        elseif full == false then
+            local cursor = vim.api.nvim_win_get_cursor(self.list_window)
+            local height = vim.api.nvim_win_get_height(self.list_window)
+            assert(#entries >= cursor[1] and cursor[1] > 0)
+            populate_range(
+                self.list_buffer,
+                math.max(1, cursor[1] - height),
+                math.min(#entries, cursor[1] + height),
+                entries, self._options.list_display)
+        end
     end
 end
 
@@ -610,25 +710,27 @@ function Select:_display_preview()
     end
 end
 
-function Select:_render_list()
-    if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
-        populate_buffer(
-            self.list_buffer,
-            self._state.entries,
-            self._options.list_display,
-            self._options.list_step
-        )
+function Select:_render_list(full)
+    if self:_is_rendering() then
+        self:_stop_rendering()
     end
+    local executor = Async.wrap(function()
+        if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
+            self:_populate_list(full)
+        end
 
-    if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
-        self:_decorate_list()
-        self:_highlight_list()
-        self:_display_preview()
-        vim.api.nvim_win_call(
-            self.list_window,
-            vim.cmd.redraw
-        )
-    end
+        if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
+            self:_decorate_list()
+            self:_highlight_list()
+            self:_display_preview()
+            vim.api.nvim_win_call(
+                self.list_window,
+                vim.cmd.redraw
+            )
+        end
+    end)
+    self._state.renderer = executor()
+    Scheduler.add(self._state.renderer)
 end
 
 function Select:_destroy_view()
@@ -650,13 +752,13 @@ end
 
 function Select:_clean_preview()
     if #self._state.buffers > 0 then
-        local valid = vim.tbl_filter(
+        local buffers = vim.tbl_filter(
             vim.api.nvim_buf_is_valid,
             self._state.buffers
         )
-        for _, value in ipairs(valid or {}) do
+        for _, buf in ipairs(buffers or {}) do
             vim.api.nvim_buf_delete(
-                value, { force = false }
+                buf, { force = vim.bo[buf].buftype ~= "" }
             )
         end
         self._state.buffers = {}
@@ -680,6 +782,17 @@ function Select:_close_view()
         vim.api.nvim_win_close(self.preview_window, true)
         self.preview_window = nil
     end
+    if self:_is_rendering() then
+        self:_stop_rendering()
+    end
+end
+
+function Select:_is_rendering()
+    return self._state.renderer and self._state.renderer:is_running()
+end
+
+function Select:_stop_rendering()
+    return self._state.renderer and self._state.renderer:cancel()
 end
 
 --- Executes user callback with the current selection passed in, the action performs a no operation and is entirely reliant on the user
@@ -708,8 +821,12 @@ end
 --- Moves the cursor in the list by a specified direction, this is a generic function used by other selection methods.
 function Select:move_cursor(dir, callback)
     local list_window = assert(self.list_window)
-    local cursor = vim.api.nvim_win_get_cursor(list_window)
+
+    local list_entries = assert(self._state.entries)
     local line_count = vim.fn.line("$", list_window)
+
+    local cursor = vim.api.nvim_win_get_cursor(list_window)
+    dir = (cursor[1] == 1 and dir < 0 and line_count < #list_entries) and 0 or dir
 
     if dir and dir ~= 0 then
         if cursor[1] == 1 and dir < 0 then cursor[1] = 0 end
@@ -983,21 +1100,29 @@ function Select:isempty()
 end
 
 -- Render a list of entries in the list window, with optional highlighting positions and display formatting function or property.
--- @param entries any[]|string[]|nil The list of entries to display.
--- @param positions integer[][]|nil The list of positions for highlighting
--- @param display string|fun(entry: any): string|nil The field or function to use for displaying entries.
+-- @param entries? any[]|string[]|nil The list of entries to display.
+-- @param positions? integer[][]|nil The list of positions for highlighting
+-- @param display? string|fun(entry: any): string|nil The field or function to use for displaying entries.
 function Select:list(entries, positions)
+    vim.validate {
+        entries = { entries, { "table", "nil" }, true },
+        positions = { positions, { "table", "nil" }, true },
+    }
     if entries ~= nil then
-        vim.validate {
-            entries = { entries, "table" },
-            positions = { positions, { "table", "nil" }, true },
-        }
         self._state.positions = positions
         self._state.entries = entries
         self._state.streaming = true
-        async.wrap(Select._render_list)(self)
+        utils.time_execution(Select._render_list, self, false)
     elseif positions == nil then
-        self._state.streaming = false
+        utils.time_execution(Select._render_list, self, true)
+        if self._state.renderer then
+            self._state.renderer:await(function(_, reason)
+                assert(not reason or #reason == 0)
+                self._state.streaming = false
+            end)
+        else
+            self._state.streaming = false
+        end
     end
 end
 
@@ -1020,8 +1145,8 @@ function Select:status(status, hl)
         virt_text_pos = "eol",
         virt_text_win_col = nil,
         virt_text = {
-            p and p ~= nil and { p, "Normal" },
-            { assert(status), hl or "NonText" },
+            p and p ~= nil and { p, "SelectPrefixText" },
+            { assert(status), hl or "SelectStatusText" },
         },
     })
 end
@@ -1053,6 +1178,10 @@ function Select:header(header)
         end
     elseif type(header) == "string" then
         header_items = { { header, "Normal" } }
+    end
+
+    if not header_items or #header_items == 0 then
+        return
     end
 
     if vim.api.nvim_win_get_height(self.prompt_window) == 1 then
@@ -1154,6 +1283,7 @@ function Select:open()
                 text = type(prefix) == "table"
                     and assert(prefix[1])
                     or assert(prefix),
+                texthl = "SelectPrefixText",
             }) == 0, "failed to define sign")
 
             assert(vim.fn.sign_place(
@@ -1198,10 +1328,12 @@ function Select:open()
 
         local query = self:query()
         if query and #query > 0 then
-            pcall(vim.api.nvim_win_set_cursor, prompt_window, {
-                1, -- set cursor on the first line
-                vim.str_byteindex(query, #query) + 1,
-            })
+            vim.schedule(function()
+                vim.api.nvim_win_set_cursor(prompt_window, {
+                    1, -- set cursor on the first line
+                    vim.str_byteindex(query, #query),
+                })
+            end)
         end
 
         self.prompt_buffer = prompt_buffer
@@ -1238,11 +1370,9 @@ function Select:open()
                     entries = opts.prompt_list
                 end
             end
-            if entries == nil then
-                self._state.positions = positions
-                self._state.entries = entries
-                self._state.streaming = false
-                self:_render_list()
+            if entries ~= nil then
+                self:list(entries, positions)
+                self:list(nil, nil)
             end
 
             local sign_name = string.format(
@@ -1265,7 +1395,8 @@ function Select:open()
             })
 
             assert(vim.fn.sign_define(sign_name, {
-                text = self._options.toggle_prefix, priority = 10
+                text = self._options.toggle_prefix,
+                texthl = "SelectToggleSign",
             }) == 0)
         end
 
@@ -1273,10 +1404,10 @@ function Select:open()
         if not list_window or not vim.api.nvim_win_is_valid(list_window) then
             local list_height = math.floor(math.ceil(size))
             list_window = vim.api.nvim_open_win(list_buffer, false, {
-                split = self.prompt_window and "above" or "below",
-                height = list_height,
                 noautocmd = false,
+                height = list_height,
                 win = self.prompt_window or -1,
+                split = self.prompt_window and "above" or "below",
             });
             vim.api.nvim_win_set_height(list_window, list_height)
             list_window = initialize_window(list_window)
@@ -1287,9 +1418,8 @@ function Select:open()
             local highlight_matches = vim.api.nvim_create_autocmd("WinScrolled", {
                 pattern = tostring(list_window),
                 callback = function()
-                    if not self:isempty() then
-                        self:_decorate_list()
-                        self:_highlight_list()
+                    if not self:_is_rendering() and vim.api.nvim_buf_line_count(list_buffer) >= 1 then
+                        utils.time_execution(Select._render_list, self, false)
                     end
                 end
             })

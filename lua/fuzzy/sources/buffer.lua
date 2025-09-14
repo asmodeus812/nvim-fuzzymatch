@@ -84,6 +84,7 @@ local function enrich_buffers(opts, buffers, winid)
 end
 
 local function filter_buffers(opts, buffers, included)
+    -- TODO: add more user options and customizations
     local bufnr = vim.api.nvim_get_current_buf()
     local bufnrs = vim.tbl_filter(function(b)
         local excluded = false
@@ -97,36 +98,11 @@ local function filter_buffers(opts, buffers, included)
             excluded = true
         elseif opts.ignore_current_buffer and b == bufnr then
             excluded = true
-        elseif opts.no_term_buffers and vim.bo[b].buftype == 'terminal' then
-            excluded = true
-        elseif opts.cwd_only and not path.is_relative_to(vim.api.nvim_buf_get_name(b), vim.loop.cwd()) then
-            excluded = true
-        elseif opts.cwd and not path.is_relative_to(vim.api.nvim_buf_get_name(b), opts.cwd) then
-            excluded = true
         end
         return not excluded
     end, buffers)
 
     return bufnrs
-end
-
-local function buffer_converter(entry)
-    if type(entry) == "table" then
-        return {
-            col = 1,
-            lnum = 1,
-            bufnr = entry.bufnr or (entry.info and entry.info.bufnr),
-            filename = entry.name or (entry.info and entry.info.name),
-        }
-    elseif type(entry) == "number" then
-        return {
-            col = 1,
-            lnum = 1,
-            bufnr = entry,
-            filename = get_bufname(entry)
-        }
-    end
-    return false
 end
 
 function M.buffers(opts)
@@ -148,16 +124,19 @@ function M.buffers(opts)
 
     local picker = Picker.new({
         content = buffers,
+        headers = {
+            { "Buffers", "Special" }
+        },
         display = function(e)
             return e.info.display or e.info.name or e.name
         end,
         prompt_confirm = Select.select_entry,
-        prompt_preview = Select.BufferPreview.new(buffer_converter),
+        prompt_preview = Select.BufferPreview.new(),
         actions = {
-            ["<c-q>"] = Select.send_quickfix,
-            ["<c-t>"] = Select.select_tab,
-            ["<c-v>"] = Select.select_vertical,
-            ["<c-s>"] = Select.select_horizontal,
+            ["<c-q>"] = { Select.send_quickfix, "qflist" },
+            ["<c-t>"] = { Select.select_tab, "tabe" },
+            ["<c-v>"] = { Select.select_vertical, "vert" },
+            ["<c-s>"] = { Select.select_horizontal, "split" },
         }
     })
     return picker:open()

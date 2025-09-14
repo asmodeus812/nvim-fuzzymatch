@@ -1,5 +1,6 @@
+local Scheduler = require("fuzzy.scheduler")
+local Async = require("fuzzy.async")
 local utils = require("fuzzy.utils")
-local async = require("fuzzy.async")
 
 --- @class Stream
 --- @field public results string[]|nil The results accumulated so far, this is only valid after the stream has finished, or if the stream is ephemeral and a new stream has not yet started.
@@ -11,16 +12,20 @@ local Stream = {}
 Stream.__index = Stream
 
 local function close_handle(handle)
-    if handle and not handle:is_closing() then
-        handle:close()
+    if handle ~= nil then
+        if handle.close and not handle:is_closing() then
+            handle:close()
+        elseif handle.cancel and handle:is_running() then
+            handle:cancel()
+        end
     end
 end
 
 function Stream:_destroy_stream()
     -- the results can be re-claimed back into the pool, when a new stream is starting up, this ensures that old references to the
-    -- _state.accum which are now pointing to stream.results are re-used.
+    -- values held by the results are correctly freed and avoid holding references for too long
     if self.results then
-        self.results = utils.fill_table(
+        utils.fill_table(
             self.results,
             utils.EMPTY_STRING
         )
@@ -64,7 +69,9 @@ function Stream:_close_stream()
 
     if self._state.accum then
         -- the accumulator must be detached from the pool, as closing the stream now implies no more results will come in, this frees
-        -- the accumulator from the pool, allowing users to use the results as they see fit, through stream.results. The accumulator is also resized to ensure the total number of elements, this is useful if the stream did not find any results, in which case _flush_results would never be called, in all other cases this is a no op.
+        -- the accumulator from the pool, allowing users to use the results as they see fit, through stream.results. The accumulator is also
+        -- resized to ensure the total number of elements, this is useful if the stream did not find any results, in which case
+        -- _flush_results would never be called, in all other cases this is a no op.
         utils.detach_table(self._state.accum)
         utils.resize_table(
             self._state.accum,
@@ -229,7 +236,7 @@ end
 function Stream:wait(timeout)
     local done = vim.wait(timeout or self._options.timeout or utils.MAX_TIMEOUT, function()
         return self.results ~= nil
-    end, nil, true)
+    end, 25, true)
 
     if not done then
         self:stop()
@@ -293,28 +300,27 @@ function Stream:start(cmd, opts)
     if type(cmd) == "function" then
         local did_exit = false
         assert(self._options.lines)
-        local callback = function(data)
+        local cb = function(data)
             if not did_exit and data ~= nil then
                 self:_handle_data(
                     data,
                     self._state.size
                 )
             else
+                assert(not did_exit)
                 self:_handle_exit()
                 did_exit = true
             end
-            async.yield()
-            if did_exit then
-                async.abort()
-            end
+            Async.yield()
         end
-        local executor = async.wrap(function()
-            utils.safe_call(cmd, callback)
+        local executor = Async.wrap(function()
+            utils.safe_call(cmd, cb, opts.args)
             if did_exit == false then
                 self:_handle_exit()
             end
         end)
-        executor()
+        self._state.handle = executor()
+        Scheduler.add(self._state.handle)
     else
         local stdio = self:_make_stream()
         assert(vim.fn.executable(cmd) == 1)

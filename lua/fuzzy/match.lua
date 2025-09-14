@@ -96,21 +96,15 @@ function Match:_destroy_context()
         -- again, the results consists of 3 sublists, strings, positions, and scores, each we return to the pool, each we fill with a
         -- default value to avoid holding references to old data
         for index, value in ipairs(self.results) do
+            local def
             if index == 1 then
-                value = utils.fill_table(
-                    value, utils.EMPTY_STRING
-                )
+                def = utils.EMPTY_STRING
             elseif index == 2 then
-                value = utils.fill_table(
-                    value, utils.EMPTY_TABLE
-                )
-            else
-                value = utils.fill_table(
-                    value, 0
-                )
+                def = utils.EMPTY_TABLE
+            elseif index == 3 then
+                def = 0
             end
-            -- attach the sublist to the pool before returning it, at this point the results subset tables can be safely returned to the pool and be reused
-            assert(value ~= nil)
+            utils.fill_table(assert(value), assert(def))
             utils.attach_table(value)
             utils.return_table(value)
         end
@@ -257,7 +251,7 @@ end
 function Match:wait(timeout)
     local done = vim.wait(timeout or self._options.timeout or utils.MAX_TIMEOUT, function()
         return self._state.results ~= nil
-    end, nil, true)
+    end, 25, true)
 
     if not done then
         self:stop()

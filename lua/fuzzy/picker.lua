@@ -1,6 +1,7 @@
 local Stream = require("fuzzy.stream")
 local Select = require("fuzzy.select")
 local Match = require("fuzzy.match")
+
 local utils = require("fuzzy.utils")
 
 --- @class Picker
@@ -115,7 +116,6 @@ function Picker:_input_prompt()
                             self.select:list(nil, nil)
                         else
                             self.select:list(all, nil)
-                            self.select:list(nil, nil)
                             self.select:status(string.format(
                                 "%d/%d", #all, #all
                             ))
@@ -226,7 +226,6 @@ function Picker:_flush_results()
                 -- when there is no query yet, we just have to render all the results as they are, empty query means that
                 -- we can certainly show all results, that the stream produced so far.
                 self.select:list(all, nil)
-                self.select:list(nil, nil)
                 self.select:status(string.format(
                     "%d/%d", #all, #all
                 ))
@@ -358,12 +357,12 @@ function Picker:_generate_headers(headers, actions)
     actions = actions or self._options.actions
     for key, value in pairs(actions or {}) do
         if type(value) == "table" and #value > 1 then
-            table.insert(headers, { key, "ErrorMsg" })
-            table.insert(headers, { "::", "ModeMsg" })
+            table.insert(headers, { key, "PickerHeaderActionKey" })
+            table.insert(headers, { "::", "PickerHeaderActionSeparator" })
             if type(value[2]) == "string" then
-                table.insert(headers, { assert(value[2]), "MoreMsg" })
+                table.insert(headers, { assert(value[2]), "PickerHeaderActionLabel" })
             elseif type(value[2]) == "function" then
-                table.insert(headers, { assert(value[2](self)), "MoreMsg" })
+                table.insert(headers, { assert(value[2](self)), "PickerHeaderActionLabel" })
             end
         end
     end
@@ -409,7 +408,7 @@ end
 
 function Picker:open()
     if self:isopen() then
-        self:close()
+        return
     end
     self.select:open()
 
@@ -483,14 +482,15 @@ end
 --- @field match_limit? number|nil the maximum number of matches to keep, nil means no limit
 --- @field match_timer? number the time in milliseconds to wait before flushing the matching results, this is useful when dealing with large result sets
 --- @field match_step? number the number of entries to process in each matching step, this is useful when dealing with large result sets
+--- @field display_step? number of entries to process in a single batch when rendering items into the list, useful when using a more complex or demanding display function that takes some time to process.
+--- @field stream_type? "lines"|"bytes" whether the stream produces lines or bytes, when lines is used the stream will be split on newlines, when bytes is used the stream will be split on byte size
+--- @field stream_step? number the number of bytes or lines to read in each streaming step, this is useful when dealing with large result sets
+--- @field window_size? number the size of the window to use for the picker, this is a ratio between 0 and 1, where 1 is the full screen
 --- @field prompt_preview? Select.Preview|boolean speficies the preview strategy to be used when entries are focused, false means no preview will be active, and a correct instance of a child class derived from Select.Preview will use that preview instead, Select.BufferPreview is used by default if the value of this field is true.
 --- @field prompt_debounce? number the time in milliseconds to debounce the user input, this is useful to avoid flooding the matching and streaming with too many updates at once
 --- @field prompt_confirm? function|nil a custom function to call when the user confirms the prompt, if nil the default action is used
 --- @field prompt_decor? string the prefix to use for the prompt
 --- @field prompt_query? string the initial query to use for the prompt
---- @field stream_type? "lines"|"bytes" whether the stream produces lines or bytes, when lines is used the stream will be split on newlines, when bytes is used the stream will be split on byte size
---- @field stream_step? number the number of bytes or lines to read in each streaming step, this is useful when dealing with large result sets
---- @field window_size? number the size of the window to use for the picker, this is a ratio between 0 and 1, where 1 is the full screen
 --- @field actions? table a table of key mappings to actions to use for the picker, the general syntax for each entry is ["key"] = callback or a tuple ["key"] = { callback, label }, where the label of the action is optional can be used to generate the headers for the picker if they are enabled, the label can be of type string|function
 --- @field providers? table a table of providers to use for the select, can contain icon_provider and status_provider, see Select.providers for the usage
 
@@ -507,17 +507,18 @@ function Picker.new(opts)
         display = { opts.display, { "function", "string", "nil" }, true },
         ephemeral = { opts.ephemeral, "boolean", true },
         match_limit = { opts.match_limit, { "number", "nil" }, true },
-        match_step = { opts.match_step, "number", true },
         match_timer = { opts.match_timer, "number", true },
+        match_step = { opts.match_step, "number", true },
+        display_step = { opts.display_step, "number", true },
+        stream_step = { opts.stream_step, "number", true },
+        stream_type = { opts.stream_type, { "string", "nil" }, true, { "lines", "bytes" } },
+        window_size = { opts.window_size, "number", true },
         prompt_confirm = { opts.prompt_confirm, { "function", "nil" }, true },
         prompt_debounce = { opts.prompt_debounce, "number", true },
         prompt_preview = { opts.prompt_preview, { "table", "boolean" }, true },
         prompt_query = { opts.prompt_query, "string", true },
         prompt_decor = { opts.prompt_decor, { "table", "string" }, true },
         providers = { opts.providers, "table", true },
-        stream_step = { opts.stream_step, "number", true },
-        stream_type = { opts.stream_type, { "string", "nil" }, true, { "lines", "bytes" } },
-        window_size = { opts.window_size, "number", true },
     })
     opts = vim.tbl_deep_extend("force", {
         actions = {},
@@ -533,27 +534,28 @@ function Picker.new(opts)
         display = nil,
         ephemeral = true,
         match_limit = nil,
-        match_step = 50000,
         match_timer = 100,
+        match_step = 50000,
+        display_step = 100000,
+        stream_step = 100000,
+        stream_type = "lines",
+        window_size = 0.15,
         prompt_confirm = nil,
         prompt_debounce = 250,
+        prompt_query = "",
+        prompt_preview = false,
         prompt_decor = {
             "› ",
             "‹ "
         },
-        prompt_preview = false,
-        prompt_query = "",
-        stream_step = 100000,
-        stream_type = "lines",
-        window_size = 0.15,
         providers = {
             icon_provider = true,
-            status_provider = true,
+            status_provider = false,
         },
     }, opts)
 
     local is_lines = opts.stream_type == "lines"
-    local list_step = opts.display and 25000 or nil
+    local list_step = opts.display and opts.display_step
     if type(opts.display) == "function" then
         opts.match = { text_cb = opts.display }
     elseif type(opts.display) == "string" then

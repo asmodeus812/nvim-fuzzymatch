@@ -261,6 +261,8 @@ function M.safe_call(callback, ...)
     return nil, nil
 end
 
+-- Generate a UUID based on a template, from a random seeded set of alpha-numeric symbols and
+-- @return string the generated UUID string.
 function M.generate_uuid()
     return random and string.gsub(TEMPLATE, '[xy]', function(c)
         local v = (c == 'x') and random(0, 0xf) or random(8, 0xb)
