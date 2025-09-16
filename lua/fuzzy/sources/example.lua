@@ -3,10 +3,11 @@ local Picker = require("fuzzy.picker")
 
 local M = {}
 
-function M.stream()
+function M.stream(opts)
+    opts = opts or { count = 1000000 }
     local picker = Picker.new({
         content = function(cb, args)
-            for i = 1, 1000000, 1 do
+            for i = 1, opts.count, 1 do
                 cb({ name = string.format("%d-%s-name-entry", i, args[1]) })
             end
             cb(nil)

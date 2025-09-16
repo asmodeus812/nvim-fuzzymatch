@@ -125,9 +125,7 @@ function M.buffers(opts)
     local picker = Picker.new({
         content = buffers,
         headers = {
-            {
-                { "Buffers", "Special" }
-            }
+            { "Buffers" }
         },
         display = function(e)
             return e.info.display or e.info.name or e.name
@@ -139,6 +137,9 @@ function M.buffers(opts)
             ["<c-t>"] = { Select.select_tab, "tabe" },
             ["<c-v>"] = { Select.select_vertical, "vert" },
             ["<c-s>"] = { Select.select_horizontal, "split" },
+        },
+        providers = {
+            icon_provider = true,
         }
     })
     return picker:open()

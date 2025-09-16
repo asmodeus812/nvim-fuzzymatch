@@ -18,6 +18,7 @@ local Scheduler = require("fuzzy.scheduler")
 --- @field private prompt_buffer integer|nil The buffer ID of the prompt input buffer.
 --- @field private list_window integer|nil The window ID of the list display window.
 --- @field private list_buffer integer|nil The buffer ID of the list display buffer.
+--- @field private preview_buffer integer|nil The buffer ID of the preview display buffer.
 --- @field private preview_window integer|nil The window ID of the preview display window.
 --- @field private _options SelectOptions The configuration options for the selection interface.
 --- @field private _state table The internal state of the selection interface.
@@ -38,14 +39,27 @@ function Select.Preview:preview()
     error("must be implemented by sub-classing")
 end
 
+--- This is a previewer that shows the content of a buffer. This implementation uses the native neovim buffer handling to read and display
+--- the buffer contents.
+--- @class Select.BufferPreview
+--- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
 Select.BufferPreview = {}
 Select.BufferPreview.__index = Select.BufferPreview
 setmetatable(Select.BufferPreview, { __index = Select.Preview })
 
+--- This is a previewer that runs a command to generate the preview content. The command can be any executable that produces output on
+--- stdout or/and stderr. The command is run in a terminal job, and the output is streamed to the preview buffer.
+--- @class Select.CommandPreview
+--- @field command string|table The command to run, can be a string or a table where the first element is the executable the rest are the arguments, the last argument is always the filename/resource from the entry.
+--- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
 Select.CommandPreview = {}
 Select.CommandPreview.__index = Select.CommandPreview
 setmetatable(Select.CommandPreview, { __index = Select.Preview })
 
+--- This is a previewer that uses a user-defined callback to generate the preview content. The callback can return the lines, filetype,
+--- buftype and cursor but it also accepts the buffer and window so the user has full control over the preview generation.
+--- @class Select.CustomPreview
+--- @field callback function A function that takes the entry, buffer and window as arguments and returns optionally the lines, filetype, buftype and cursor position.
 Select.CustomPreview = {}
 Select.CustomPreview.__index = Select.CustomPreview
 setmetatable(Select.CustomPreview, { __index = Select.Preview })
@@ -119,14 +133,14 @@ local function compute_offsets(str, start_char, char_len)
     return start_byte, end_byte
 end
 
-local function compute_decoration(str, decoration)
+local function compute_decoration(str, entry, decoration)
     local content = {}
     local highlights = {}
     local icons = icon_set()
 
     local status, status_highlight
     if type(decoration.status_provider) == "function" then
-        status, status_highlight = decoration.status_provider(str)
+        status, status_highlight = decoration.status_provider(str, entry)
     elseif decoration.status_provider == true and icons then
         local result = #str > 0 and vim.fn.bufnr(str, false) ~= -1
         status, status_highlight = result and "[x]", "SelectStatusProvider"
@@ -134,7 +148,7 @@ local function compute_decoration(str, decoration)
 
     local icon, icon_highlight
     if type(decoration.icon_provider) == "function" then
-        icon, icon_highlight = decoration.icon_provider(str)
+        icon, icon_highlight = decoration.icon_provider(str, entry)
     elseif decoration.icon_provider == true and icons then
         icon, icon_highlight = icons.get_icon(
             str, vim.fn.fnamemodify(str, ':e'),
@@ -175,6 +189,7 @@ local function initialize_buffer(buffer, ft, bt)
     vim.bo[buffer].buftype = bt or "nofile"
     vim.bo[buffer].filetype = ft or ""
     vim.bo[buffer].buflisted = false
+    vim.bo[buffer].swapfile = false
     vim.bo[buffer].modified = false
     vim.bo[buffer].autoread = false
     vim.bo[buffer].undofile = false
@@ -289,11 +304,11 @@ local function highlight_range(buffer, start, _end, entries, positions, display,
             end
         end
     end
+    Async.yield()
 end
 
 local function decorate_range(buffer, start, _end, entries, decoration, display, override)
     assert(start <= _end and start > 0)
-
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
     for target = start, _end, 1 do
@@ -305,7 +320,7 @@ local function decorate_range(buffer, start, _end, entries, decoration, display,
         if not marks or #marks < 1 then
             local entry = entries[target]
             local content, highlights = compute_decoration(
-                line_mapper(entry, display), decoration
+                line_mapper(entry, display), entry, decoration
             )
             if #content > 0 then
                 assert(#content == #highlights)
@@ -348,6 +363,7 @@ local function decorate_range(buffer, start, _end, entries, decoration, display,
     end
     vim.bo[buffer].modifiable = oldma
     vim.bo[buffer].modified = false
+    Async.yield()
 end
 
 local function display_entry(strategy, entry, window, buffers)
@@ -364,6 +380,9 @@ local function display_entry(strategy, entry, window, buffers)
     end)
 end
 
+--- Create a new buffer previewer instance, the converter is used to map the entry to a table with bufnr, filename, lnum and col fields. By
+--- default the converter is `entry_mapper`, which tries its best to extract those fields from the entry.
+--- @param converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
 function Select.BufferPreview.new(converter)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.BufferPreview)
@@ -421,6 +440,8 @@ function Select.BufferPreview:preview(entry, window)
     return not exists and buffer
 end
 
+--- Create a new custom previewer instance, the callback is invoked on each entry that has to be previewed
+--- @param callback function A function that takes the entry, buffer and window as arguments and returns optionally the lines, filetype, buftype and cursor position.
 function Select.CustomPreview.new(callback)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.CustomPreview)
@@ -468,6 +489,11 @@ function Select.CustomPreview:preview(entry, window)
     end
 end
 
+--- Create a new command previewer instance, the command is run in a terminal job and the output is streamed to the preview buffer, the
+--- converter is used to map the entry to a table with bufnr, filename, lnum and col fields. By default the converter is `entry_mapper`,
+--- which tries its best to extract those fields from the entry.
+--- @param command string|table The command to run, can be a string or a table where the first element is the command and the rest are arguments.
+--- @param converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
 function Select.CommandPreview.new(command, converter)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.CommandPreview)
@@ -527,8 +553,10 @@ function Select.CommandPreview:preview(entry, window)
         local cmd
         if type(self.command) == "table" then
             cmd = assert(vim.fn.copy(self.command))
+            ---@diagnostic disable-next-line: param-type-mismatch
             table.insert(cmd, entry.filename)
-        else
+        elseif type(self.command) == "string" then
+            ---@diagnostic disable-next-line: param-type-mismatch
             cmd = { self.command, entry.filename }
         end
         assert(vim.fn.executable(cmd[1]) == 1)
@@ -816,7 +844,10 @@ function Select:default_select(callback)
 
     self:_close_view()
 
-    utils.safe_call(callback, selection, cursor)
+    local ok, result = utils.safe_call(callback, selection, cursor)
+    if ok and result == false then
+        return
+    end
 end
 
 function Select:scroll_preview(input, callback)
@@ -839,6 +870,8 @@ function Select:move_cursor(dir, callback)
     local line_count = vim.fn.line("$", list_window)
 
     local cursor = vim.api.nvim_win_get_cursor(list_window)
+    -- ensure that if not all entries are rendered, we don't move the cursor past the end of the entries,
+    -- meaning we do not allow looping from the first entry to the last one until all entries are rendered
     dir = (cursor[1] == 1 and dir < 0 and line_count < #list_entries) and 0 or dir
 
     if dir and dir ~= 0 then
@@ -877,10 +910,25 @@ function Select:exec_command(command, mods, callback)
             goto continue
         end
 
+        local cmd
+        local arg = entry.filename
+        if entry.bufnr ~= nil then
+            if command == "edit" then
+                command = "buffer"
+            elseif command == "split" then
+                command = "sbuffer"
+            elseif command == "tabedit" then
+                command = "tab"
+                cmd = "sbuffer"
+            end
+            arg = entry.bufnr
+        end
+
         vim.cmd[command]({
-            args = { entry.filename or entry.bufnr },
+            args = { arg },
             mods = mods,
             bang = true,
+            cmd = cmd,
         })
 
         local col = entry.col or 1

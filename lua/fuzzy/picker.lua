@@ -464,17 +464,24 @@ function Picker:open()
     end
 end
 
-function Picker.many(converter)
+function Picker.all(converter)
     return function(e)
         assert(e and #e > 0 and e[1])
         return vim.tbl_map(converter, e)
     end
 end
 
-function Picker.one(converter)
+function Picker.first(converter)
     return function(e)
         assert(e and #e > 0 and e[1])
         return converter(e[1])
+    end
+end
+
+function Picker.last(converter)
+    return function(e)
+        assert(e and #e > 0 and e[#e])
+        return converter(e[#e])
     end
 end
 
@@ -551,7 +558,7 @@ function Picker.new(opts)
             suffix = "‹ "
         },
         providers = {
-            icon_provider = true,
+            icon_provider = false,
             status_provider = false,
         },
     }, opts)

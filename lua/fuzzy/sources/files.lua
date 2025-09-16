@@ -51,9 +51,7 @@ function M.files(opts)
     local picker = Picker.new({
         content = "rg",
         headers = {
-            {
-                { "Files", "Special" }
-            }
+            { "Files" }
         },
         context = {
             args = {
@@ -69,6 +67,43 @@ function M.files(opts)
             ["<c-t>"] = Select.select_tab,
             ["<c-v>"] = Select.select_vertical,
             ["<c-s>"] = Select.select_horizontal,
+        },
+        providers = {
+            icon_provider = true,
+        }
+    })
+    picker:open()
+    return picker
+end
+
+function M.grep(opts)
+    opts = opts or {}
+
+    local picker = Picker.new({
+        content = "rg",
+        headers = {
+            { "Grep" }
+        },
+        context = {
+            args = {
+                "--column",
+                "--line-number",
+                "--no-heading",
+                "{prompt}",
+            },
+            cwd = opts.cwd,
+            interactive = "{prompt}",
+        },
+        prompt_confirm = Select.action(Select.select_entry, Picker.all(grep_converter)),
+        prompt_preview = Select.CommandPreview.new("cat", grep_converter),
+        actions = {
+            ["<c-q>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "qflist" },
+            ["<c-t>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "tabe" },
+            ["<c-v>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "vert" },
+            ["<c-s>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "split" },
+        },
+        providers = {
+            icon_provider = true,
         }
     })
     picker:open()
@@ -81,9 +116,7 @@ function M.dirs(opts)
     local picker = Picker.new({
         content = "find",
         headers = {
-            {
-                { "Directories", "Special" }
-            }
+            { "Directories" }
         },
         context = {
             args = {
@@ -121,9 +154,7 @@ function M.ls(opts)
     local picker = Picker.new({
         content = "ls",
         headers = {
-            {
-                { "Ls", "Special" }
-            }
+            { "Ls" }
         },
         context = {
             args = {
@@ -138,45 +169,12 @@ function M.ls(opts)
                 return e
             end
         },
-        prompt_confirm = Select.action(Select.select_entry, Picker.many(ls_converter)),
+        prompt_confirm = Select.action(Select.select_entry, Picker.all(ls_converter)),
         actions = {
-            ["<c-q>"] = Select.action(Select.send_quickfix, Picker.many(ls_converter)),
-            ["<c-t>"] = Select.action(Select.select_tab, Picker.many(ls_converter)),
-            ["<c-v>"] = Select.action(Select.select_vertical, Picker.many(ls_converter)),
-            ["<c-s>"] = Select.action(Select.select_horizontal, Picker.many(ls_converter)),
-        }
-    })
-    picker:open()
-    return picker
-end
-
-function M.grep(opts)
-    opts = opts or {}
-
-    local picker = Picker.new({
-        content = "rg",
-        headers = {
-            {
-                { "Grep", "Special" }
-            }
-        },
-        context = {
-            args = {
-                "--column",
-                "--line-number",
-                "--no-heading",
-                "{prompt}",
-            },
-            cwd = opts.cwd,
-            interactive = "{prompt}",
-        },
-        prompt_confirm = Select.action(Select.select_entry, Picker.many(grep_converter)),
-        prompt_preview = Select.CommandPreview.new("cat", grep_converter),
-        actions = {
-            ["<c-q>"] = { Select.action(Select.send_quickfix, Picker.many(grep_converter)), "qflist" },
-            ["<c-t>"] = { Select.action(Select.send_quickfix, Picker.many(grep_converter)), "tabe" },
-            ["<c-v>"] = { Select.action(Select.send_quickfix, Picker.many(grep_converter)), "vert" },
-            ["<c-s>"] = { Select.action(Select.send_quickfix, Picker.many(grep_converter)), "split" },
+            ["<c-q>"] = Select.action(Select.send_quickfix, Picker.all(ls_converter)),
+            ["<c-t>"] = Select.action(Select.select_tab, Picker.all(ls_converter)),
+            ["<c-v>"] = Select.action(Select.select_vertical, Picker.all(ls_converter)),
+            ["<c-s>"] = Select.action(Select.select_horizontal, Picker.all(ls_converter)),
         }
     })
     picker:open()
