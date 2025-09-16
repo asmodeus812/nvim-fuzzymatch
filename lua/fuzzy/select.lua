@@ -159,21 +159,22 @@ local function initialize_window(window)
     vim.wo[window][0].relativenumber = false
     vim.wo[window][0].number = false
     vim.wo[window][0].list = false
-    vim.wo[window][0].showbreak = ''
-    vim.wo[window][0].foldexpr = '0'
-    vim.wo[window][0].foldmethod = 'manual'
+    vim.wo[window][0].showbreak = ""
+    vim.wo[window][0].foldexpr = "0"
+    vim.wo[window][0].foldmethod = "manual"
     vim.wo[window][0].breakindent = false
     vim.wo[window][0].fillchars = "eob: "
     vim.wo[window][0].cursorline = false
-    vim.wo[window][0].wrap = false
     vim.wo[window][0].winfixheight = true
     vim.wo[window][0].winfixwidth = true
+    vim.wo[window][0].wrap = false
     return window
 end
 
-local function initialize_buffer(buffer, bt, ft)
+local function initialize_buffer(buffer, ft, bt)
     vim.bo[buffer].buftype = bt or "nofile"
     vim.bo[buffer].filetype = ft or ""
+    vim.bo[buffer].buflisted = false
     vim.bo[buffer].modified = false
     vim.bo[buffer].autoread = false
     vim.bo[buffer].undofile = false
@@ -382,21 +383,12 @@ function Select.BufferPreview:preview(entry, window)
         exists = true
     elseif entry.filename and vim.loop.fs_stat(entry.filename) then
         buffer = vim.fn.bufadd(entry.filename)
-        vim.bo[buffer].buflisted = false
         exists = false
     else
-        local name = "#fuzzy-no-preview-entry"
-        if vim.fn.bufexists(name) ~= 0 then
-            buffer = vim.fn.bufnr(name, false)
-        else
-            buffer = vim.api.nvim_create_buf(false, true)
-            buffer = initialize_buffer(buffer, "nofile", "fuzzy-preview")
-            populate_buffer(buffer, { "Unable to display or preview entry" })
-            vim.api.nvim_buf_set_name(buffer, name)
-        end
-        vim.api.nvim_win_set_buf(window, buffer)
+        vim.api.nvim_win_set_buf(window, self.preview_buffer)
         vim.api.nvim_win_set_cursor(window, { 1, 0 })
-        return buffer
+        exists = true
+        return
     end
 
     local cursor = { entry.lnum or 1, entry.col and (entry.col - 1) or 0 }
@@ -444,7 +436,7 @@ function Select.CustomPreview:preview(entry, window)
 
     if vim.fn.bufexists(name) == 0 then
         local buffer = vim.api.nvim_create_buf(false, true)
-        buffer = initialize_buffer(buffer, "nofile", "fuzzy-preview")
+        buffer = initialize_buffer(buffer, "fuzzy-preview")
         vim.api.nvim_win_set_buf(window, buffer)
         vim.api.nvim_buf_set_name(buffer, name)
         local ok, lines, ft, bt, cursor = utils.safe_call(
@@ -465,7 +457,9 @@ function Select.CustomPreview:preview(entry, window)
                 if not ok and err ~= nil then error(err) end
             end
         else
-            populate_buffer(buffer, { "Unable to display or preview entry" })
+            populate_buffer(buffer, {
+                "Unable to display or preview entry",
+            })
         end
         return buffer
     else
@@ -500,7 +494,9 @@ function Select.CommandPreview:preview(entry, window)
         else
             vim.api.nvim_buf_attach(buffer, false, {
                 on_lines = function(_, buf)
-                    if vim.api.nvim_buf_line_count(buf) >= cursor[1] and vim.api.nvim_win_get_buf(window) == buf then
+                    if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_line_count(buf) >= cursor[1]
+                        and vim.api.nvim_win_is_valid(window) and vim.api.nvim_win_get_buf(window) == buf
+                    then
                         pcall(vim.api.nvim_win_set_cursor, window, cursor)
                         return true
                     end
@@ -517,7 +513,7 @@ function Select.CommandPreview:preview(entry, window)
             exists = true
         else
             buffer = vim.api.nvim_create_buf(false, true)
-            buffer = initialize_buffer(buffer, "nofile", "fuzzy-preview")
+            buffer = initialize_buffer(buffer, "fuzzy-preview")
             vim.api.nvim_buf_set_name(buffer, name)
             exists = false
         end
@@ -548,7 +544,9 @@ function Select.CommandPreview:preview(entry, window)
 
         vim.api.nvim_buf_attach(buffer, false, {
             on_lines = function(_, buf)
-                if vim.api.nvim_buf_line_count(buf) >= cursor[1] and vim.api.nvim_win_get_buf(window) == buf then
+                if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_line_count(buf) >= cursor[1]
+                    and vim.api.nvim_win_is_valid(window) and vim.api.nvim_win_get_buf(window) == buf
+                then
                     pcall(vim.api.nvim_win_set_cursor, window, cursor)
                     return true
                 end
@@ -701,15 +699,22 @@ end
 function Select:_display_preview()
     local entries = self._state.entries
     local previewer = self._options.prompt_preview
-    if entries and #entries > 0 and previewer ~= false then
-        local cursor = vim.api.nvim_win_get_cursor(self.list_window)
-        assert(#entries >= cursor[1] and cursor[1] > 0)
-        local entry = assert(entries[cursor[1]])
-        display_entry(
-            previewer, entry,
-            self.preview_window,
-            self._state.buffers
-        )
+    if entries and previewer ~= false then
+        if #entries == 0 then
+            vim.api.nvim_win_set_buf(
+                self.preview_window,
+                self.preview_buffer
+            )
+        else
+            local cursor = vim.api.nvim_win_get_cursor(self.list_window)
+            assert(#entries >= cursor[1] and cursor[1] > 0)
+            local entry = assert(entries[cursor[1]])
+            display_entry(
+                previewer, entry,
+                self.preview_window,
+                self._state.buffers
+            )
+        end
     end
 end
 
@@ -745,6 +750,11 @@ function Select:_destroy_view()
     if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
         vim.api.nvim_buf_delete(self.prompt_buffer, { force = true })
         self.prompt_buffer = nil
+    end
+
+    if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
+        vim.api.nvim_buf_delete(self.preview_buffer, { force = true })
+        self.preview_buffer = nil
     end
 
     self._state.streaming = false
@@ -862,20 +872,21 @@ function Select:exec_command(command, mods, callback)
 
     self:_close_view()
 
-    for _, value in ipairs(result) do
-        if value == nil then
+    for _, entry in ipairs(result) do
+        if entry == nil then
             goto continue
         end
 
-        local col = 1
-        local lnum = 1
-
         vim.cmd[command]({
-            args = { value.filename or value.bufnr },
+            args = { entry.filename or entry.bufnr },
             mods = mods,
             bang = true,
         })
-        pcall(vim.api.nvim_win_set_cursor, 0, { lnum, col - 1 })
+
+        local col = entry.col or 1
+        local lnum = entry.lnum or 1
+        local position = { lnum, col - 1 }
+        pcall(vim.api.nvim_win_set_cursor, 0, position)
 
         ::continue::
     end
@@ -1066,18 +1077,16 @@ function Select:clear()
     if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
         populate_buffer(self.list_buffer, {})
     end
+    if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
+        populate_buffer(self.preview_buffer, {})
+    end
 
     if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
         vim.api.nvim_win_set_cursor(self.list_window, { 1, 0 })
     end
     if self.preview_window and vim.api.nvim_win_is_valid(self.preview_window) then
-        local buffer = vim.api.nvim_create_buf(false, true)
-        vim.api.nvim_win_set_buf(self.preview_window, buffer)
-
-        buffer = initialize_buffer(buffer, "nofile", "fuzzy-preview")
-        vim.bo[buffer].bufhidden = "wipe"
-        vim.bo[buffer].modifiable = false
-        populate_buffer(buffer, {})
+        vim.api.nvim_win_set_buf(self.preview_window, self.preview_buffer)
+        vim.api.nvim_win_set_cursor(self.preview_window, { 1, 0 })
     end
 
     self._state.streaming = false
@@ -1235,7 +1244,7 @@ function Select:open()
         local prompt_buffer = self.prompt_buffer
         if not prompt_buffer or not vim.api.nvim_buf_is_valid(prompt_buffer) then
             prompt_buffer = vim.api.nvim_create_buf(false, true)
-            prompt_buffer = initialize_buffer(prompt_buffer, "nofile", "fuzzy-prompt")
+            prompt_buffer = initialize_buffer(prompt_buffer, "fuzzy-prompt")
             self:_create_mappings(prompt_buffer, "i", opts.mappings)
             self:_create_mappings(prompt_buffer, "i", {
                 ["<cr>"] = opts.prompt_confirm,
@@ -1358,7 +1367,7 @@ function Select:open()
         local list_buffer = self.list_buffer
         if not list_buffer or not vim.api.nvim_buf_is_valid(list_buffer) then
             list_buffer = vim.api.nvim_create_buf(false, true)
-            list_buffer = initialize_buffer(list_buffer, "nofile", "fuzzy-list")
+            list_buffer = initialize_buffer(list_buffer, "fuzzy-list")
             if not opts.prompt_input then
                 self:_create_mappings(list_buffer, "n", opts.mappings)
                 self:_create_mappings(list_buffer, "n", {
@@ -1451,10 +1460,18 @@ function Select:open()
     end
 
     if opts.prompt_list and opts.prompt_preview then
+        local preview_buffer = self.preview_buffer
+        if not preview_buffer or not vim.api.nvim_buf_is_valid(preview_buffer) then
+            preview_buffer = vim.api.nvim_create_buf(false, true)
+            preview_buffer = initialize_buffer(preview_buffer, "fuzzy-preview")
+            vim.bo[preview_buffer].bufhidden = "hide"
+            vim.bo[preview_buffer].modifiable = false
+        end
+
         local preview_window = self.preview_window
         if not preview_window or not vim.api.nvim_win_is_valid(preview_window) then
             local preview_height = math.floor(math.ceil(size))
-            preview_window = vim.api.nvim_open_win(0, false, {
+            preview_window = vim.api.nvim_open_win(preview_buffer, false, {
                 split = self.list_window and "above" or "below",
                 height = preview_height,
                 noautocmd = false,
@@ -1467,6 +1484,7 @@ function Select:open()
         end
 
         self.preview_window = preview_window
+        self.preview_buffer = preview_buffer
         self:_display_preview()
     end
 
@@ -1583,6 +1601,7 @@ function Select.new(opts)
     }, opts)
 
     local self = setmetatable({
+        preview_buffer = nil,
         preview_window = nil,
         prompt_buffer = nil,
         prompt_window = nil,

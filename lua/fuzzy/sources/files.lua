@@ -171,11 +171,7 @@ function M.grep(opts)
             interactive = "{prompt}",
         },
         prompt_confirm = Select.action(Select.select_entry, Picker.many(grep_converter)),
-        prompt_preview = Select.CommandPreview.new({
-            "bat",
-            "--plain",
-            "--paging=never",
-        }, grep_converter),
+        prompt_preview = Select.CommandPreview.new("cat", grep_converter),
         actions = {
             ["<c-q>"] = { Select.action(Select.send_quickfix, Picker.many(grep_converter)), "qflist" },
             ["<c-t>"] = { Select.action(Select.send_quickfix, Picker.many(grep_converter)), "tabe" },
