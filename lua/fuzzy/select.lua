@@ -6,6 +6,7 @@ local LIST_HEADER_NAMESPACE = vim.api.nvim_create_namespace("list_header_namespa
 local highlight_extmark_opts = { limit = 1, type = "highlight", details = false, hl_name = false }
 local detailed_extmark_opts = { limit = 4, type = "highlight", details = true, hl_name = true }
 local padding = { " ", "NonText" }
+local spacing = { ",", "Normal" }
 
 local utils = require("fuzzy.utils")
 local Async = require("fuzzy.async")
@@ -128,25 +129,27 @@ local function compute_decoration(str, decoration)
         status, status_highlight = decoration.status_provider(str)
     elseif decoration.status_provider == true and icons then
         local result = #str > 0 and vim.fn.bufnr(str, false) ~= -1
-        status, status_highlight = result and "[x]", "Special"
+        status, status_highlight = result and "[x]", "SelectStatusProvider"
     end
 
     local icon, icon_highlight
     if type(decoration.icon_provider) == "function" then
         icon, icon_highlight = decoration.icon_provider(str)
     elseif decoration.icon_provider == true and icons then
-        icon, icon_highlight = icons.get_icon(str,
-            vim.fn.fnamemodify(str, ':e'), { default = true })
+        icon, icon_highlight = icons.get_icon(
+            str, vim.fn.fnamemodify(str, ':e'),
+            { default = true }
+        )
     end
 
     if type(status) == "string" and #status > 0 then
         table.insert(content, status)
-        table.insert(highlights, status_highlight or "Normal")
+        table.insert(highlights, status_highlight or "SelectProviderDefault")
     end
 
     if type(icon) == "string" and #icon > 0 then
         table.insert(content, icon)
-        table.insert(highlights, icon_highlight or "Normal")
+        table.insert(highlights, icon_highlight or "SelectProviderDefault")
     end
 
     return content, highlights
@@ -901,7 +904,7 @@ function Select:send_fixlist(type, callback)
         items = vim.tbl_filter(function(item)
             return item ~= nil and (item.filename or item.bufnr)
         end, result),
-        title = "[Selection]",
+        title = "[Fuzzymatch]",
     }
 
     if type == "quickfix" then
@@ -1134,8 +1137,8 @@ function Select:status(status, hl)
         hl = { hl, { "string", "nil" }, true },
     }
 
-    local prefix = self._options.prompt_decor or nil
-    local p = type(prefix) == "table" and assert(prefix[2])
+    local decor = self._options.prompt_decor or nil
+    local suffix = type(decor) == "table" and assert(decor.suffix)
 
     vim.api.nvim_buf_clear_namespace(self.prompt_buffer, LIST_STATUS_NAMESPACE, 0, 1)
     vim.api.nvim_buf_set_extmark(self.prompt_buffer, LIST_STATUS_NAMESPACE, 0, 0, {
@@ -1145,42 +1148,51 @@ function Select:status(status, hl)
         virt_text_pos = "eol",
         virt_text_win_col = nil,
         virt_text = {
-            p and p ~= nil and { p, "SelectPrefixText" },
+            suffix and { suffix, "SelectPrefixText" },
             { assert(status), hl or "SelectStatusText" },
         },
     })
 end
 
--- Render a single header line in the prompt buffer and window, which is represented by the headers arguments passed in to this method. The headers can either be a table of strings or tuples, representing the text of the header and the highlight group.
---- @param header table|string the header or headers to render in the query prompt buffer window
+-- Display a header line in the prompt buffer and window, which is represented by the header arguments passed in to this method. The headers can either be a table of header blocks, or a single string. The header blocks are represented by a nested table of tuples, or plain strings e.g { { { "Name", "Special" }, { "Value", "Normal" } } }. Each block of headers is divided and the contents of each block itself represents the header elements to display with different highlight groups
+--- @param header table|string the header or headers blocks to display in the query prompt buffer window
 function Select:header(header)
     vim.validate {
         header = { header, { "table", "string" } },
     }
 
-    local header_items
+    local header_entries
     if type(header) == "table" then
-        header_items = {}
-        for _, value in ipairs(header) do
-            local item = {}
-            if type(value) == "table" then
-                assert(#value == 2 and #value[1] > 0 and #value[2] > 0)
-                table.insert(item, value[1])
-                table.insert(item, value[2])
-            elseif type(value) == "string" then
-                assert(#value > 0)
-                table.insert(item, value)
-                table.insert(item, "Normal")
+        header_entries = {}
+        for idx, block in ipairs(header) do
+            assert(type(block) == "table")
+
+            for _, element in ipairs(block) do
+                local entry = {}
+                if type(element) == "table" then
+                    assert(#element == 2 and #element[1] > 0 and #element[2] > 0)
+                    table.insert(entry, element[1])
+                    table.insert(entry, element[2])
+                elseif type(element) == "string" then
+                    assert(#element > 0)
+                    table.insert(entry, element)
+                    table.insert(entry, "SelectHeaderDefault")
+                end
+                assert(#entry[1] and #entry[2])
+                table.insert(header_entries, padding)
+                table.insert(header_entries, entry)
             end
-            assert(#item == 2 and #item[1] and #item[2])
-            table.insert(header_items, padding)
-            table.insert(header_items, item)
+
+            if idx >= 1 and idx < #header then
+                table.insert(header_entries, spacing)
+                table.insert(header_entries, padding)
+            end
         end
     elseif type(header) == "string" then
-        header_items = { { header, "Normal" } }
+        header_entries = { { header, "SelectHeaderDefault" } }
     end
 
-    if not header_items or #header_items == 0 then
+    if not header_entries or #header_entries == 0 then
         return
     end
 
@@ -1195,7 +1207,7 @@ function Select:header(header)
         virt_lines_above = true,
         virt_lines_leftcol = true,
         virt_lines_overflow = "trunc",
-        virt_lines = { header_items }
+        virt_lines = { header_entries }
     })
 
     -- TODO: https://github.com/neovim/neovim/issues/27967
@@ -1277,12 +1289,12 @@ function Select:open()
                 once = true,
             })
 
-            local prefix = opts.prompt_decor or nil
+            local decor = opts.prompt_decor or nil
             assert(vim.fn.sign_define(sign_name, {
                 ---@diagnostic disable-next-line: assign-type-mismatch
-                text = type(prefix) == "table"
-                    and assert(prefix[1])
-                    or assert(prefix),
+                text = type(decor) == "table"
+                    and assert(decor.prefix)
+                    or assert(decor),
                 texthl = "SelectPrefixText",
             }) == 0, "failed to define sign")
 
@@ -1496,7 +1508,7 @@ end
 --- @field prompt_input? boolean|fun() Whether to show the input prompt, when function is provided it is used as the input callback. Default: true
 --- @field prompt_headers? table|string|nil Initial information headers to populate the prompt with. Default: nil
 --- @field prompt_query? string|nil Initial query to populate the prompt input with. Default: nil
---- @field prompt_decor? table|string Symbol decoration to display in the prompt. A table of two items can be provided show around the prompt query, or a single string to show in front of the prompt query. Default: "› "
+--- @field prompt_decor? table|string Symbol decoration to display in the query prompt window. A table of two items can be provided show around the prompt query, or a single string which by default is interpreted as the prompt prefix. If a table is provided key value pairs are expected of prefix and suffix i.e { prefix = "> ", suffix = "< " }. Default: "› "
 --- @field toggle_prefix? string Prefix to display for toggled entries in the list. Default: "✓"
 --- @field preview_timeout? number timeout in milliseconds after which the preview window will unlock the user interface
 --- @field window_ratio? number Ratio of the window height to the total editor height. Default: 0.15

@@ -11,15 +11,20 @@ function M.stream()
             end
             cb(nil)
         end,
-        -- context = {
-            -- args = {
-                -- "{prompt}",
-            -- },
-            -- interactive = "{prompt}",
-        -- },
+        context = {
+            args = {
+                "{prompt}",
+            },
+            interactive = "{prompt}",
+        },
         display = "name",
         prompt_confirm = Select.default_select,
-        actions = {},
+        actions = {
+            -- no default actions for picker
+        },
+        headers = {
+            -- no custom headers for picker
+        },
         providers = {
             icon_provider = false,
             status_provider = false

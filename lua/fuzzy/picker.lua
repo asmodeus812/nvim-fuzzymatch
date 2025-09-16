@@ -309,7 +309,7 @@ function Picker:_create_stage()
             prompt_cancel = _cancel_prompt(),
             prompt_input = _input_prompt(),
             prompt_headers = self:_generate_headers(
-                nil, stage_actions
+                picker_options.headers, stage_actions
             ),
             prompt_decor = picker_options.prompt_decor,
             prompt_preview = picker_options.prompt_preview,
@@ -351,24 +351,33 @@ function Picker:_toggle_stage()
 end
 
 function Picker:_generate_headers(headers, actions)
-    headers = headers or self._options.headers
-    headers = headers and vim.list_extend({}, headers) or {}
-
-    actions = actions or self._options.actions
-    for key, value in pairs(actions or {}) do
-        if type(value) == "table" and #value > 1 then
-            table.insert(headers, { key, "PickerHeaderActionKey" })
-            table.insert(headers, { "::", "PickerHeaderActionSeparator" })
-            if type(value[2]) == "string" then
-                table.insert(headers, { assert(value[2]), "PickerHeaderActionLabel" })
-            elseif type(value[2]) == "function" then
-                table.insert(headers, { assert(value[2](self)), "PickerHeaderActionLabel" })
+    local action_headers = {}
+    -- generate the labels for the picker actions, if any exist
+    for key, action in pairs(actions or self._options.actions) do
+        if type(action) == "table" and #action > 1 then
+            local block = {}
+            table.insert(block, { key, "PickerHeaderActionKey" })
+            table.insert(block, { "::", "PickerHeaderActionSeparator" })
+            if type(action[2]) == "string" then
+                -- the 2nd value of the tupple is a string, representing the label
+                table.insert(block, { assert(action[2]), "PickerHeaderActionLabel" })
+            elseif type(action[2]) == "function" then
+                -- the 2nd value of the tuple is a function that generates the label
+                table.insert(block, { assert(action[2](self)), "PickerHeaderActionLabel" })
             end
+            table.insert(action_headers, block)
         end
     end
 
-    -- TODO: sort the headers, multi line?
-    return headers
+    table.sort(action_headers, function(a, b)
+        -- sort the actions by the action label
+        return assert(a[3][1]) < assert(b[3][1])
+    end)
+
+    -- add the rest of the labels defined for the picker
+    headers = headers or self._options.headers
+    headers = headers and vim.fn.deepcopy(headers) or {}
+    return vim.list_extend(headers, action_headers)
 end
 
 function Picker:_is_open()
@@ -477,7 +486,7 @@ end
 --- @field content string|function|table the content to use for the picker, can be a command string, a function that takes a callback and calls it for each entry, or a table of entries, if a string or function is provided the content is streamed, if a table is provided the content is static, and the picker can not be interactive. When a table or function is provided the entries can be either strings or tables, when tables are used the display option must be provided to extract a valid matching string from the table. The display function will be used for both displaying in the list and matching the entries against the user query, internally.
 --- @field context? table a table of context to pass to the content function, can contain the following keys - `cwd` - string, `env` - table of environment variables, `args` a table of arguments to start the command with - table, and `map`, a function that transforms each entry before it is added to the stream. The mapper function is useful when the content function produces complex entries, that need to be transformed into useable entries for the picker components downstream. It is independent of the display function, which is used to extract a string from the entry (at which point it may already mapped with the mapper function) for displaying and matching. The mapper function is used to transform the stream entries before they are added to the stream itself. Return nil or false from this function to skip an entry from being added to the stream, `interactive` - boolean|string|number|nil whether the command is interactive, meaning that it will restart the stream on every query change, if a string is provided it is used as a placeholder in the `args` list to replace with the query, if number, the query is inserted at <index> position in `args`, if nil or false the picker is non-interactive, during an interactive mode the matching is done in the second stage, that can be entered with <c-g>.
 --- @field display? function|string|nil a custom function to use for displaying the entries, if nil the entry itself is used, if a string is provided it is used as a key to extract from the entry table
---- @field headers? table|nil help or information headers displayed in the prompt interface, can be user provided table, headers will also be automatically generated based on any present labeled `actions` with which the picker is currently configured. Each action key can be defined as a tuple of a callback and a label
+--- @field headers? table|nil help or information headers displayed in the prompt interface, can be user provided table, headers will also be automatically generated based on any present labeled `actions` with which the picker is currently configured. Each action key can be defined as a tuple of a callback and a label see `actions` for more details.
 --- @field ephemeral? boolean whether the picker should be ephemeral, meaning that it will be destroyed when closed
 --- @field match_limit? number|nil the maximum number of matches to keep, nil means no limit
 --- @field match_timer? number the time in milliseconds to wait before flushing the matching results, this is useful when dealing with large result sets
@@ -489,8 +498,8 @@ end
 --- @field prompt_preview? Select.Preview|boolean speficies the preview strategy to be used when entries are focused, false means no preview will be active, and a correct instance of a child class derived from Select.Preview will use that preview instead, Select.BufferPreview is used by default if the value of this field is true.
 --- @field prompt_debounce? number the time in milliseconds to debounce the user input, this is useful to avoid flooding the matching and streaming with too many updates at once
 --- @field prompt_confirm? function|nil a custom function to call when the user confirms the prompt, if nil the default action is used
---- @field prompt_decor? string the prefix to use for the prompt
 --- @field prompt_query? string the initial query to use for the prompt
+--- @field prompt_decor? string|table the prefix or/and suffix to use for the prompt
 --- @field actions? table a table of key mappings to actions to use for the picker, the general syntax for each entry is ["key"] = callback or a tuple ["key"] = { callback, label }, where the label of the action is optional can be used to generate the headers for the picker if they are enabled, the label can be of type string|function
 --- @field providers? table a table of providers to use for the select, can contain icon_provider and status_provider, see Select.providers for the usage
 
@@ -545,8 +554,8 @@ function Picker.new(opts)
         prompt_query = "",
         prompt_preview = false,
         prompt_decor = {
-            "› ",
-            "‹ "
+            prefix = "› ",
+            suffix = "‹ "
         },
         providers = {
             icon_provider = true,

@@ -51,7 +51,9 @@ function M.files(opts)
     local picker = Picker.new({
         content = "rg",
         headers = {
-            { "Files", "Special" }
+            {
+                { "Files", "Special" }
+            }
         },
         context = {
             args = {
@@ -79,7 +81,9 @@ function M.dirs(opts)
     local picker = Picker.new({
         content = "find",
         headers = {
-            { "Directories", "Special" }
+            {
+                { "Directories", "Special" }
+            }
         },
         context = {
             args = {
@@ -117,7 +121,9 @@ function M.ls(opts)
     local picker = Picker.new({
         content = "ls",
         headers = {
-            { "Ls", "Special" }
+            {
+                { "Ls", "Special" }
+            }
         },
         context = {
             args = {
@@ -150,7 +156,9 @@ function M.grep(opts)
     local picker = Picker.new({
         content = "rg",
         headers = {
-            { "Grep", "Special" }
+            {
+                { "Grep", "Special" }
+            }
         },
         context = {
             args = {

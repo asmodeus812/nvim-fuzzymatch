@@ -125,7 +125,9 @@ function M.buffers(opts)
     local picker = Picker.new({
         content = buffers,
         headers = {
-            { "Buffers", "Special" }
+            {
+                { "Buffers", "Special" }
+            }
         },
         display = function(e)
             return e.info.display or e.info.name or e.name
