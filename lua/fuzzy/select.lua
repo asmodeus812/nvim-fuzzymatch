@@ -1056,7 +1056,6 @@ end
 -- Hides the select interface, does not enforce any resource de-allocation taken up by the select interface, even if the ephemeral option is set to true, to enforce this either use `close` or manually call `destroy`
 function Select:hide()
     self:_close_view()
-    self:_clean_preview()
 end
 
 -- Clears the select interface, from any content and state, that includes the query, list and preview interfaces which are the core parts of the selection interface

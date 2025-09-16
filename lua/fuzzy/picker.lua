@@ -300,7 +300,6 @@ function Picker:_create_stage()
     local picker_options = self._options
     self._state.stage = {
         select = Select.new({
-            ephemeral = picker_options.ephemeral,
             list_display = picker_options.display,
             mappings = vim.tbl_map(function(a)
                 return a ~= nil and type(a) == "table"
@@ -318,7 +317,6 @@ function Picker:_create_stage()
             window_ratio = picker_options.window_size,
         }),
         match = Match.new({
-            ephemeral = picker_options.ephemeral,
             timer = picker_options.match_timer,
             limit = picker_options.match_limit,
             step = picker_options.match_step,
@@ -393,23 +391,21 @@ function Picker:_is_interactive()
     return interactive ~= nil and interactive ~= false
 end
 
---- Check whether the picker or a running stage is open
+--- Check whether the primary picker or a running stage is open. The picker is considered open when any of the primary components of the selection interface are within view.
 --- @return boolean whether the picker or any running stage is open
 function Picker:isopen()
     return self:_is_open()
 end
 
---- Close the picker, along with any running stream or matching operations, and also close any running stage. Depending on the ephemeral option a more aggressive cleanup strategy might take place, affecting the persistent state of the picker
+--- Close the picker, along with any running stream or matching operations, and also close any running stage, permanently. The picker state will be destroyed upon closing it. To retain the persistent state of the picker at the present moment see and use the `hide` method
 function Picker:close()
     self:_close_stage()
     self:_close_picker()
-    if self._options.ephemeral then
-        self:_destroy_stage()
-        self:_destroy_picker()
-    end
+    self:_destroy_stage()
+    self:_destroy_picker()
 end
 
--- Hide the picker, does not destroy any of the internal state or context of the picker or internal interfaces or components, can be used to simply hide away the picker view and restore it later with open
+-- Hide the picker, does not destroy any of the internal state or context of the picker or internal interfaces or components, can be used to simply hide away the picker view and restore it later with open. This will retain the picker state as is while it remains hiddden from view.
 function Picker:hide()
     self:_hide_stage()
     self:_hide_picker()
@@ -487,7 +483,6 @@ end
 --- @field context? table a table of context to pass to the content function, can contain the following keys - `cwd` - string, `env` - table of environment variables, `args` a table of arguments to start the command with - table, and `map`, a function that transforms each entry before it is added to the stream. The mapper function is useful when the content function produces complex entries, that need to be transformed into useable entries for the picker components downstream. It is independent of the display function, which is used to extract a string from the entry (at which point it may already mapped with the mapper function) for displaying and matching. The mapper function is used to transform the stream entries before they are added to the stream itself. Return nil or false from this function to skip an entry from being added to the stream, `interactive` - boolean|string|number|nil whether the command is interactive, meaning that it will restart the stream on every query change, if a string is provided it is used as a placeholder in the `args` list to replace with the query, if number, the query is inserted at <index> position in `args`, if nil or false the picker is non-interactive, during an interactive mode the matching is done in the second stage, that can be entered with <c-g>.
 --- @field display? function|string|nil a custom function to use for displaying the entries, if nil the entry itself is used, if a string is provided it is used as a key to extract from the entry table
 --- @field headers? table|nil help or information headers displayed in the prompt interface, can be user provided table, headers will also be automatically generated based on any present labeled `actions` with which the picker is currently configured. Each action key can be defined as a tuple of a callback and a label see `actions` for more details.
---- @field ephemeral? boolean whether the picker should be ephemeral, meaning that it will be destroyed when closed
 --- @field match_limit? number|nil the maximum number of matches to keep, nil means no limit
 --- @field match_timer? number the time in milliseconds to wait before flushing the matching results, this is useful when dealing with large result sets
 --- @field match_step? number the number of entries to process in each matching step, this is useful when dealing with large result sets
@@ -514,7 +509,6 @@ function Picker.new(opts)
         content = { opts.content, { "string", "function", "table" } },
         context = { opts.context, { "table", "nil" }, true },
         display = { opts.display, { "function", "string", "nil" }, true },
-        ephemeral = { opts.ephemeral, "boolean", true },
         match_limit = { opts.match_limit, { "number", "nil" }, true },
         match_timer = { opts.match_timer, "number", true },
         match_step = { opts.match_step, "number", true },
@@ -541,7 +535,6 @@ function Picker.new(opts)
             interactive = false,
         },
         display = nil,
-        ephemeral = true,
         match_limit = nil,
         match_timer = 100,
         match_step = 50000,
@@ -585,14 +578,12 @@ function Picker.new(opts)
     }, Picker)
 
     self.match = Match.new({
-        ephemeral = opts.ephemeral,
         timer = opts.match_timer,
         limit = opts.match_limit,
         step = opts.match_step,
     })
 
     self.stream = Stream.new({
-        ephemeral = opts.ephemeral,
         step = opts.stream_step,
         bytes = not is_lines,
         lines = is_lines,
@@ -613,7 +604,6 @@ function Picker.new(opts)
     end
 
     self.select = Select.new({
-        ephemeral = opts.ephemeral,
         list_display = opts.display,
         list_step = list_step,
         mappings = vim.tbl_map(function(a)
