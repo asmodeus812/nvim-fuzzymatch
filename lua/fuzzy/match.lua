@@ -388,11 +388,11 @@ function Match.merge(source, left, right)
 end
 
 --- @class MatchOptions
---- @field ephemeral? boolean If true, the matcher will clean up its context after each match operation, making it suitable for one-off matches. Default is true.
---- @field step? integer The number of items to process in each iteration. Default is 50000.
---- @field limit? integer The maximum number of results to keep. Default is 4096.
---- @field timer? integer The interval in milliseconds between each match iteration. Default is 100.
---- @field timeout? integer The maximum time in milliseconds to wait for the matching operation to complete when using the wait method. Default is 5000.
+--- @field ephemeral? boolean If true, the matcher will clean up its context after each match operation, making it suitable for one-off matches.
+--- @field step? integer The number of items to process in each iteration.
+--- @field limit? integer The maximum number of results to keep.
+--- @field timer? integer The interval in milliseconds between each match iteration.
+--- @field timeout? integer The maximum time in milliseconds to wait for the matching operation to complete when using the wait method.
 
 --- Creates a new Match instance with the specified options, or default options if none are provided.
 --- @param opts? MatchOptions

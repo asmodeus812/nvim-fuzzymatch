@@ -20,16 +20,6 @@ function M.stream(opts)
         },
         display = "name",
         prompt_confirm = Select.default_select,
-        actions = {
-            -- no default actions for picker
-        },
-        headers = {
-            -- no custom headers for picker
-        },
-        providers = {
-            icon_provider = false,
-            status_provider = false
-        }
     })
     return picker:open()
 end

@@ -15,11 +15,11 @@ function M.setup(opts)
         vim.ui.select = function(items, o, confirm)
             local picker = Picker.new({
                 content = items,
-                headers = {
-                    o and o.prompt and { o.prompt }
-                },
+                context = nil,
+                preview = false,
                 display = o and o.format_item,
-                prompt_confirm = Select.action(Select.default_select, Picker.first(function(entry)
+                headers = { o and o.prompt and { o.prompt } },
+                prompt_confirm = Select.action(Select.default_select, Select.first(function(entry)
                     confirm(entry)
                     return entry
                 end)),
@@ -33,10 +33,10 @@ function M.setup(opts)
     vim.api.nvim_set_hl(0, "SelectPrefixText", { link = "Normal", default = false })
     vim.api.nvim_set_hl(0, "SelectStatusText", { link = "NonText", default = false })
 
-    vim.api.nvim_set_hl(0, "SelectProviderStatus", { link = "Special", default = false })
-    vim.api.nvim_set_hl(0, "SelectProviderDefault", { link = "Normal", default = false })
-
     vim.api.nvim_set_hl(0, "SelectHeaderDefault", { link = "Normal", default = false })
+    vim.api.nvim_set_hl(0, "SelectHeaderPadding", { link = "NonText", default = false })
+    vim.api.nvim_set_hl(0, "SelectHeaderDelimiter", { link = "Ignore", default = false })
+    vim.api.nvim_set_hl(0, "SelectDecoratorDefault", { link = "Normal", default = false })
 
     vim.api.nvim_set_hl(0, "PickerHeaderActionKey", { link = "ErrorMsg", default = false })
     vim.api.nvim_set_hl(0, "PickerHeaderActionLabel", { link = "MoreMsg", default = false })

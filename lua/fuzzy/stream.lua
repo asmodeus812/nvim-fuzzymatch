@@ -161,7 +161,7 @@ function Stream:_handle_data(data, size)
     end
 
     data = self:_transform_data(data)
-    if data ~= nil then
+    if data ~= nil and self._state.buffer then
         -- keep accumulating non blank lines into the buffer, eventually the buffer size will be enough to be
         -- flushed, see above
         self._state.buffer[self._state.size + 1] = data

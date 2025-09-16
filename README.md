@@ -1,14 +1,31 @@
-# Plugin Name
+# Nvim-Fuzzymatch
 
-A fast interactive built-in fuzzy matching interface which utilizes the built-in `fuzzymatch` and family of functions which vim and
-neovim both implement. The goal of this plugin is to provide a small set of core components which can be used to create any type of
-picker based on an arbitrary user defined set of entries or a list of items.
+## Features
 
-To use the fuzzy match functionality, one needs to first setup a picker, a picker comprises of a few core components - Select, Match and
-Stream. These 3 components drive the internal workings of the Picker. The Select components is purely used to allow the user to
-interactively provide a query or a prompt and visualize a list of arbitrary items, as well as preview them. The Match component is used
-to pick fuzzy search for the best matches within a list of arbitrary user provided list of items. The Stream component is responsible
-for supplying user defined items in an efficient and performant way.
+- **Fast**: Utilizes built-in `fuzzymatch` functions for quick matching.
+- **Preview Support**: Built-in previewers for selected items.
+- **Non-blocking**: Designed to minimize UI blocking with batching and debouncing.
+- **Asynchronous**: Handles large datasets without freezing the UI, ensuring a smooth user experience.
+- **Customizable**: Flexible configuration options for various use cases.
+- **Interactive**: Real-time filtering as you type for both system executable and user defined streams.
+- **Lightweight**: Minimal dependencies, easy to integrate into existing setups.
+- **Extensible**: Modular design allows for easy addition of new features and sources.
+- **Multiselect**: Supports selecting multiple items and performing batch actions.
+- **Decorators**: Customizable list item entry decorations such as icons or user defined decorators.
+- **Action Handlers**: Predefined actions for common operations like editing files, sending to quickfix, etc.
+- **Cross-Platform**: Works on any system with a modern version of Neovim or Vim, does not depend on external binaries.
+- **Built-in Sources**: Includes example sources for files, buffers, and more.
+
+## Description
+
+A fast and Interactive fuzzy matching interface built on the native `fuzzymatch` functions family of functions. The plugin is designed to
+offer a minimal and modular framework that enables the creation of flexible item pickers capable of operating on arbitrary user-defined data
+sources or item lists. Its primary focus is to deliver efficiency, simplicity, and responsiveness by leveraging a small set of core
+components: Select, Match, and Stream. The `Select` component facilitates the user interface by allowing interactive query input, displaying
+visualized lists of items, and enabling previews during selection. The `Match` component performs the fuzzy matching operation by
+identifying the best results based on the query while working efficiently with the provided item list. The `Stream` component manages the
+dynamic and performant streaming of user-defined data, or stdout/err streaming of executables ensuring seamless handling of even large
+datasets in a non-blocking way.
 
 The Picker components are taking a great deal of effort to prevent UI blocking and user input lag, when the matching is performed by
 leveraging input debouncing, processing the user items in batches, grouping results and more. This should in the end help alleviate most
@@ -21,23 +38,6 @@ The main goal of this plugin is to provide a fast and performant solution for fu
 any type, regardless of the source, user defined stream or executable command, and to do so in a way that is non-blocking and does not
 interfere with the user experience and usability of the editor. Another goal of this plugin is to minimize spawning external processes and
 leverage only built-in solutions to filter and match list items (With the exception of course when the executable is a provider of content)
-
-## Features
-
-- \*\*\*\*:
-- **Fast**: Utilizes built-in `fuzzymatch` functions for quick matching.
-- **Preview Support**: Built-in previewers for selected items.
-- **Customizable**: Flexible configuration options for various use cases.
-- **Interactive**: Real-time filtering as you type for both system executable and user defined streams.
-- **Non-blocking**: Designed to minimize UI blocking with batching and debouncing.
-- **Lightweight**: Minimal dependencies, easy to integrate into existing setups.
-- **Extensible**: Modular design allows for easy addition of new features and sources.
-- **Multiple Selection**: Supports selecting multiple items and performing batch actions.
-- **Built-in Sources**: Includes example sources for files, buffers, and more.
-- **Action Handlers**: Predefined actions for common tasks like opening files, sending to quickfix, etc.
-- **Decorators**: Customizable list item entry decorations such as icons or user defined decorators.
-- **Cross-Platform**: Works on any system with a modern version of Neovim or Vim, does not depend on external binaries.
-- **Asynchronous Operations**: Handles large datasets without freezing the UI, ensuring a smooth user experience.
 
 ## Installation
 
@@ -82,39 +82,55 @@ require("fuzzy").setup({
 
 ### Basic Properties
 
-| Field             | Type                     | Description                                                                                                                                                                                                                                                                                                                 |
-| ----------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `content`         | `string,function,table`  | The content for the picker. Can be a string (command), function (generates entries dynamically), or table (static entries). Tables make the picker non-interactive by default. Functions/tables can contain strings or tables (requires a `display` function for extracting).                                               |
-| `context`         | `table?`                 | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), `map` (function to transform entries from the content stream), and `interactive` (boolean, string, or number to configure interactivity).                                                                                  |
-| `display`         | `function,string,nil`    | Custom function for displaying entries. If `nil`, the entry itself is displayed. If a string, it’s treated as a key to extract from the entry table.                                                                                                                                                                        |
-| `headers`         | `table?`                 | Help or information headers for the prompt interface. Can be a user-provided table or auto-generated based on `actions`.                                                                                                                                                                                                    |
-| `match_limit`     | `number?`                | Maximum number of matches to keep. `nil` means no limit.                                                                                                                                                                                                                                                                    |
-| `match_timer`     | `number`                 | Time in milliseconds between processing matching result batches (useful for large result sets).                                                                                                                                                                                                                             |
-| `match_step`      | `number`                 | Number of entries to process in each matching step or batch (useful for large result sets).                                                                                                                                                                                                                                 |
-| `display_step`    | `number`                 | Number of entries rendered in a single batch during display rendering. Useful in combination with `display` for complex or slow `display` functions.                                                                                                                                                                        |
-| `stream_type`     | `"lines","bytes"`        | Type of the stream content (`lines` splits on newlines, `bytes` splits on byte chunks).                                                                                                                                                                                                                                     |
-| `stream_step`     | `number`                 | Number of lines/bytes to read per streaming step determining when to flush the stream items batch (useful for large data streams).                                                                                                                                                                                          |
-| `window_size`     | `number`                 | Ratio (0-1) specifying the picker window size relative to the screen.                                                                                                                                                                                                                                                       |
-| `prompt_preview`  | `Select.Preview,boolean` | Configures whether entries generate a preview. Set `false` for none, `true` for the `Select.BufferPreview`. A provided child class instance of `Select.Preview` overrides the default behavior.                                                                                                                             |
-| `prompt_debounce` | `number`                 | Debounce time in ms to delay handling input (helps avoid overwhelming the matching process).                                                                                                                                                                                                                                |
-| `prompt_confirm`  | `function?`              | A custom callback for user confirmation. If `nil`, default selection is used.                                                                                                                                                                                                                                               |
-| `prompt_query`    | `string`                 | Initial user query for starting the picker prompt with.                                                                                                                                                                                                                                                                     |
-| `prompt_decor`    | `string,table`           | Prefix/suffix for the prompt. Can take the form of a string (just one) or a table (both) providing a table with `{ suffix = "", prefix = "" }` keys.                                                                                                                                                                        |
-| `actions`         | `table`                  | Key mappings for actions in the picker interface. Specify as `["key"] = callback` OR `["key"] = { callback, label }`. Labels (optional) can be `string` or `function`.                                                                                                                                                      |
-| `providers`       | `table`                  | Table of providers for selection. Includes optional keys such as `icon_provider` and `status_provider`. The decoration providers can be disabled by setting them to `false`. The providers govern how the entries are decorated - i.e., displaying icons or user-provided text/data/status per entry in the selection list. |
+| Field             | Type                     | Description                                                                                                                                                                                                                                                                   |
+| ----------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`         | `string,function,table`  | The content for the picker. Can be a string (command), function (generates entries dynamically), or table (static entries). Tables make the picker non-interactive by default. Functions/tables can contain strings or tables (requires a `display` function for extracting). |
+| `context`         | `table?`                 | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), `map` (function to transform entries from the content stream), and `interactive` (boolean, string, or number to configure interactivity).                                    |
+| `display`         | `function,string,nil`    | Custom function for displaying entries. If `nil`, the entry itself is displayed. If a string, it’s treated as a key to extract from the entry table. If a function, it is used as a callback which receives the entry as its only input and must return a string              |
+| `actions`         | `table?`                 | Key mappings for actions in the picker interface. Specify as `["key"] = callback` OR `["key"] = { callback, label }`. Labels (optional) can be `string` or `function`.                                                                                                        |
+| `headers`         | `table?`                 | Help or information headers for the prompt interface. Can be a user-provided table or auto-generated based on `actions`.                                                                                                                                                      |
+| `preview`         | `Select.Preview,boolean` | Configures whether entries generate a preview. Set `false` for none, `true` for the `Select.BufferPreview`. A provided child class instance of `Select.Preview` overrides the default behavior.                                                                               |
+| `decorators`      | `Select.Decorator[]`     | Table of decorators for the entries. The decoration providers are instances of `Select.Decorators` and by default the Select module provides several built in ones like Select.IconDecorator.                                                                                 |
+| `match_limit`     | `number?`                | Maximum number of matches. `nil` means no limit. If a valid non nil number value is provided the fuzzy matching will stop the moment this number is reached.                                                                                                                  |
+| `match_timer`     | `number`                 | Time in milliseconds between processing matching result batches (useful for large result sets).                                                                                                                                                                               |
+| `match_step`      | `number`                 | Number of entries to process in each matching step or batch (useful for large result sets).                                                                                                                                                                                   |
+| `display_step`    | `number`                 | Number of entries rendered in a single batch during display rendering. Useful in combination with `display` for complex or slow `display` functions.                                                                                                                          |
+| `stream_type`     | `"lines","bytes"`        | Type of the stream content (`lines` splits on newlines, `bytes` splits on byte chunks).                                                                                                                                                                                       |
+| `stream_step`     | `number`                 | Number of lines/bytes to read per streaming step determining when to flush the stream items batch (useful for large data streams).                                                                                                                                            |
+| `window_size`     | `number`                 | Ratio (0-1) specifying the picker window size relative to the screen.                                                                                                                                                                                                         |
+| `prompt_debounce` | `number`                 | Debounce time in ms to delay handling input (helps avoid overwhelming the matching process).                                                                                                                                                                                  |
+| `prompt_confirm`  | `function?`              | A custom callback for user confirmation. If `nil`, default selection is used.                                                                                                                                                                                                 |
+| `prompt_query`    | `string`                 | Initial user query for starting the picker prompt with.                                                                                                                                                                                                                       |
+| `prompt_decor`    | `string,table`           | Prefix/suffix for the prompt. Can take the form of a string (just one) or a table (both) providing a table with `{ suffix = "", prefix = "" }` keys.                                                                                                                          |
 
-### Detailed Explanation
+### Detailed Description
 
 - **content**: The content can be a string, function, or table. If it’s a string, it’s treated as an executable command. This is your
-  entrypoint into the picker. If it’s a function, it should accept a callback and an args table, and call the callback with each entry to
+  entrypoint into the picker. If it’s a function, it should accept a callback and an `args` table, and call the callback with each entry to
   stream them in. If it’s a table, it should be a static list of entries (strings or tables). Tables require a `display` function to extract
   the display and matching string.
+
 - **context**: The context provides additional information to the content provider. It tells the picker how to run the command (if content
   is a string), what arguments to pass, the working directory, environment variables, and more. The `interactive` field marks the picker as
-  interactive if set to `true`, or can be a string(template/placeholder name)/number to specify how to embed the user prompt in the args.
+  interactive if set to `true`, or can be a string(template/placeholder name)/number to specify how to embed the user prompt in the `args`.
+
 - **display**: The display option configures how entries are shown in the picker. It can be a function that takes an entry and returns a
   string, or a string key to extract from the entry table. If `nil`, the entry itself is displayed (works for simple strings). This is also
   the same string used for the fuzzy matching.
+
+- **actions**: Key mappings for actions in the picker interface. This is a table where keys are the keybindings (e.g., `"<CR>"`, `"<C-q>"`)
+  and values are either a callback function or a tuple of `{ callback, label }`. The label is optional and can be a string or a function that
+  returns a string. Labels are used to generate headers automatically if no custom headers are provided. The action callback signature is the
+  same as for prompt_confirm and prompt_cancel
+
+- **decorators**: A table of selection list entry decorators. The decorators govern how the entries are visually decorated - the decorations
+  are always inserted in front of the entry line in the list interface. They must of sub-classes of `Select.Decorator`, each decorator must
+  override the decorate function which receives the current raw entry as provided by the stream along with the display line for the same entry
+
+- **preview**: Configures whether entries generate a preview. If set to `false`, no preview is shown. If set to `true`, the default
+  `Select.BufferPreview` is used. You can also provide a custom instance of a child class of `Select.Preview`. Each previewer must override
+  the preview function which receives as single argument the raw entry as it was provided by the stream
+
 - **headers**: Headers are optional lines of text shown at the top of the picker interface. They can provide help or information to the
   user. If not provided, headers can be auto-generated based on the configured actions, that have labels, to give the user hints on how to
   interact with the picker. The headers consists of blocks, each block is separated with a comma, each block can contain multiple lines, each
@@ -123,56 +139,53 @@ require("fuzzy").setup({
 
 - **match_limit**: The maximum number of matches to stop after, if `nil` there is no limit and all matches will be kept, the matcher will
   not stop until all entries have been processed.
+
 - **match_timer**: The time in milliseconds between processing match batches, the content stream is processed in batches of `match_step`
   entries, after each batch the matcher will wait for `match_timer` milliseconds before processing the next batch. This is useful when dealing
   with large result sets to avoid blocking the UI for too long.
+
 - **match_step**: The number of entries to process in each matching step or batch, the content stream is processed in batches of size
   `match_step`.
 
 - **stream_type**: The type of the stream content. Can be either `lines` or `bytes`. If `lines`, the content is split on newlines. If
   `bytes`, the content is split on byte chunks, both types are restricted by the `stream_step` option, which processes the stream in chunks of
   the specified size.
+
 - **stream_step**: The number of lines/bytes to read per streaming step. This determines when to flush the stream batch. This is useful for
   large data streams to avoid blocking the UI for too long.
 
 - **display_step**: The number of entries to render in a single batch during list rendering. This is useful in combination with a complex or
   slow `display` function to avoid blocking the UI for too long. Otherwise all entries passed for rendering are rendered in a single call to
   `nvim_buf_set_lines` once.
+
 - **window_size**: The ratio (0-1) specifying the picker window size relative to the screen. A value of 0.5 means the picker will take up
   half the screen. If the preview is enabled the picker will take up half that height, the rest will be used for the preview window.
-- **prompt_preview**: Configures whether entries generate a preview. If set to `false`, no preview is shown. If set to `true`, the default
-  `Select.BufferPreview` is used. You can also provide a custom instance of a child class of `Select.Preview`. Each previewer must override
-  the preview function which receives as single argument the entry as it was provided by the stream
+
 - **prompt_debounce**: The debounce time in milliseconds to delay handling input. This helps avoid overwhelming the matching process with
   too many updates in quick succession. A value of 100-200ms is usually a good starting point.
+
 - **prompt_confirm**: A custom callback for user confirmation. If `nil`, the default selection action is used. This function should handle
   what happens when the user confirms their selection. The function receives the current Select instance as its first argument, use the
   provided Select actions as a base e.g Select.bind(Select.default_select, custom_handler). default_select will call the custom handler with
   the currently selected items as its argument. If you want more control over the selection provide a direct callback but extracting and
   matching the current entries from the list manually would be required.
+
 - **prompt_query**: The initial user query to start the picker prompt with. This can be used to pre-fill the prompt with a default value,
   which would also trigger prompt_input automatically
+
 - **prompt_decor**: The prefix/suffix for the prompt. This can be a single string (used as a prefix), or a table providing both a `prefix`
   and `suffix` key. This can be used to add visual cues to the prompt
 
-- **actions**: Key mappings for actions in the picker interface. This is a table where keys are the keybindings (e.g., `"<CR>"`, `"<C-q>"`)
-  and values are either a callback function or a tuple of `{ callback, label }`. The label is optional and can be a string or a function that
-  returns a string. Labels are used to generate headers automatically if no custom headers are provided. The action callback signature is the
-  same as for prompt_confirm and prompt_cancel
-- **providers**: A table of providers for selection. This includes optional keys such as `icon_provider` and `status_provider`. The
-  decoration providers can be disabled by setting them to `false`. The providers govern how the entries are visually decorated - the
-  decorations are always inserted in front of the entry line in the selection interface
+### In-depth inspection
 
-### Usage Patterns
+There are a few key elements which need a bit more attention, when using the picker in different scenarios, these are the actions,
+previewers and decorators. And more specifically when using the built-in provided `actions`, `previewers` and `decorators`
 
-There are a few key properties which need a bit more attention, when using the picker in different scenarios, these are the actions,
-previewers and providers
-
-#### Entries
-
-The content stream result or the entries which are fed into the picker produced by a stream can be of only 3 valid distinct types - strings,
-tables or a number. The structure of these entries is important as they determine how the picker will handle them specifically in the
-default Select.actions and Select.previewers. These entries can be of the following types:
+The content stream result or in other words the entries which are fed into the picker produced by a stream can be of any type however
+certain default and built-in components such as `actions` and `previewers` require a precise entry structure to make use of them An entry
+which is to be used within the default `actions` and `previewers` be of only 3 valid distinct types - strings, tables or a number. The
+structure of these entries is important as they determine how the picker will handle them specifically in the default Select.actions and
+Select.previewers. These entries can be of the following types:
 
 - `Numbers` are interpreted and are required to be valid loaded or unloaded buffer number handles in the current neovim instance
 
@@ -186,9 +199,6 @@ default Select.actions and Select.previewers. These entries can be of the follow
 
 `If entry is a string or a number, that does not represent a valid file or directory location, or a valid neovim buffer number, that is
 considered an invalid entry and will throw and error`
-
-For any other use case, where the table structure is different, the picker requires a converter to be provided from which a valid entry
-structure can be constructed.
 
 ```lua
 -- The basic structure of a valid entry is as follows, as returned by the content stream directly or after a conversion if conversion is
@@ -204,18 +214,33 @@ local entry = {                 -- a valid entry table, must contain at least on
 }
 ```
 
-`All entries are normalized to the above table structure before being processed by actions, previewers etc, this means that if the entry
-is a string or a number it will be converted to a table with the appropriate keys, first.`
+`All entries are normalized to the above table structure before being processed by actions, previewers, this means that if the entry is a
+string or a number it will be converted to a table with the appropriate keys, first.`
 
 #### Actions
 
 The actions are key mappings for the picker interface, they allow the user to interact with the picker in various ways, That includes
-prompt_confirm and prompt_cancel which are special actions that are triggered when the user confirms or cancels the selection respectively.
+`prompt_confirm` and `prompt_cancel` which are special actions that are triggered when the user confirms or cancels the selection
+respectively, however their signature and internal mode of operation is the same as for any action provided in the `actions` table
 
 ```lua
--- As mentioned if a more fine grained control is required, a custom function can be provided for prompt_confirm, however the user has to
--- extract the current selection manually, here we are showing how that can happen by using the default implementation of the default_select
--- action which is exposed by the Select module
+-- Example using the built-in select entry action, which edits a resource into a neovim buffer. As mentioned default actions require a
+-- specific structure for the entries, and in this case we ensure that this is the case by adding a converter to the action which takes
+-- care of normalizing each entry into a valid structure understood by the internal actions.
+prompt_confirm = Select.action(Select.select_entry, Select.all(function(entries)
+    local pat = "^([^:]+):(%d+):(%d+):(.+)$"
+    local filename, line_num, col_num = entry:match(pat)
+    if filename and #filename > 0 then
+        return {
+            filename = filename,
+            col = col_num and tonumber(col_num),
+            lnum = line_num and tonumber(line_num),
+        }
+    end
+end))
+
+-- As mentioned if a more fine grained control is required, a custom action function can be provided for prompt_confirm, however the user has to
+-- extract the current selection manually, here we are showing what that might look like
 prompt_confirm = function(select)
     -- we extract the cursor position from the select window, and use that to get the current selection from the list of entries with which
     -- the list is currently populated, closing the view is optional but it makes sense in most scenarios
@@ -223,59 +248,52 @@ prompt_confirm = function(select)
     local selection = callback and select:_list_selection(cursor[1])
     select:_close_view()
 end
-
--- The select entry action, which by default edits the file resource or buffer represented by each of the selected entries, will not be performed
--- since our action handler returns false, which signals that the action should not be performed.
-prompt_confirm = Select.action(Select.select_entry, function(entries)
-    print(vim.inspect(entry))
-    return false
-end)
 ```
 
-The default actions exposed by Select module invoke the user provided custom converter on all selected items, meaning that the first
-argument will always be a table of `size 1 or N where N is the number of items selected`. This is relevant when more than one items are
+The default actions exposed by Select module invoke the user provided custom converter on all selected items, meaning that the first and
+only argument will always be a table of `size 1 or N where N is the number of items selected`. This is relevant when more than one items are
 selected in a multi selection picker when an action for multi select is bound to the picker like `Select.toggle_entry` usually bound to the
 `<tab>` key by default. If no converter is provided to the action, a default converter is used that attempts to convert the entry to a valid
-structure, a table with proper structure as described in the Entries section above to quick fix list, editing a file etc, can be invoked
-correctly
+structure, a table with structure as described in the Entries section above to quick fix list, editing a file etc, can be invoked correctly
 
-`An action can return false to signal that the action did not complete successfully, this will result in no-op for the executed action,
-useful if you wish to gracefully cancel or disable action handling for specific cases`
+`A converter function can return false to signal that the conversion did not complete successfully, this will result in no-op for the
+executed action, useful if you wish to gracefully cancel or abort action handling for specific cases`
 
-#### Providers
-
-The providers are responsible for decorating the entries in the picker interface, they are optional and there are only two at the moment
-called - icon_provider and status_provider. They are simple callbacks which receive the current display line and the raw entry from the
-entries list about to be rendered, and should return a string or a tuple of string and highlight group, which will be prepended to the entry
-line in the picker interface. The status decoration is added before the icon decoration on the line - visually.
-
-```lua
--- Example icon and status providers, the icon provider uses nvim-web-devicons to get the icon for a file based on its extension, while the
--- status provider simply adds a mark for selected entries, the providers can optionally return a second value which is the highlight group name
--- to skip decoration simply return nil for the first value
-providers = {
-    icon_provider = function(line, entry)
-        local extension = line:match("^.+(%..+)$")
-        local icon = require("nvim-web-devicons").get_icon(
-                    filename, extension, { default = true })
-        return (icon, "Normal")
-    end,
-    status_provider = function(entry)
-        return entry.name == "selected" and ("✔ ", "FuzzySelected")
-    end,
-}
-```
+The built-in actions such as `Select.select_entry` and `Select.send_quickfix` and others, can be bound with additional converter function,
+as an optional argument by using the `Select.action(Select.select_entry, converter)`, which is used to convert the raw entries into a valid
+entries structure before acting upon them, this is useful when the stream entries are not in a valid format for the action to handle
+directly. These built-in actions require the same structure as specified for the picker `actions` in the entries section. Otherwise a
+default internal converter is used which is the same default converter used for `previewers` (see below) as well, when no converter is
+provided to them.
 
 #### Previewers
 
-Are responsible for generating a preview of the currently selected entry, they represent `metatables` or `objects` extending off of
-`Select.Preview` class, and must override the preview function which receives two arguments - the raw entry from the entries list to preview
-and the preview window of the selection interface.
+Are responsible for generating a preview of the currently selected entry, they represent classes sub-classing off of `Select.Preview`,
+and must override the preview function which receives two arguments - the raw entry from the entries list to preview and the preview window
+handle where the preview will needs to be shown
+
+By default the Select module provides a built-in previewers similarly to the Select actions. These previewers also make use of the same
+format for their entries as described above, more precisely the Command and Buffer previewers. However a user might desire to create his own
+previewer which would give much more control over how an entry from the stream is displayed
 
 ```lua
--- Example of a custom previewer which simply echoes the entry in the preview window, this is mostly for demonstration purposes as it does
--- not make much sense to have a previewer that does not actually preview anything
-local EchoPreviewer = setmetatable({}, { __index = Select.Preview })
+-- Example of using a built-in previewer with a converter that matches grep entries and parses them into the required table structure. This
+-- structure is required by the built-in `SelectBufferPreview` to correctly be able to preview the entry.
+preview = Select.BufferPreview.new(function()
+    local pat = "^([^:]+):(%d+):(%d+):(.+)$"
+    local filename, line_num, col_num = entry:match(pat)
+    return {
+        filename = filename,
+        col = col_num and tonumber(col_num),
+        lnum = line_num and tonumber(line_num),
+    }
+end)
+
+-- Example of a custom previewer which simply echoes the entry in the preview window, this is mostly for demonstration purposes, it is
+-- useful to preview complex table entries, that otherwise have a simple display function for fuzzy matching and rendering
+local EchoPreviewer = {}
+EchoPreviewer.__index = EchoPreviewer
+setmetatable(EchoPreviewer, { __index = Select.Preview })
 
 function EchoPreviewer:new()
     local obj = Select.Preview.new()
@@ -284,15 +302,19 @@ function EchoPreviewer:new()
     return obj
 end
 
+function EchoPreviewer:clean()
+    -- do cleanup actions for this previewer, this will ensure that the state of the previewer is destroyed when no longer needed,
+    -- be careful as this might invalidate the preview instance for subsequent preview calls
+    vim.api.nvim_buf_delete(self.buf, { force = true })
+    self.buf = nil
+end
+
 function EchoPreviewer:preview(entry, win)
     -- user is responsible for managing the buffer if needed, here we are simply reusing a single buffer and clearing it on each preview call
     -- if the buffer needs to be cleared after the selection interface is closed return the buffer number from the preview function as well
     local lines = type(entry) == "string" and { entry } or vim.split(vim.inspect(entry), "\n")
     vim.api.nvim_win_set_option(win, "wrap", false)
     vim.api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
-    -- ensure that the buffer will be deleted when the selection interface is closed and no preview is needed anymore, this is optional, and
-    -- if not returned the buffer cleanup is left to the user, returning the same buffer ??? todo: this may change
-    return buffer
 end
 ```
 
@@ -301,6 +323,62 @@ is used to convert the raw entry into a valid entry structure before previewing 
 valid format for the previewer to handle directly. These previewers require the same structure as specified for the picker `actions` in the
 entries section. Otherwise a default internal converter is used which is the same default converter used for `actions` as well, when no
 converter is passed to them.
+
+#### Decorators
+
+The decorators are responsible for decorating the entries in the picker interface, they are optional and must be sub-classes of
+`Select.Decorator`. They require you to implement the decorate function which receive the current entry and the raw display line, of the
+entry alone, before any decoration is done, and should return a string or a tuple of string and highlight group, can also return a table
+of strings. To not include the decorator for the current entry, simply return nil or empty string, and table of highlight groups, which
+will be used to prepended to the entry line in the picker interface.
+
+```lua
+-- Example shows how to add a decorator to the picker, in this case we are using the default one which is provided by the select module.
+-- Which requires a converter to be instantiated, the same converter function that can be passed to the `actions` or the `previewer` to
+-- obtain a valid entry structure table tuple
+decorators = {
+    Select.IconDecorator.new(function()
+        local pat = "^([^:]+):(%d+):(%d+):(.+)$"
+        local filename, line_num, col_num = entry:match(pat)
+        return {
+            filename = filename,
+            col = col_num and tonumber(col_num),
+            lnum = line_num and tonumber(line_num),
+        }
+    end)
+}
+
+-- Example of a custom defined user decorator instance, which simply does add a prefix symbol to each entry in the list, notice that the
+-- decorate function accepts two arguments, the raw entry form the list as well as the display line of the entry, that is the result of the
+-- display function (if any) applied on the entry, and the actual raw line that will represent the entry in the list when it is displayed.
+local PrefixDecorator = {}
+PrefixDecorator.__index = PrefixDecorator
+setmetatable(PrefixDecorator, { __index = Select.Decorator })
+
+function PrefixDecorator.new(converter)
+    local obj = Select.Decorator.new()
+    setmetatable(obj, PrefixDecorator)
+    return obj
+end
+
+function PrefixDecorator:clean()
+    -- do cleanup actions for this decorator, this might make sense if additional resources were allocated during the decoration computation
+    -- or process, take extra care to avoid invaliding the decorator instance for subsequent calls to the decorate method
+end
+
+function PrefixDecorator:decorate(entry, line)
+    -- add something simple, to each entry, to simply demonstrate what the decoration provider can return from its function, the hl group is
+    -- optional and if not provided a default one will be added - `SelectDecoratorDefault`. Returning nil or "" for the decoration text tells
+    -- the decorator handler that this decorator is going to be skipped entirely from being added to the final decorated line
+    return "[*]", "ErrorMsg"
+end
+```
+
+The built-in previewers such as `Select.IconDecorator` is accepting a converter as an optional argument, which is used to convert the raw
+entry into a valid entry structure before calculating the decorations for it, this is useful when the stream entries are not in a valid
+format for the previewer to handle directly. The decorator require the same structure as specified for the picker `actions` in the entries
+section. Otherwise a default internal converter is used which is the same default converter used for `actions` or `previewers` well, when no
+converter is passed.
 
 ## Sources
 
@@ -354,22 +432,22 @@ local picker = Picker.new({
         cwd = vim.loop.cwd(),
         interactive = "{prompt}",
     },
-    -- tells the picker how to handle user confirmation, using the default selection, with a combination of a custom converter, that
-    -- ensures that an entry from the output of ripgrep is properly parsed into a valid tuple of { filename, lnum, col }, as well as
-    -- handling multiple selections via the `many` helper function
-    prompt_confirm = Select.action(Select.select_entry, Picker.all(grep_converter)),
     -- tells the picker what preview provider to use, in this case a simple command preview that uses `cat` to display the contents of the
     -- files, again using the grep_converter to properly parse the entry into a tuple of { filename, lnum, col }
-    prompt_preview = Select.CommandPreview.new("cat", grep_converter),
+    preview = Select.CommandPreview.new("cat", grep_converter),
     -- adds default actions to the picker, in this case sending the selected entries to the quickfix list, and opening them in various ways,
     -- again using the grep_converter to properly parse the entry into a tuple of { filename, lnum, col }, on top of that it provides a
     -- `label` for each action which will be displayed in the picker header section as a hint to the user
     actions = {
-        ["<c-q>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "qflist" },
-        ["<c-t>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "tabe" },
-        ["<c-v>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "vert" },
-        ["<c-s>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "split" },
+        ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "qflist" },
+        ["<c-t>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "tabe" },
+        ["<c-v>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "vert" },
+        ["<c-s>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "split" },
     }
+    -- tells the picker how to handle user confirmation, using the default selection, with a combination of a custom converter, that
+    -- ensures that an entry from the output of ripgrep is properly parsed into a valid tuple of { filename, lnum, col }, as well as
+    -- handling multiple selections via the `many` helper function
+    prompt_confirm = Select.action(Select.select_entry, Select.all(grep_converter)),
 })
 picker:open()
 return picker
@@ -393,14 +471,10 @@ local picker = Picker.new({
         },
         cwd = vim.loop.cwd(),
     },
-    -- tells the picker how to handle user confirmation, in this case using the default select entry action, the output of ripgrep
-    -- is a straight up filename string, which will be handled by default, without the need of any converter or parsing, there is also
-    -- no location information to parse
-    prompt_confirm = Select.select_entry,
     -- tells the picker what preview provider to use, in this case a simple buffer preview that will open the selected file in a
     -- buffer, again no converter is needed as the output of ripgrep is a straight up filename string, no location information to parse
     -- as well.
-    prompt_preview = Select.BufferPreview.new(),
+    preview = Select.BufferPreview.new(),
     -- adds default actions to the picker, in this case sending the selected entries to the quickfix list, and opening them in
     -- various ways, binding directly to the default select actions without additional conversion or parsing
     actions = {
@@ -409,6 +483,10 @@ local picker = Picker.new({
         ["<c-v>"] = Select.select_vertical,
         ["<c-s>"] = Select.select_horizontal,
     }
+    -- tells the picker how to handle user confirmation, in this case using the default select entry action, the output of ripgrep
+    -- is a straight up filename string, which will be handled by default, without the need of any converter or parsing, there is also
+    -- no location information to parse
+    prompt_confirm = Select.select_entry,
 })
 picker:open()
 return picker
@@ -449,7 +527,7 @@ local picker = Picker.new({
     display = "name",
     -- default selection, in this case is a no op function, which simply prints the current entry selection, this is mostly for demonstration
     -- purposes, in a real world scenario this should be replaced with a proper action that handles the entry
-    prompt_confirm = Select.action(Select.default_select, Picker.all(function(entry)
+    prompt_confirm = Select.action(Select.default_select, Select.all(function(entry)
         print(vim.inspect(entry))
         return entry
     end)),
@@ -470,7 +548,8 @@ local picker = Picker.new({
     -- the content is a static table of items, in this case a list of buffers, each buffer is represented as a table with bufnr and
     -- filename
     content = buffers,
-    -- context is empty as this is a static stream, there is no need for any additional context to be passed to the stream
+    -- context is empty as this is a static stream, there is no need for any additional context to be passed to the stream, the table is
+    -- consumed when the picker is started
     context = nil,
     -- tells the select how to display the items in the picker, in this case we simply want to display the display property of the
     -- entry, note that here we are using a function for display instead of a string key, this is to demonstrate that both are
@@ -478,12 +557,9 @@ local picker = Picker.new({
     display = function(e)
         return e.display or e.filename
     end,
-    -- tell the stream how to handle user confirmation, in this case the entry contains valid fields which do not require any
-    -- additional parsing or conversion, so we can simply use the default select entry action
-    prompt_confirm = Select.select_entry,
     -- the same is true for the preview provider, the entry contains valid fields which do not require any additional parsing or
     -- conversion, so we can simply use the default buffer preview provider
-    prompt_preview = Select.BufferPreview.new(),
+    preview = Select.BufferPreview.new(),
     -- adds default actions to the picker, in this case sending the selected entries to the quickfix list, and opening them in
     -- various ways, again using the default select actions without any additional parsing or conversion, no labels are provided, and
     -- no custom header as well
@@ -493,6 +569,9 @@ local picker = Picker.new({
         ["<c-v>"] = { Select.select_vertical, "vert" },
         ["<c-s>"] = { Select.select_horizontal, "split" },
     }
+    -- tell the stream how to handle user confirmation, in this case the entry contains valid fields which do not require any
+    -- additional parsing or conversion, so we can simply use the default select entry action
+    prompt_confirm = Select.select_entry,
 })
 return picker:open()
 ```
@@ -513,17 +592,10 @@ vim.ui.select = function(items, opts, choice)
         -- confirm action, in this case we use a custom function that calls the choice callback with the selected entry, we use
         -- the default_select action with a custom handler/converter which picks the first selection and calls the choice callback
         -- with it
-        prompt_confirm = Select.action(Select.default_select, Picker.first(function(entry)
+        prompt_confirm = Select.action(Select.default_select, Select.first(function(entry)
             choice(entry)
             return entry
         end)),
-        -- no decoration providers are needed for a basic select replacement, so we disable them in the picker by default to ensure
-        -- that the entries will not be decorated, However custom status or icon providers can still be added to enhance the
-        -- selection interface
-        providers = {
-            icon_provider = false,
-            status_provider = false
-        },
     })
     picker:open()
     return picker
@@ -547,7 +619,7 @@ vim.ui.select = function(items, opts, on_choice)
     -- confirm action, in this case we use a custom function that calls the on_choice callback with the selected entry, we use
     -- the default_select action with a custom handler/converter which picks the first selection and calls the on_choice callback
     -- with it
-    prompt_confirm = Select.action(Select.select_entry, Picker.first(function(entry)
+    prompt_confirm = Select.action(Select.select_entry, Select.first(function(entry)
         -- assume that the entry is a string representing a valid filename
         local e = { filename = entry, lnum = 1, col = 1 }
         on_choice(e)
@@ -555,17 +627,15 @@ vim.ui.select = function(items, opts, on_choice)
     end)),
     -- adds default actions to the picker, in this case allow sending the selected entries to the quickfix list
     actions = {
-        ["<c-q>"] = { Select.action(Select.send_quickfix, Picker.all(function(entry)
-        -- assume that the entry is a table that contains a `resource` key which is a valid filename or buffer number
+        ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(function(entry)
+            -- assume that the entry is a string representing a valid filename
             return { filename = entry, lnum = 1, col = 1 }
         end), "qflist" },
     },
-    -- adds decoration providers to enhance the selection interface visually, here we are using a simple status provider, that does nothing
-    -- special but adds a static mark to each entry
-    providers = {
-        status_provider = function(entry)
-            return "[-]", "ErrorMsg"
-        end,
+    -- adds decoration providers to enhance the selection interface visually, here we are using a simple status provider, that was
+    -- demonstrated already above
+    decorators = {
+        PrefixDecorator.new()
     },
 ```
 

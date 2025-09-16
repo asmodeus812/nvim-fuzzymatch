@@ -124,7 +124,10 @@ function Picker:_input_prompt()
                 })
             else
                 -- when there is no query we just render no results, there is nothing yet running, the stream is not
-                -- started on empty query in interactive mode
+                -- started or if it was we have to ensure that no running stream is left in the background
+                if self.stream:running() then
+                    self.stream:stop()
+                end
                 self.select:list(
                     utils.EMPTY_TABLE,
                     utils.EMPTY_TABLE
@@ -181,9 +184,9 @@ function Picker:_input_prompt()
 end
 
 function Picker:_flush_results()
-    -- no need to debounce here, because the stream is already debounced internally, it is going to be flushed only when the buffer
-    -- reaches a limit or all results are alreay in
-    return utils.debounce_callback(0, function(_, all)
+    -- no need to debounce much here, however there might be cases where the stream buffer fills up too quickly if the step is small or if
+    -- the executable is way too fast, debouncing the stream flush can still be useful, to avoid re-starting the matcher too often
+    return utils.debounce_callback(self._options.stream_debounce, function(_, all)
         if all == nil then
             -- streaming is done, so we need to make sure that the renderer is notified about it
             if not self.stream.results or #self.stream.results == 0 then
@@ -300,7 +303,9 @@ function Picker:_create_stage()
     local picker_options = self._options
     self._state.stage = {
         select = Select.new({
-            list_display = picker_options.display,
+            display = picker_options.display,
+            preview = picker_options.preview,
+            decorators = picker_options.decorators,
             mappings = vim.tbl_map(function(a)
                 return a ~= nil and type(a) == "table"
                     and assert(a[1]) or assert(a)
@@ -311,9 +316,7 @@ function Picker:_create_stage()
                 picker_options.headers, stage_actions
             ),
             prompt_decor = picker_options.prompt_decor,
-            prompt_preview = picker_options.prompt_preview,
             prompt_confirm = picker_options.prompt_confirm,
-            providers = picker_options.providers,
             window_ratio = picker_options.window_size,
         }),
         match = Match.new({
@@ -447,8 +450,7 @@ function Picker:open()
         -- this mode the interactive option is not supported, as there is no way to passk the query to the command, because
         -- there is no command
         assert(type(self._state.content[1]) == "string" or type(self._state.content[1]) == "table")
-        assert(not self._state.context.args or not next(self._state.context.args))
-        assert(not self:_is_interactive())
+        assert(not self._state.context.args or not next(self._state.context.args) and not self:_is_interactive())
 
         -- the content is either going to be a table of strings or a table of tables, either way simply display it directly to
         -- the select, as there is no async result loading happening at this moment
@@ -464,46 +466,26 @@ function Picker:open()
     end
 end
 
-function Picker.all(converter)
-    return function(e)
-        assert(e and #e > 0 and e[1])
-        return vim.tbl_map(converter, e)
-    end
-end
-
-function Picker.first(converter)
-    return function(e)
-        assert(e and #e > 0 and e[1])
-        return converter(e[1])
-    end
-end
-
-function Picker.last(converter)
-    return function(e)
-        assert(e and #e > 0 and e[#e])
-        return converter(e[#e])
-    end
-end
-
 --- @class PickerOptions
 --- @field content string|function|table the content to use for the picker, can be a command string, a function that takes a callback and calls it for each entry, or a table of entries, if a string or function is provided the content is streamed, if a table is provided the content is static, and the picker can not be interactive. When a table or function is provided the entries can be either strings or tables, when tables are used the display option must be provided to extract a valid matching string from the table. The display function will be used for both displaying in the list and matching the entries against the user query, internally.
 --- @field context? table a table of context to pass to the content function, can contain the following keys - `cwd` - string, `env` - table of environment variables, `args` a table of arguments to start the command with - table, and `map`, a function that transforms each entry before it is added to the stream. The mapper function is useful when the content function produces complex entries, that need to be transformed into useable entries for the picker components downstream. It is independent of the display function, which is used to extract a string from the entry (at which point it may already mapped with the mapper function) for displaying and matching. The mapper function is used to transform the stream entries before they are added to the stream itself. Return nil or false from this function to skip an entry from being added to the stream, `interactive` - boolean|string|number|nil whether the command is interactive, meaning that it will restart the stream on every query change, if a string is provided it is used as a placeholder in the `args` list to replace with the query, if number, the query is inserted at <index> position in `args`, if nil or false the picker is non-interactive, during an interactive mode the matching is done in the second stage, that can be entered with <c-g>.
---- @field display? function|string|nil a custom function to use for displaying the entries, if nil the entry itself is used, if a string is provided it is used as a key to extract from the entry table
+--- @field decorators? Select.Decorator[]|nil an empty table implies no decoration would be added to the line, a non-empty table of decorators to use for the entry lines should contain instances sub-classed off of Select.Decorator.
+--- @field preview? Select.Preview|boolean|nil speficies the preview strategy to be used when entries are focused, false means no preview will be active, otherwise an instance of a child class derived from Select.Preview is required.
+--- @field actions? table a table of key mappings to actions to use for the picker, the general syntax for each entry is ["key"] = callback or a tuple ["key"] = { callback, label }, where the label of the action is optional can be used to generate the headers for the picker if they are enabled, the label can be of type string|function.
+--- @field display? function|string|nil a custom function to use for displaying the entries, if nil the entry itself is used, if a string is provided it is used as a key to extract from the entry table.
 --- @field headers? table|nil help or information headers displayed in the prompt interface, can be user provided table, headers will also be automatically generated based on any present labeled `actions` with which the picker is currently configured. Each action key can be defined as a tuple of a callback and a label see `actions` for more details.
---- @field match_limit? number|nil the maximum number of matches to keep, nil means no limit
---- @field match_timer? number the time in milliseconds to wait before flushing the matching results, this is useful when dealing with large result sets
---- @field match_step? number the number of entries to process in each matching step, this is useful when dealing with large result sets
+--- @field match_limit? number|nil the maximum number of matches to keep, nil means no limit.
+--- @field match_timer? number the time in milliseconds to wait before flushing the matching results, this is useful when dealing with large result sets.
+--- @field match_step? number the number of entries to process in each matching step, this is useful when dealing with large result sets.
 --- @field display_step? number of entries to process in a single batch when rendering items into the list, useful when using a more complex or demanding display function that takes some time to process.
---- @field stream_type? "lines"|"bytes" whether the stream produces lines or bytes, when lines is used the stream will be split on newlines, when bytes is used the stream will be split on byte size
---- @field stream_step? number the number of bytes or lines to read in each streaming step, this is useful when dealing with large result sets
---- @field window_size? number the size of the window to use for the picker, this is a ratio between 0 and 1, where 1 is the full screen
---- @field prompt_preview? Select.Preview|boolean speficies the preview strategy to be used when entries are focused, false means no preview will be active, and a correct instance of a child class derived from Select.Preview will use that preview instead, Select.BufferPreview is used by default if the value of this field is true.
---- @field prompt_debounce? number the time in milliseconds to debounce the user input, this is useful to avoid flooding the matching and streaming with too many updates at once
---- @field prompt_confirm? function|nil a custom function to call when the user confirms the prompt, if nil the default action is used
---- @field prompt_query? string the initial query to use for the prompt
---- @field prompt_decor? string|table the prefix or/and suffix to use for the prompt
---- @field actions? table a table of key mappings to actions to use for the picker, the general syntax for each entry is ["key"] = callback or a tuple ["key"] = { callback, label }, where the label of the action is optional can be used to generate the headers for the picker if they are enabled, the label can be of type string|function
---- @field providers? table a table of providers to use for the select, can contain icon_provider and status_provider, see Select.providers for the usage
+--- @field stream_type? "lines"|"bytes" whether the stream produces lines or bytes, when lines is used the stream will be split on newlines, when bytes is used the stream will be split on byte size.
+--- @field stream_step? number the number of bytes or lines to read in each streaming step, this is useful when dealing with large result sets.
+--- @field stream_debounce? number the time in milliseconds to debounce the flush calls of the stream, this is useful to avoid stream batch flushes in quick succession, when the results accumulate fast enough that we can combine into a single flush call instead, caused by the executable being too fast, or the `stream_step` being too small.
+--- @field window_size? number the size of the window to use for the picker, this is a ratio between 0 and 1, where 1 is the full screen.
+--- @field prompt_debounce? number the time in milliseconds to debounce the user input, this is useful to avoid flooding the matching and streaming with too many updates at once.
+--- @field prompt_confirm? function|nil a custom function to call when the user confirms the prompt, if nil the default action is used.
+--- @field prompt_query? string the initial query to use for the prompt.
+--- @field prompt_decor? string|table the prefix or/and suffix to use for the prompt.
 
 --- Create a new picker instance
 --- @param opts PickerOptions
@@ -516,19 +498,20 @@ function Picker.new(opts)
         content = { opts.content, { "string", "function", "table" } },
         context = { opts.context, { "table", "nil" }, true },
         display = { opts.display, { "function", "string", "nil" }, true },
+        preview = { opts.preview, { "table", "boolean", "nil" }, true },
+        decorators = { opts.decorators, "table", true },
         match_limit = { opts.match_limit, { "number", "nil" }, true },
         match_timer = { opts.match_timer, "number", true },
         match_step = { opts.match_step, "number", true },
         display_step = { opts.display_step, "number", true },
         stream_step = { opts.stream_step, "number", true },
         stream_type = { opts.stream_type, { "string", "nil" }, true, { "lines", "bytes" } },
+        stream_debounce = { opts.stream_debounce, { "number", "nil" }, true },
         window_size = { opts.window_size, "number", true },
         prompt_confirm = { opts.prompt_confirm, { "function", "nil" }, true },
         prompt_debounce = { opts.prompt_debounce, "number", true },
-        prompt_preview = { opts.prompt_preview, { "table", "boolean" }, true },
         prompt_query = { opts.prompt_query, "string", true },
         prompt_decor = { opts.prompt_decor, { "table", "string" }, true },
-        providers = { opts.providers, "table", true },
     })
     opts = vim.tbl_deep_extend("force", {
         actions = {},
@@ -541,25 +524,23 @@ function Picker.new(opts)
             cwd = vim.loop.cwd(),
             interactive = false,
         },
+        preview = nil,
         display = nil,
+        decorators = {},
         match_limit = nil,
         match_timer = 100,
         match_step = 50000,
         display_step = 100000,
         stream_step = 100000,
         stream_type = "lines",
+        stream_debounce = 0,
         window_size = 0.15,
         prompt_confirm = nil,
         prompt_debounce = 250,
         prompt_query = "",
-        prompt_preview = false,
         prompt_decor = {
             prefix = "› ",
             suffix = "‹ "
-        },
-        providers = {
-            icon_provider = false,
-            status_provider = false,
         },
     }, opts)
 
@@ -611,8 +592,10 @@ function Picker.new(opts)
     end
 
     self.select = Select.new({
-        list_display = opts.display,
         list_step = list_step,
+        preview = opts.preview,
+        display = opts.display,
+        decorators = opts.decorators,
         mappings = vim.tbl_map(function(a)
             return a ~= nil and type(a) == "table"
                 and assert(a[1]) or assert(a)
@@ -620,11 +603,9 @@ function Picker.new(opts)
         prompt_input = self:_input_prompt(),
         prompt_cancel = self:_cancel_prompt(),
         prompt_headers = self:_generate_headers(),
-        prompt_preview = opts.prompt_preview,
         prompt_confirm = opts.prompt_confirm,
         prompt_query = opts.prompt_query,
         prompt_decor = opts.prompt_decor,
-        providers = opts.providers,
         window_ratio = opts.window_size,
     })
 

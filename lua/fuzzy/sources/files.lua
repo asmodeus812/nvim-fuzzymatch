@@ -33,7 +33,7 @@ end
 
 local function grep_converter(entry)
     local pat = "^([^:]+):(%d+):(%d+):(.+)$"
-    assert(type(entry) == "string" and #entry > 0)
+    assert(type(entry) == "string" and #entry >= 0)
     local filename, line_num, col_num = entry:match(pat)
     if filename and #filename > 0 then
         return {
@@ -46,12 +46,15 @@ local function grep_converter(entry)
 end
 
 function M.files(opts)
-    opts = opts or {}
+    opts = opts or {
+        cwd = vim.loop.cwd()
+    }
 
     local picker = Picker.new({
         content = "rg",
         headers = {
-            { "Files" }
+            { "Files" },
+            { opts.cwd }
         },
         context = {
             args = {
@@ -60,29 +63,33 @@ function M.files(opts)
             },
             cwd = opts.cwd,
         },
-        prompt_confirm = Select.select_entry,
-        prompt_preview = Select.BufferPreview.new(),
+        preview = Select.BufferPreview.new(
+        ),
         actions = {
             ["<c-q>"] = Select.send_quickfix,
             ["<c-t>"] = Select.select_tab,
             ["<c-v>"] = Select.select_vertical,
             ["<c-s>"] = Select.select_horizontal,
         },
-        providers = {
-            icon_provider = true,
-        }
+        decorators = {
+            Select.IconDecorator.new(),
+        },
+        prompt_confirm = Select.select_entry,
     })
     picker:open()
     return picker
 end
 
 function M.grep(opts)
-    opts = opts or {}
+    opts = opts or {
+        cwd = vim.loop.cwd()
+    }
 
     local picker = Picker.new({
         content = "rg",
         headers = {
-            { "Grep" }
+            { "Grep" },
+            { opts.cwd }
         },
         context = {
             args = {
@@ -94,17 +101,20 @@ function M.grep(opts)
             cwd = opts.cwd,
             interactive = "{prompt}",
         },
-        prompt_confirm = Select.action(Select.select_entry, Picker.all(grep_converter)),
-        prompt_preview = Select.CommandPreview.new("cat", grep_converter),
+        preview = Select.CommandPreview.new(
+            "cat",
+            grep_converter
+        ),
         actions = {
-            ["<c-q>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "qflist" },
-            ["<c-t>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "tabe" },
-            ["<c-v>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "vert" },
-            ["<c-s>"] = { Select.action(Select.send_quickfix, Picker.all(grep_converter)), "split" },
+            ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "qflist" },
+            ["<c-t>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "tabe" },
+            ["<c-v>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "vert" },
+            ["<c-s>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "split" },
         },
-        providers = {
-            icon_provider = true,
-        }
+        decorators = {
+            Select.IconDecorator.new(grep_converter)
+        },
+        prompt_confirm = Select.action(Select.select_entry, Select.all(grep_converter)),
     })
     picker:open()
     return picker
@@ -131,10 +141,7 @@ function M.dirs(opts)
                 return e
             end
         },
-        -- find`s a bit slow
-        stream_step = 50000,
-        prompt_confirm = Select.select_entry,
-        prompt_preview = Select.CommandPreview.new({
+        preview = Select.CommandPreview.new({
             "ls", "-lah"
         }),
         actions = {
@@ -142,7 +149,10 @@ function M.dirs(opts)
             ["<c-t>"] = Select.select_tab,
             ["<c-v>"] = Select.select_vertical,
             ["<c-s>"] = Select.select_horizontal,
-        }
+        },
+        -- find`s a bit slow
+        stream_step = 50000,
+        prompt_confirm = Select.select_entry,
     })
     picker:open()
     return picker
@@ -169,12 +179,12 @@ function M.ls(opts)
                 return e
             end
         },
-        prompt_confirm = Select.action(Select.select_entry, Picker.all(ls_converter)),
+        prompt_confirm = Select.action(Select.select_entry, Select.all(ls_converter)),
         actions = {
-            ["<c-q>"] = Select.action(Select.send_quickfix, Picker.all(ls_converter)),
-            ["<c-t>"] = Select.action(Select.select_tab, Picker.all(ls_converter)),
-            ["<c-v>"] = Select.action(Select.select_vertical, Picker.all(ls_converter)),
-            ["<c-s>"] = Select.action(Select.select_horizontal, Picker.all(ls_converter)),
+            ["<c-q>"] = Select.action(Select.send_quickfix, Select.all(ls_converter)),
+            ["<c-t>"] = Select.action(Select.select_tab, Select.all(ls_converter)),
+            ["<c-v>"] = Select.action(Select.select_vertical, Select.all(ls_converter)),
+            ["<c-s>"] = Select.action(Select.select_horizontal, Select.all(ls_converter)),
         }
     })
     picker:open()

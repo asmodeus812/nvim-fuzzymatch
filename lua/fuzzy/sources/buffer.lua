@@ -127,20 +127,21 @@ function M.buffers(opts)
         headers = {
             { "Buffers" }
         },
-        display = function(e)
-            return e.info.display or e.info.name or e.name
-        end,
-        prompt_confirm = Select.select_entry,
-        prompt_preview = Select.BufferPreview.new(),
+        preview = Select.BufferPreview.new(
+        ),
         actions = {
             ["<c-q>"] = { Select.send_quickfix, "qflist" },
             ["<c-t>"] = { Select.select_tab, "tabe" },
             ["<c-v>"] = { Select.select_vertical, "vert" },
             ["<c-s>"] = { Select.select_horizontal, "split" },
         },
-        providers = {
-            icon_provider = true,
-        }
+        decorators = {
+            Select.IconDecorator.new()
+        },
+        display = function(e)
+            return e.info.display or e.info.name or e.name
+        end,
+        prompt_confirm = Select.select_entry,
     })
     return picker:open()
 end
