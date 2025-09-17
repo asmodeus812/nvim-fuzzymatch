@@ -287,10 +287,12 @@ actions = {
 actions = {
     ["<cr>"] = function(select)
         -- we extract the cursor position from the select window, and use that to get the current selection from the list of entries with which
-        -- the list is currently populated, closing the view is optional but it makes sense in most scenarios
-        local cursor = vim.api.nvim_win_get_cursor(select.list_window)
-        local selection = callback and select:_list_selection(cursor[1])
-        select:_close_view()
+        -- the list is currently populated, closing the interface is optional but it makes sense in most scenarios
+        local selection = select:_list_selection()
+        select:_close_view(true)
+        -- we can now use the selection, which will be a table of 0 or more entries, depending on the selection state, usually
+        -- the selection table will contain single item, unless multi select picker is involved.
+        vim.print(selection[1])
     end
 }
 ```
@@ -641,12 +643,14 @@ vim.ui.select = function(items, opts, choice)
         display = opts and opts.format_item,
         -- confirm action, in this case we use a custom function that calls the choice callback with the selected entry, we use
         -- the default_select action with a custom handler/converter which picks the first selection and calls the choice callback
-        -- with it
+        -- with it. Note we are returning false, to avoid any further processing. Select.default_select does not do any further
+        -- actions, but this is a demonstration on how we can limit the action to only our own handler in this case `choice`
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
                 choice(entry)
-                return entry
+                return false
             end)),
+            ["<tab>"] = Select.noop_select
         },
     })
     picker:open()

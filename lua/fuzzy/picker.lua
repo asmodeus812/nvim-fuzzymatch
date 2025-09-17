@@ -459,10 +459,11 @@ function Picker:open()
         return
     end
 
-    local valid = self.select:isvalid()
-    if valid == true then
-        if self._state.staging then
-            self._state.stage.select:open()
+    if self:isvalid() == true then
+        local stage = self._state.stage
+        local active = self._state.staging
+        if active and stage and stage.select:isvalid() then
+            stage.select:open()
         else
             self.select:open()
         end

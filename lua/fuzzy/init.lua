@@ -15,15 +15,21 @@ function M.setup(opts)
         vim.ui.select = function(items, o, confirm)
             local picker = Picker.new({
                 content = items,
-                context = nil,
+                context = {
+                    cwd = vim.loop.cwd()
+                },
                 preview = false,
-                display = o and o.format_item,
+                display = o and o.format_item and function(i)
+                    local item, _ = o.format_item(i)
+                    return assert(item)
+                end,
                 headers = { o and o.prompt and { o.prompt } },
                 actions = {
                     ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
                         confirm(entry)
-                        return entry
-                    end))
+                        return false
+                    end)),
+                    ["<tab>"] = Select.noop_select
                 }
             })
             picker:open()
