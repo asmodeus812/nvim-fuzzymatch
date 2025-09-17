@@ -102,7 +102,11 @@ function M.grep(opts)
             interactive = "{prompt}",
         },
         preview = Select.CommandPreview.new(
-            "cat",
+            {
+                "bat",
+                "--plain",
+                "--paging=never",
+            },
             grep_converter
         ),
         actions = {

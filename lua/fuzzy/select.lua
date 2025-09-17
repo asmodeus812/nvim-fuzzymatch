@@ -45,9 +45,9 @@ Select.CombineDecorator = {}
 Select.CombineDecorator.__index = Select.CombineDecorator
 setmetatable(Select.CombineDecorator, { __index = Select.Decorator })
 
---- This is a decorator that returns the first decorator with a valid non-nil result from a list of pre-defined decorators
+--- This is a decorator that returns the first decorator with a valid non-nil result from a list of pre-defined decorators.
 --- @class Select.ChainDecorator
---- @field decorators Select.Decorator[] A list of decorators to run, the first non-nil decorator result will be used as a resultfor the decorate function
+--- @field decorators Select.Decorator[] A list of decorators to run, the first non-nil decorator result will be used as a result for the decorate function
 Select.ChainDecorator = {}
 Select.ChainDecorator.__index = Select.ChainDecorator
 setmetatable(Select.CombineDecorator, { __index = Select.Decorator })
@@ -88,7 +88,7 @@ end
 --- the buffer contents.
 --- @class Select.BufferPreview
 --- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
---- @field buffer number A default dummy buffer used to be displayed in windows when a preview is not possible for the current entry
+--- @field default number A default dummy buffer used to be displayed in windows when a preview is not possible for the entry
 --- @field buffers table A table of buffers that are held for clean up for the preview window
 Select.BufferPreview = {}
 Select.BufferPreview.__index = Select.BufferPreview
@@ -97,8 +97,9 @@ setmetatable(Select.BufferPreview, { __index = Select.Preview })
 --- This is a previewer that runs a command to generate the preview content. The command can be any executable that produces output on
 --- stdout or/and stderr. The command is run in a terminal job, and the output is streamed to the preview buffer.
 --- @class Select.CommandPreview
---- @field command string|table The command to run, can be a string or a table where the first element is the executable the rest are the arguments, the last argument is always the filename/resource from the entry.
 --- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
+--- @field command string|table The command to run, can be a string or a table where the first element is the executable the rest are the arguments, the last argument is always the filename/resource from the entry.
+--- @field jobs number[] table A table of job IDs that are held for clean up for the preview.
 Select.CommandPreview = {}
 Select.CommandPreview.__index = Select.CommandPreview
 setmetatable(Select.CommandPreview, { __index = Select.Preview })
@@ -431,9 +432,9 @@ function Select.BufferPreview.new(converter)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.BufferPreview)
     obj.converter = converter or entry_mapper
-    obj.buffer = assert(vim.api.nvim_create_buf(false, true))
-    obj.buffer = initialize_buffer(obj.buffer, "fuzzy-preview")
-    obj.buffers = { obj.buffer }
+    obj.default = assert(vim.api.nvim_create_buf(false, true))
+    obj.default = initialize_buffer(obj.default, "fuzzy-preview")
+    obj.buffers = { obj.default }
     return obj
 end
 
@@ -443,7 +444,7 @@ end
 
 function Select.BufferPreview:preview(entry, window)
     entry = self.converter(entry)
-    if not window or entry == false or not vim.api.nvim_win_is_valid(window) then
+    if entry == false then
         return
     end
     assert(entry ~= nil)
@@ -454,12 +455,12 @@ function Select.BufferPreview:preview(entry, window)
     elseif entry.filename and vim.fn.bufexists(entry.filename) ~= 0 then
         buffer = vim.fn.bufnr(entry.filename, false)
     elseif entry.filename and vim.loop.fs_stat(entry.filename) then
-        buffer = vim.fn.bufadd(entry.filename)
+        buffer = assert(vim.fn.bufadd(entry.filename))
         assert(not vim.tbl_contains(self.buffers, buffer))
         initialize_buffer(buffer, "", "")
         table.insert(self.buffers, buffer)
     else
-        vim.api.nvim_win_set_buf(window, self.buffer)
+        vim.api.nvim_win_set_buf(window, self.default)
         vim.api.nvim_win_set_cursor(window, { 1, 0 })
         return
     end
@@ -471,7 +472,7 @@ function Select.BufferPreview:preview(entry, window)
         local ok, err = pcall(vim.fn.bufload, buffer)
         if not ok and err ~= nil then error(ok) end
         return ok
-    end, 100, false)
+    end, 250, false)
 
     if done then
         vim.api.nvim_win_set_buf(window, buffer)
@@ -489,6 +490,9 @@ function Select.BufferPreview:preview(entry, window)
                 end
             end)
         end
+    else
+        vim.api.nvim_win_set_buf(window, self.default)
+        vim.api.nvim_win_set_cursor(window, { 1, 0 })
     end
 end
 
@@ -507,7 +511,7 @@ function Select.CustomPreview:clean()
 end
 
 function Select.CustomPreview:preview(entry, window)
-    if not window or entry == false or not vim.api.nvim_win_is_valid(window) then
+    if entry == false then
         return
     end
     assert(type(entry) == "string" or type(entry) == "table")
@@ -561,16 +565,19 @@ function Select.CommandPreview.new(command, converter)
     obj.converter = converter or entry_mapper
     obj.command = assert(command)
     obj.buffers = {}
+    obj.jobs = {}
     return obj
 end
 
 function Select.CommandPreview:clean()
-    self.buffers = buffer_delete(self.buffers)
+    buffer_delete(self.buffers)
+    vim.tbl_map(vim.fn.jobstop, self.jobs)
+    self.buffers, self.jobs = {}, {}
 end
 
 function Select.CommandPreview:preview(entry, window)
     entry = self.converter(entry)
-    if not window or entry == false or not vim.api.nvim_win_is_valid(window) then
+    if entry == false then
         return
     end
     assert(entry ~= nil)
@@ -652,26 +659,31 @@ function Select.CommandPreview:preview(entry, window)
             end
         })
 
-        vim.fn.jobstart(cmd, {
+        table.insert(self.jobs, vim.fn.jobstart(cmd, {
             pty = true,
             detach = false,
             clear_env = true,
             on_stdout = on_stdata,
             on_stderr = on_stdata,
             on_exit = function()
-                vim.api.nvim_buf_set_var(buffer, "streaming", false)
-                if vim.api.nvim_win_get_buf(window) == buffer then
-                    pcall(vim.api.nvim_win_set_cursor, window, cursor)
+                if buffer and vim.api.nvim_buf_is_valid(buffer) then
+                    vim.api.nvim_buf_set_var(buffer, "streaming", false)
+                    if vim.api.nvim_win_is_valid(window) and vim.api.nvim_win_get_buf(window) == buffer then
+                        pcall(vim.api.nvim_win_set_cursor, window, cursor)
+                    end
+                    vim.bo[buffer].modifiable = false
+                    vim.bo[buffer].modified = false
                 end
-                vim.bo[buffer].modifiable = false
-                vim.bo[buffer].modified = false
             end,
             stdout_buffered = false,
             stderr_buffered = false,
-        })
+        }))
     end
 end
 
+--- Create a new icon decorator instance, the converter is used to map the entry to a table with bufnr, filename, lnum and col fields. By
+--- default the converter is `entry_mapper`, which tries its best to extract those fields from the entry.
+--- @param converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
 function Select.IconDecorator.new(converter)
     local obj = Select.Decorator.new()
     setmetatable(obj, Select.IconDecorator)
@@ -693,12 +705,17 @@ function Select.IconDecorator:decorate(entry, line)
     return assert(icon), icon_highlight or "SelectDecoratorDefault"
 end
 
+--- Create a new combine decorator instance, the decorators are run in order and their results are combined using the delimiter
+--- and a single highlight group is used for the entire combined result.
+--- @param decorators Select.Decorator[] A list of decorators to run, the result of which non-nil decorator will be added to the combined result
+--- @param highlight? string|nil A single highlight group to use for the entire combined result of the decorators
+--- @param delimiter? string|nil A delimiter to use to combine or join the results of the configured decorators, space by default
 function Select.CombineDecorator.new(decorators, highlight, delimiter)
     local obj = Select.Decorator.new()
     setmetatable(obj, Select.CombineDecorator)
     obj.decorators = assert(decorators)
-    obj.delimiter = delimiter or " "
     obj.highlight = highlight or "SelectDecoratorDefault"
+    obj.delimiter = delimiter or " "
     return obj
 end
 
@@ -715,6 +732,8 @@ function Select.CombineDecorator:decorate(entry)
     return table.concat(text, self.delimiter), self.highlight
 end
 
+--- Create a new chain decorator instance, the decorators are run in order and the first non-nil result is returned.
+--- @param decorators Select.Decorator[] A list of decorators to run, the first non-nil decorator result will be used as a result for the decorate function
 function Select.ChainDecorator.new(decorators)
     local obj = Select.Decorator.new()
     setmetatable(obj, Select.ChainDecorator)
@@ -925,6 +944,49 @@ function Select:_clean_preview()
     end
 end
 
+function Select:_clear_view()
+    if self:_is_rendering() then
+        self:_stop_rendering()
+    end
+
+    if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
+        populate_buffer(self.prompt_buffer, { "" })
+        local sign_name = string.format(
+            "prompt_line_query_sign_%d",
+            self.prompt_buffer
+        )
+        vim.fn.sign_place(
+            0, "prompt_line_query_group",
+            sign_name, self.prompt_buffer,
+            { lnum = 1, priority = 10 }
+        )
+    end
+    if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
+        vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_DECORATED_NAMESPACE, 0, -1)
+        vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_HIGHLIGHT_NAMESPACE, 0, -1)
+        populate_buffer(self.list_buffer, {})
+    end
+    if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
+        populate_buffer(self.preview_buffer, {})
+    end
+
+    if self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window) then
+        vim.api.nvim_win_set_cursor(self.prompt_window, { 1, 0 })
+    end
+    if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
+        vim.api.nvim_win_set_cursor(self.list_window, { 1, 0 })
+    end
+    if self.preview_window and vim.api.nvim_win_is_valid(self.preview_window) then
+        vim.api.nvim_win_set_buf(self.preview_window, self.preview_buffer)
+        vim.api.nvim_win_set_cursor(self.preview_window, { 1, 0 })
+    end
+
+    self._state.streaming = false
+    self._state.positions = nil
+    self._state.entries = nil
+    self._state.query = ""
+end
+
 function Select:_close_view()
     if self:_is_rendering() then
         self:_stop_rendering()
@@ -970,6 +1032,7 @@ function Select:default_select(callback)
     end
 end
 
+--- Scrolls the preview window by sending normal mode commands to it, this is a generic function used by other selection methods.
 function Select:scroll_preview(input, callback)
     local preview_window = assert(self.preview_window)
     local term_codes = vim.api.nvim_replace_termcodes(
@@ -1098,7 +1161,7 @@ function Select:send_fixlist(type, callback)
 end
 
 --- Toggles the selection state of the current entry in the list, using signs to indicate selection, and moves the cursor down by one
---- entry, by default.
+--- entry by default.
 function Select:toggle_entry(callback)
     local list_window = assert(self.list_window)
     local cursor = vim.api.nvim_win_get_cursor(list_window)
@@ -1136,32 +1199,38 @@ function Select:toggle_entry(callback)
     utils.safe_call(callback, selection, cursor)
 end
 
---- Closes all open windows associated with the selection interface and returns focus to the source window, if it is still valid.
+--- Closes all open windows associated with the selection interface and returns focus to the source window.
 function Select:close_view(callback)
     self:_close_view()
     utils.safe_call(callback)
 end
 
+--- Scrolls the preview window up by one page.
 function Select:page_down(callback)
     self:scroll_preview("<c-f>", callback)
 end
 
+--- Scrolls the preview window down by one page.
 function Select:page_up(callback)
     self:scroll_preview("<c-b>", callback)
 end
 
+--- Scrolls the preview window up by half a page.
 function Select:half_up(callback)
     self:scroll_preview("<c-u>", callback)
 end
 
+--- Scrolls the preview window down by half a page.
 function Select:half_down(callback)
     self:scroll_preview("<c-d>", callback)
 end
 
+--- Scrolls the preview window up by one line.
 function Select:line_up(callback)
     self:scroll_preview("<c-y>", callback)
 end
 
+--- Scrolls the preview window down by one line.
 function Select:line_down(callback)
     self:scroll_preview("<c-e>", callback)
 end
@@ -1206,8 +1275,9 @@ function Select:send_locliset(callback)
     self:send_fixlist("loclist", callback)
 end
 
---- Gets the current query from the prompt input.
---- @return string The current query string, the query must never be nil, otherwise that represents invalid state
+--- Gets the current query from the prompt input. The query is updated on each input change in the prompt. It is not extracted directly from
+--- the prompt buffer on-demand but is captured with each input change using TextChangedI and TextChanged autocmd events.
+--- @return string The current query string, the query will never be nil, otherwise that represents invalid state of the selection interface.
 function Select:query()
     return assert(self._state.query)
 end
@@ -1231,31 +1301,9 @@ function Select:hide()
     self:_close_view()
 end
 
--- Clears the select interface, from any content and state, that includes the query, list and preview interfaces which are the core parts of the selection interface
+-- Clears the select interface, from any content and state, that includes the query, list and preview interfaces, but does not close the interface itself, or destroy any internal state or resources associated with it.
 function Select:clear()
-    if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
-        populate_buffer(self.prompt_buffer, {})
-    end
-    if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
-        populate_buffer(self.list_buffer, {})
-    end
-    if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
-        populate_buffer(self.preview_buffer, {})
-    end
-
-    if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
-        vim.api.nvim_win_set_cursor(self.list_window, { 1, 0 })
-    end
-    if self.preview_window and vim.api.nvim_win_is_valid(self.preview_window) then
-        vim.api.nvim_win_set_buf(self.preview_window, self.preview_buffer)
-        vim.api.nvim_win_set_cursor(self.preview_window, { 1, 0 })
-    end
-
-    self._state.streaming = false
-    self._state.positions = nil
-    self._state.entries = nil
-    self._state.query = ""
-    self:_clean_preview()
+    self:_clear_view()
 end
 
 --- Checks if the selection interface is currently open, this is determined by checking if both the prompt and list windows are valid.
@@ -1324,8 +1372,9 @@ function Select:status(status, hl)
     })
 end
 
--- Display a header line in the prompt buffer and window, which is represented by the header arguments passed in to this method. The headers can either be a table of header blocks, or a single string. The header blocks are represented by a nested table of tuples, or plain strings e.g { { { "Name", "Special" }, { "Value", "Normal" } } }. Each block of headers is divided and the contents of each block itself represents the header elements to display with different highlight groups
---- @param header table|string the header or headers blocks to display in the query prompt buffer window
+--- Render a header at the top of the selection interface, the header can be a string or a table of strings or string/highlight pairs, where each
+--- inner table represents a block of header entries.
+--- @param header string|table The header to render, can be a string or a table of strings or string/highlight pairs.
 function Select:header(header)
     vim.validate {
         header = { header, { "table", "string" } },
@@ -1389,8 +1438,8 @@ function Select:header(header)
     end)
 end
 
---- Opens the selection interface, creating necessary buffers and windows as needed, and sets up autocommands and mappings, if not
---- already open.
+--- Opens the selection interface, creating necessary buffers and windows as needed, and sets up autocommands and mappings, if no set. If
+--- the interface is already open, this method is a no-op and does nothing.
 function Select:open()
     if self:isopen() then
         return
@@ -1664,6 +1713,9 @@ function Select:open()
     end
 end
 
+--- Creates an action function that safely calls the provided action with the Select instance as the first argument, and the callback as the
+--- second argument. If the action or callback raises an error, it is caught and handled gracefully.
+--- @param action fun(self: Select, callback: fun(selection: any, cursor: integer[]|nil): any) The action function to be executed.
 function Select.action(action, callback)
     return function(_self)
         utils.safe_call(
@@ -1674,6 +1726,9 @@ function Select.action(action, callback)
     end
 end
 
+--- Creates a converter function that applies the provided converter function to all entries in the list and returns a table of results. If
+--- the converter function is nil, it returns false. If the converter function returns nil or false for all entries, it also returns false.
+--- @param converter fun(entry: any): any|nil The converter function to apply to each entry.
 function Select.all(converter)
     return function(e)
         if not converter then return false end
@@ -1689,6 +1744,10 @@ function Select.all(converter)
     end
 end
 
+--- Creates a converter function that applies the provided converter function to the first entry in the list and returns the result. If the
+--- converter function is nil, it returns false. If the first entry is nil or the converter function returns nil or false, it raises an
+--- assertion error.
+--- @param converter fun(entry: any): any|nil The converter function to apply to the first entry.
 function Select.first(converter)
     return function(e)
         assert(e and #e > 0 and e[1] ~= nil)
@@ -1696,6 +1755,10 @@ function Select.first(converter)
     end
 end
 
+--- Creates a converter function that applies the provided converter function to the last entry in the list and returns the result. If the
+--- converter function is nil, it returns false. If the last entry is nil or the converter function returns nil or false, it raises an
+--- assertion error.
+--- @param converter fun(entry: any): any|nil The converter function to apply to the last entry.
 function Select.last(converter)
     return function(e)
         assert(e and #e > 0 and e[#e] ~= nil)
@@ -1710,8 +1773,8 @@ end
 --- @field prompt_cancel? fun() Function to cancel the selection.
 --- @field prompt_list? boolean|fun()|any[] Whether to show the list window or a function to provide initial entries.
 --- @field prompt_input? boolean|fun() Whether to show the input prompt, when function is provided it is used as the input callback.
---- @field prompt_headers? table|string|nil Initial information headers to populate the prompt with.
---- @field prompt_query? string|nil Initial query to populate the prompt input with.
+--- @field prompt_headers? table|string|nil Headers to display above the prompt input, can be a string or a table of strings or string/highlight pairs, where each inner table represents a block of header entries.
+--- @field prompt_query? string|nil Initial query to populate the prompt input with. If provided, the prompt input must also be enabled. The query will be set in the prompt input and the input callback will be invoked with this initial query.
 --- @field prompt_decor? table|string Symbol decoration to display in the query prompt window. A table of two items can be provided show around the prompt query, or a single string which by default is interpreted as the prompt prefix. If a table is provided key value pairs are expected of prefix and suffix i.e { prefix = "> ", suffix = "< " }.
 --- @field toggle_prefix? string Prefix to display for toggled entries in the list, when multi select is enabled
 --- @field window_ratio? number Ratio of the window height to the total editor height.
@@ -1719,10 +1782,10 @@ end
 --- @field quickfix_open? fun() Function to open the quickfix list.
 --- @field loclist_open? fun() Function to open the location list.
 --- @field ephemeral? boolean Whether to destroy the internal state when closing the selection interface.
---- @field mappings? table Key mappings with keys as the key combination and values as the Select method to invoke, the method will be called with the Select instance as the first argument.
---- @field preview? Select.Preview|boolean|nil speficies the preview strategy to be used when entries are focused, must be a sub-class of Select.Preview and implement the preview function
---- @field display? string|function|nil Function governing how the entries in the list are going to be displayed in case they represent complex structures.
---- @field decorators? Select.Decorator[]|nil additional decorations for list entries.
+--- @field mappings? table<string, fun(self: Select, callback: fun(selection: any, cursor: integer[]|nil): any)> Key mappings for the selection interface. The keys are the key sequences and the values are functions that take the Select instance and an optional callback as arguments.
+--- @field preview? Select.Preview|boolean|nil Preview instance or boolean indicating whether to show the preview window. If an instance is provided, it will be used to render the preview. The preview instance must be a subclass of Select.Preview. Preview instances must implement the `preview` method.
+--- @field display? fun(entry: any): string|string|nil Function or string to format the display of entries in the list. If a function is provided, it will be called with each entry and should return a string to display. If a string is provided, it will be used as the property name to extract from each entry for display.
+--- @field decorators? Select.Decorator[]|nil List of decorators to apply to entries in the list. Each decorator should be a table with a `decorate` function that takes an entry and returns a decorated string along with optional highlight group information.
 
 --- Creates a new Select instance with the given options.
 --- @param opts? SelectOptions|nil The options to configure the selection interface.
