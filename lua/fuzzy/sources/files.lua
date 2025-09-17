@@ -66,6 +66,7 @@ function M.files(opts)
         preview = Select.BufferPreview.new(
         ),
         actions = {
+            ["<cr>"] = Select.select_entry,
             ["<c-q>"] = Select.send_quickfix,
             ["<c-t>"] = Select.select_tab,
             ["<c-v>"] = Select.select_vertical,
@@ -74,7 +75,6 @@ function M.files(opts)
         decorators = {
             Select.IconDecorator.new(),
         },
-        prompt_confirm = Select.select_entry,
     })
     picker:open()
     return picker
@@ -110,6 +110,7 @@ function M.grep(opts)
             grep_converter
         ),
         actions = {
+            ["<cr>"] = Select.action(Select.select_entry, Select.all(grep_converter)),
             ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "qflist" },
             ["<c-t>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "tabe" },
             ["<c-v>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "vert" },
@@ -118,7 +119,6 @@ function M.grep(opts)
         decorators = {
             Select.IconDecorator.new(grep_converter)
         },
-        prompt_confirm = Select.action(Select.select_entry, Select.all(grep_converter)),
     })
     picker:open()
     return picker
@@ -149,6 +149,7 @@ function M.dirs(opts)
             "ls", "-lah"
         }),
         actions = {
+            ["<cr>"] = Select.select_entry,
             ["<c-q>"] = Select.send_quickfix,
             ["<c-t>"] = Select.select_tab,
             ["<c-v>"] = Select.select_vertical,
@@ -156,7 +157,6 @@ function M.dirs(opts)
         },
         -- find`s a bit slow
         stream_step = 50000,
-        prompt_confirm = Select.select_entry,
     })
     picker:open()
     return picker
@@ -183,8 +183,8 @@ function M.ls(opts)
                 return e
             end
         },
-        prompt_confirm = Select.action(Select.select_entry, Select.all(ls_converter)),
         actions = {
+            ["<cr>"] = Select.action(Select.select_entry, Select.all(ls_converter)),
             ["<c-q>"] = Select.action(Select.send_quickfix, Select.all(ls_converter)),
             ["<c-t>"] = Select.action(Select.select_tab, Select.all(ls_converter)),
             ["<c-v>"] = Select.action(Select.select_vertical, Select.all(ls_converter)),

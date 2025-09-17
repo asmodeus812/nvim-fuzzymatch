@@ -19,10 +19,12 @@ function M.setup(opts)
                 preview = false,
                 display = o and o.format_item,
                 headers = { o and o.prompt and { o.prompt } },
-                prompt_confirm = Select.action(Select.default_select, Select.first(function(entry)
-                    confirm(entry)
-                    return entry
-                end)),
+                actions = {
+                    ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+                        confirm(entry)
+                        return entry
+                    end))
+                }
             })
             picker:open()
             return picker

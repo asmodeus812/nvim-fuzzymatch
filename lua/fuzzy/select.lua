@@ -1282,21 +1282,14 @@ function Select:query()
     return assert(self._state.query)
 end
 
--- Destroy the selection interface, closing all associated windows and buffers.
-function Select:destroy()
-    self:_destroy_view()
-end
-
---- Closes the selection interface, if the ephemeral option is set to true, the buffers associated with the interface will be destroyed as well.
+--- Closes the selection interface, the buffers and any state associated with the interface will be destroyed as well, to retain the selection state consider using `hide`
 function Select:close()
     self:_close_view()
     self:_clean_preview()
-    if self._options.ephemeral == true then
-        self:_destroy_view()
-    end
+    self:_destroy_view()
 end
 
--- Hides the select interface, does not enforce any resource de-allocation taken up by the select interface, even if the ephemeral option is set to true, to enforce this either use `close` or manually call `destroy`
+-- Hides the select interface, does not enforce any resource de-allocation taken up by the select interface, to enforce this use `close` method instead
 function Select:hide()
     self:_close_view()
 end
@@ -1318,6 +1311,15 @@ end
 --- @return boolean True if the list is empty, false otherwise.
 function Select:isempty()
     return not self._state.entries or #self._state.entries == 0
+end
+
+--- Checks if the selection interface is valid, meaning that it has been initialized/opened at least once and has not been destroyed by
+--- calling any of the `destroy` or `close` methods which would invalidate its state
+--- @return boolean True if the select interface is still valid, false otherwise.
+function Select:isvalid()
+    local prompt = self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer)
+    local list = self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer)
+    return list ~= nil and prompt ~= nil and list and prompt
 end
 
 -- Render a list of entries in the list window, with optional highlighting positions and display formatting function or property.
@@ -1457,11 +1459,6 @@ function Select:open()
             prompt_buffer = vim.api.nvim_create_buf(false, true)
             prompt_buffer = initialize_buffer(prompt_buffer, "fuzzy-prompt")
             self:_create_mappings(prompt_buffer, "i", opts.mappings)
-            self:_create_mappings(prompt_buffer, "i", {
-                ["<cr>"] = opts.prompt_confirm,
-                ["<esc>"] = opts.prompt_cancel,
-                ["<c-c>"] = opts.prompt_cancel,
-            })
             vim.bo[prompt_buffer].modifiable = true
 
             local prompt_trigger = vim.api.nvim_create_autocmd({ "TextChangedP", "TextChangedI" }, {
@@ -1580,11 +1577,6 @@ function Select:open()
             list_buffer = initialize_buffer(list_buffer, "fuzzy-list")
             if not opts.prompt_input then
                 self:_create_mappings(list_buffer, "n", opts.mappings)
-                self:_create_mappings(list_buffer, "n", {
-                    ["<cr>"] = opts.prompt_confirm,
-                    ["<esc>"] = opts.prompt_cancel,
-                    ["<c-c>"] = opts.prompt_cancel,
-                })
             end
             vim.bo[list_buffer].modifiable = false
 
@@ -1769,8 +1761,6 @@ end
 --- Creates a new Select instance, which provides an interactive selection interface.
 --- @class SelectOptions
 --- @inlinedoc
---- @field prompt_confirm? fun() Function to confirm the selection.
---- @field prompt_cancel? fun() Function to cancel the selection.
 --- @field prompt_list? boolean|fun()|any[] Whether to show the list window or a function to provide initial entries.
 --- @field prompt_input? boolean|fun() Whether to show the input prompt, when function is provided it is used as the input callback.
 --- @field prompt_headers? table|string|nil Headers to display above the prompt input, can be a string or a table of strings or string/highlight pairs, where each inner table represents a block of header entries.
@@ -1781,10 +1771,9 @@ end
 --- @field list_step? integer|nil Number of entries to render at a time when populating the list.
 --- @field quickfix_open? fun() Function to open the quickfix list.
 --- @field loclist_open? fun() Function to open the location list.
---- @field ephemeral? boolean Whether to destroy the internal state when closing the selection interface.
 --- @field mappings? table<string, fun(self: Select, callback: fun(selection: any, cursor: integer[]|nil): any)> Key mappings for the selection interface. The keys are the key sequences and the values are functions that take the Select instance and an optional callback as arguments.
 --- @field preview? Select.Preview|boolean|nil Preview instance or boolean indicating whether to show the preview window. If an instance is provided, it will be used to render the preview. The preview instance must be a subclass of Select.Preview. Preview instances must implement the `preview` method.
---- @field display? fun(entry: any): string|string|nil Function or string to format the display of entries in the list. If a function is provided, it will be called with each entry and should return a string to display. If a string is provided, it will be used as the property name to extract from each entry for display.
+--- @field display? string|fun(entry: any): string|string|nil Function or string to format the display of entries in the list. If a function is provided, it will be called with each entry and should return a string to display. If a string is provided, it will be used as the property name to extract from each entry for display.
 --- @field decorators? Select.Decorator[]|nil List of decorators to apply to entries in the list. Each decorator should be a table with a `decorate` function that takes an entry and returns a decorated string along with optional highlight group information.
 
 --- Creates a new Select instance with the given options.
@@ -1793,8 +1782,6 @@ end
 function Select.new(opts)
     opts = opts or {}
     vim.validate({
-        prompt_confirm = { opts.prompt_confirm, "function", true },
-        prompt_cancel = { opts.prompt_cancel, "function", true },
         prompt_list = { opts.prompt_list, { "boolean", "function", "table" }, true },
         prompt_input = { opts.prompt_input, { "boolean", "function" }, true },
         prompt_headers = { opts.prompt_headers, { "table", "string", "nil" }, true },
@@ -1803,7 +1790,6 @@ function Select.new(opts)
         toggle_prefix = { opts.toggle_prefix, "string", true },
         window_ratio = { opts.window_ratio, "number", true },
         list_step = { opts.list_step, { "number", "nil" }, true },
-        ephemeral = { opts.ephemeral, "boolean", true },
         quickfix_open = { opts.quickfix_open, "function", true },
         loclist_open = { opts.loclist_open, "function", true },
         display = { opts.display, { "function", "string", "nil" }, true },
@@ -1812,8 +1798,6 @@ function Select.new(opts)
         mappings = { opts.mappings, "table", true },
     })
     opts = vim.tbl_deep_extend("force", {
-        prompt_confirm = Select.select_entry,
-        prompt_cancel = Select.close_view,
         prompt_list = true,
         prompt_input = true,
         prompt_headers = nil,
@@ -1823,22 +1807,23 @@ function Select.new(opts)
         preview_timeout = 500,
         window_ratio = 0.20,
         list_step = nil,
-        ephemeral = true,
         decorators = {},
         preview = nil,
         display = nil,
         mappings = {
-            ["<tab>"] = Select.toggle_entry,
-            ["<c-p>"] = Select.select_prev,
-            ["<c-n>"] = Select.select_next,
-            ["<c-k>"] = Select.select_prev,
-            ["<c-j>"] = Select.select_next,
-            ["<c-f>"] = Select.page_down,
-            ["<c-b>"] = Select.page_up,
-            ["<c-d>"] = Select.half_down,
-            ["<c-u>"] = Select.half_up,
-            ["<c-e>"] = Select.line_down,
-            ["<c-y>"] = Select.line_up,
+            ["<cr>"]    = Select.default_select,
+            ["<tab>"]   = Select.toggle_entry,
+            ["<esc>"]   = Select.close,
+            ["<c-p>"]   = Select.select_prev,
+            ["<c-n>"]   = Select.select_next,
+            ["<c-k>"]   = Select.select_prev,
+            ["<c-j>"]   = Select.select_next,
+            ["<c-f>"]   = Select.page_down,
+            ["<c-b>"]   = Select.page_up,
+            ["<c-d>"]   = Select.half_down,
+            ["<c-u>"]   = Select.half_up,
+            ["<c-e>"]   = Select.line_down,
+            ["<c-y>"]   = Select.line_up,
         },
         quickfix_open = vim.cmd.copen,
         loclist_open = vim.cmd.lopen,

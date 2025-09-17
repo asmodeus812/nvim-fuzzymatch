@@ -130,6 +130,7 @@ function M.buffers(opts)
         preview = Select.BufferPreview.new(
         ),
         actions = {
+            ["<cr>"] = Select.select_entry,
             ["<c-q>"] = { Select.send_quickfix, "qflist" },
             ["<c-t>"] = { Select.select_tab, "tabe" },
             ["<c-v>"] = { Select.select_vertical, "vert" },
@@ -141,9 +142,9 @@ function M.buffers(opts)
         display = function(e)
             return e.info.display or e.info.name or e.name
         end,
-        prompt_confirm = Select.select_entry,
     })
-    return picker:open()
+    picker:open()
+    return picker
 end
 
 return M

@@ -15,25 +15,12 @@ local utils = require("fuzzy.utils")
 --- @field private _state.select Select
 --- @field private _state.display function|string|nil
 --- @field private _state.content string|function|table
+--- @field private _state.staging boolean
 --- @field private _state.stage? table|nil
 --- @field private _state.stage.select Select
 --- @field private _state.stage.match Match
 local Picker = {}
 Picker.__index = Picker
-
-function Picker:_destroy_picker()
-    self.select:destroy()
-    self.match:destroy()
-    self.stream:destroy()
-end
-
-function Picker:_destroy_stage()
-    local stage = self._state.stage
-    if stage and next(stage) then
-        stage.match:destroy()
-        stage.select:destroy()
-    end
-end
 
 function Picker:_close_picker()
     self.match:stop()
@@ -84,10 +71,24 @@ function Picker:_interactive_args(query)
     return command_args
 end
 
+function Picker:_confirm_prompt()
+    return Select.action(Select.default_select, function(e)
+        vim.print(e)
+        return false
+    end)
+end
+
 function Picker:_cancel_prompt()
     return Select.action(Select.close_view, function()
-        self:_close_picker()
         self:_close_stage()
+        self:_close_picker()
+    end)
+end
+
+function Picker:_hide_prompt()
+    return Select.action(Select.close_view, function()
+        self:_hide_stage()
+        self:_hide_picker()
     end)
 end
 
@@ -305,10 +306,22 @@ function Picker:_create_stage()
         end)
     end
 
+    local function _hide_prompt()
+        return Select.action(Select.close_view, function()
+            self:_hide_stage()
+            self:_hide_picker()
+        end)
+    end
+
     -- @Speed: That should be cheap, since the actions contain callbacks
     -- and a few strings for the labels, but might require re-thinking
     local stage_actions = vim.fn.deepcopy(self._options.actions)
     assert(stage_actions)["<c-g>"][2] = "interactive"
+
+    stage_actions = vim.tbl_deep_extend("force", stage_actions, {
+        ["<esc>"] = _cancel_prompt(),
+        ["<c-c>"] = _hide_prompt(),
+    })
 
     local picker_options = self._options
     self._state.stage = {
@@ -320,12 +333,10 @@ function Picker:_create_stage()
                 return a ~= nil and type(a) == "table"
                     and assert(a[1]) or assert(a)
             end, picker_options.actions or {}),
-            prompt_cancel = _cancel_prompt(),
             prompt_input = _input_prompt(),
             prompt_headers = self:_generate_headers(
                 picker_options.headers, stage_actions
             ),
-            prompt_confirm = picker_options.prompt_confirm,
             prompt_decor = picker_options.prompt_decor,
             window_ratio = picker_options.window_size,
         }),
@@ -345,6 +356,7 @@ function Picker:_toggle_stage()
             vim.log.levels.WARN
         )
     elseif self.select:isopen() then
+        self._state.staging = true
         self:_hide_picker()
         stage.select:open()
 
@@ -361,6 +373,7 @@ function Picker:_toggle_stage()
             ))
         end
     elseif stage.select:isopen() then
+        self._state.staging = false
         self:_hide_stage()
         self.select:open()
     end
@@ -404,6 +417,14 @@ function Picker:_is_open()
     )
 end
 
+function Picker:_is_valid()
+    return self.select:isvalid() or (
+        self._state.stage
+        and self._state.stage.select
+        and self._state.stage.select:isvalid()
+    )
+end
+
 function Picker:_is_interactive()
     local interactive = self._state.context.interactive
     return interactive ~= nil and interactive ~= false
@@ -415,12 +436,16 @@ function Picker:isopen()
     return self:_is_open()
 end
 
+--- Check whether the primary picker or a running stage is valid. The picker is considered valid when any of the primary components of the selection interfacece are valid themselves
+--- @return boolean whether the picker or any running stage is open
+function Picker:isvalid()
+    return self:_is_valid()
+end
+
 --- Close the picker, along with any running stream or matching operations, and also close any running stage, permanently. The picker state will be destroyed upon closing it. To retain the persistent state of the picker at the present moment see and use the `hide` method
 function Picker:close()
     self:_close_stage()
     self:_close_picker()
-    self:_destroy_stage()
-    self:_destroy_picker()
 end
 
 -- Hide the picker, does not destroy any of the internal state or context of the picker or internal interfaces or components, can be used to simply hide away the picker view and restore it later with open. This will retain the picker state as is while it remains hiddden from view.
@@ -433,51 +458,61 @@ function Picker:open()
     if self:isopen() then
         return
     end
-    self.select:open()
 
-    if type(self._state.content) ~= "table" then
-        -- when a string or a function is provided the content is expected to be a command that produces output, or a function
-        -- that produces output by calling a callback method for each entry in the stream
-        assert(type(self._state.content) == "string" or type(self._state.content) == "function")
-        if not self.stream.results and not self:_is_interactive() then
-            self.stream:start(
-                self._state.content, {
-                    cwd = self._state.context.cwd,
-                    env = self._state.context.env,
-                    args = self._state.context.args,
-                    callback = self:_flush_results(),
-                    transform = self._state.context.map,
-                })
-        elseif self.stream.results and self.select:isempty() then
+    local valid = self.select:isvalid()
+    if valid == true then
+        if self._state.staging then
+            self._state.stage.select:open()
+        else
+            self.select:open()
+        end
+    else
+        self.select:open()
+
+        if type(self._state.content) ~= "table" then
+            -- when a string or a function is provided the content is expected to be a command that produces output, or a function
+            -- that produces output by calling a callback method for each entry in the stream
+            assert(type(self._state.content) == "string" or type(self._state.content) == "function")
+            if not self.stream.results and not self:_is_interactive() then
+                self.stream:start(
+                    self._state.content, {
+                        cwd = self._state.context.cwd,
+                        env = self._state.context.env,
+                        args = self._state.context.args,
+                        callback = self:_flush_results(),
+                        transform = self._state.context.map,
+                    })
+            elseif self.stream.results and self.select:isempty() then
+                self.select:list(
+                    self.stream.results,
+                    nil -- no highlights
+                )
+                self.select:list(nil, nil)
+                self.select:status(string.format(
+                    "%d/%d",
+                    #self.stream.results,
+                    #self.stream.results
+                ))
+            end
+        else
+            -- when a table is provided the content is expected to be a list of strings, each string being a separate entry, and in
+            -- this mode the interactive option is not supported, as there is no way to passk the query to the command, because
+            -- there is no command
+            assert(type(self._state.content[1]) == "string" or type(self._state.content[1]) == "table")
+            assert(not self._state.context.args or not next(self._state.context.args) and not self:_is_interactive())
+
+            -- the content is either going to be a table of strings or a table of tables, either way simply display it directly to
+            -- the select, as there is no async result loading happening at this moment
             self.select:list(
-                self.stream.results,
+                self._state.content,
                 nil -- no highlights
             )
             self.select:list(nil, nil)
             self.select:status(string.format(
-                "%d/%d",
-                #self.stream.results,
-                #self.stream.results
+                "%d/%d", #self._state.content,
+                #self._state.content
             ))
         end
-    else
-        -- when a table is provided the content is expected to be a list of strings, each string being a separate entry, and in
-        -- this mode the interactive option is not supported, as there is no way to passk the query to the command, because
-        -- there is no command
-        assert(type(self._state.content[1]) == "string" or type(self._state.content[1]) == "table")
-        assert(not self._state.context.args or not next(self._state.context.args) and not self:_is_interactive())
-
-        -- the content is either going to be a table of strings or a table of tables, either way simply display it directly to
-        -- the select, as there is no async result loading happening at this moment
-        self.select:list(
-            self._state.content,
-            nil -- no highlights
-        )
-        self.select:list(nil, nil)
-        self.select:status(string.format(
-            "%d/%d", #self._state.content,
-            #self._state.content
-        ))
     end
 end
 
@@ -487,7 +522,7 @@ end
 --- @field decorators? Select.Decorator[]|nil a list of decorators to use for decorating the entries in the list, each decorator must be a child class derived from Select.Decorator.
 --- @field preview? Select.Preview|boolean|nil a previewer to use for previewing the currently selected entry, can be a user provided previewer, must be an instance of a sub-class of Select.Preview.
 --- @field actions? table<string, table<fun(select: Select): any, string|function>|fun(select: Select): any> a table of actions to use for the picker, where the key is the keybinding to trigger the action, and the value is either a function to call when the action is triggered, or a tuple of a function and a string or function, where the string or function is used as the label for the action in the header. If a function is provided as the second value of the tuple, it will be called with the picker instance as its only argument, and should return a string to use as the label. Some default actions are provided, that can be used directly, like `Select.select_entry`, `Select.send_quickfix`, etc.
---- @field display? fun(entry: any): string|string|nil Function or string to format the display of entries in the list. If a function is provided, it will be called with each entry and should return a string to display. If a string is provided, it will be used as the property name to extract from each entry for display.
+--- @field display? string|fun(entry: any): string|string|nil Function or string to format the display of entries in the list. If a function is provided, it will be called with each entry and should return a string to display. If a string is provided, it will be used as the property name to extract from each entry for display.
 --- @field headers? table[]|nil a list of headers to display in the picker, each header must be a list of tuples, where each tuple is a pair of a string and a highlight group name, the string is the text to display, and the highlight group name is the highlight group to use for displaying the text, for example: { {"<c-n>", "PickerHeaderActionKey"}, {"::", "PickerHeaderActionSeparator"}, {"next", "PickerHeaderActionLabel"} }.
 --- @field match_limit? number|nil the maximum number of matches to keep, nil means no limit.
 --- @field match_timer? number the time in milliseconds to wait before flushing the matching results, this is useful when dealing with large result sets.
@@ -498,7 +533,6 @@ end
 --- @field stream_debounce? number the time in milliseconds to debounce the flush calls of the stream, this is useful to avoid stream batch flushes in quick succession, when the results accumulate fast enough that we can combine into a single flush call instead, caused by the executable being too fast, or the `stream_step` being too small.
 --- @field window_size? number the size of the window to use for the picker, this is a ratio between 0 and 1, where 1 is the full screen.
 --- @field prompt_debounce? number the time in milliseconds to debounce the user input, this is useful to avoid flooding the matching and streaming with too many updates at once.
---- @field prompt_confirm? function|nil a custom function to call when the user confirms the prompt, if nil the default action is used.
 --- @field prompt_query? string the initial query to use for the prompt.
 --- @field prompt_decor? string|table the prefix or/and suffix to use for the prompt.
 
@@ -523,7 +557,6 @@ function Picker.new(opts)
         stream_type = { opts.stream_type, { "string", "nil" }, true, { "lines", "bytes" } },
         stream_debounce = { opts.stream_debounce, { "number", "nil" }, true },
         window_size = { opts.window_size, "number", true },
-        prompt_confirm = { opts.prompt_confirm, { "function", "nil" }, true },
         prompt_debounce = { opts.prompt_debounce, "number", true },
         prompt_query = { opts.prompt_query, "string", true },
         prompt_decor = { opts.prompt_decor, { "table", "string" }, true },
@@ -550,7 +583,6 @@ function Picker.new(opts)
         stream_type = "lines",
         stream_debounce = 0,
         window_size = 0.15,
-        prompt_confirm = nil,
         prompt_debounce = 250,
         prompt_query = "",
         prompt_decor = {
@@ -577,6 +609,7 @@ function Picker.new(opts)
             content = opts.content,
             context = opts.context,
             match = opts.match,
+            staging = false,
         },
     }, Picker)
 
@@ -606,6 +639,12 @@ function Picker.new(opts)
         end, "fuzzy" }
     end
 
+    self._options.actions = vim.tbl_deep_extend("keep", self._options.actions, {
+        ["<cr>"]  = self:_confirm_prompt(),
+        ["<esc>"] = self:_cancel_prompt(),
+        ["<c-c>"] = self:_hide_prompt(),
+    })
+
     self.select = Select.new({
         list_step = list_step,
         preview = opts.preview,
@@ -616,9 +655,7 @@ function Picker.new(opts)
                 and assert(a[1]) or assert(a)
         end, opts.actions),
         prompt_input = self:_input_prompt(),
-        prompt_cancel = self:_cancel_prompt(),
         prompt_headers = self:_generate_headers(),
-        prompt_confirm = opts.prompt_confirm,
         prompt_query = opts.prompt_query,
         prompt_decor = opts.prompt_decor,
         window_ratio = opts.window_size,

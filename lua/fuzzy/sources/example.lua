@@ -19,9 +19,9 @@ function M.stream(opts)
             interactive = "{prompt}",
         },
         display = "name",
-        prompt_confirm = Select.default_select,
     })
-    return picker:open()
+    picker:open()
+    return picker
 end
 
 return M

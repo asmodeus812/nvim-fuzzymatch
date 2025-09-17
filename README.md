@@ -81,6 +81,46 @@ require("fuzzy").setup({
 })
 ```
 
+### Interaction
+
+By default the picker provides several default action bindings to act and interface with the picker, the following are most of the basic
+bindings which are provided out of the box, to perform actions with the picker, those of course can be customized by overriding the
+`actions` property, described below
+
+```text
+["<cr>"]  = confirm current selection
+["<esc>"] = close the picker
+["<c-c>"] = hide the picker
+["<tab>"] = toggle entry selection
+["<c-p>"] = select next entry
+["<c-n>"] = select next entry
+["<c-k>"] = select prev entry
+["<c-j>"] = select prev entry
+["<c-f>"] = preview page down
+["<c-b>"] = preview page up
+["<c-d>"] = preview half page down
+["<c-u>"] = preview half page up
+["<c-e>"] = preview line down
+["<c-y>"] = preview line down
+```
+
+Take a good note of the `close` and `hide` actions, those are different and very powerful, when used together, the `hide` action allows you
+to hide the current picker away, retaining all of its state, and the picker state can be resumed again at any time by calling `open` method
+again on the same instance that was hidden. The `close` action is different and it usually destroys the state of the `picker` instance.
+However you can still call `open` on the same picker instance, which would cause the internal state to be re-initialized.
+
+Lets take an example, imagine you have created a picker that shows all files in the current directory, you have done some matching on it and
+now you `hide` it, calling `open` on the same picker instance will resume its state exactly as you have left it off. The same list of files
+will be visible, the prompt query, the last item that was in under preview, your cursor position in the list and preview windows and so on.
+
+However lets say now you create a new file in this directory, if you keep showing/hiding the picker the new file will not be part of the
+list, and now instead of hiding the picker you instead `close` the picker, calling `open` again on the closed picker instance will cause the
+underlying content stream to be re-run, the new file that was created will be now part of the list, the old query will of course be lost and
+all previous matches and the last item that was under preview.
+
+`Be careful leaving pickers in a hidden state, you should take care of making sure that if a picker remains hidden, at some point if it is
+no longer used and never re-opened it is closed or destroyed to avoid retaining persistent state`
+
 ### Basic Properties
 
 | Field             | Type                     | Description                                                                                                                                                                                                                                                                                                        |
@@ -101,7 +141,6 @@ require("fuzzy").setup({
 | `stream_debounce` | `number`                 | The time in milliseconds to debounce the flush calls of the stream, this is useful to avoid stream batch flushes in quick succession, when the results accumulate fast enough that we can combine into a single flush call instead, caused by the executable being too fast, or the `stream_step` being too small. |
 | `window_size`     | `number`                 | Ratio (0-1) specifying the picker window size relative to the screen.                                                                                                                                                                                                                                              |
 | `prompt_debounce` | `number`                 | Debounce time in ms to delay handling input (helps avoid overwhelming the matching process).                                                                                                                                                                                                                       |
-| `prompt_confirm`  | `function?`              | A custom callback for user confirmation. If `nil`, default selection is used.                                                                                                                                                                                                                                      |
 | `prompt_query`    | `string`                 | Initial user query for starting the picker prompt with.                                                                                                                                                                                                                                                            |
 | `prompt_decor`    | `string,table`           | Prefix/suffix for the prompt. Can take the form of a string (just one) or a table (both) providing a table with `{ suffix = "", prefix = "" }` keys.                                                                                                                                                               |
 
@@ -122,8 +161,8 @@ require("fuzzy").setup({
 
 - **actions**: Key mappings for actions in the picker interface. This is a table where keys are the keybindings (e.g., `"<CR>"`, `"<C-q>"`)
   and values are either a callback function or a tuple of `{ callback, label }`. The label is optional and can be a string or a function that
-  returns a string. Labels are used to generate headers automatically if no custom headers are provided. The action callback signature is the
-  same as for prompt_confirm and prompt_cancel
+  returns a string. Labels are used to generate headers automatically if no custom headers are provided. By default the picker provides a
+  very minimal set of operations
 
 - **decorators**: A table of selection list entry decorators. The decorators govern how the entries are visually decorated - the decorations
   are always inserted in front of the entry line in the list interface. They must of sub-classes of `Select.Decorator`, each decorator must
@@ -169,12 +208,6 @@ require("fuzzy").setup({
 
 - **prompt_debounce**: The debounce time in milliseconds to delay handling input. This helps avoid overwhelming the matching process with
   too many updates in quick succession. A value of 100-200ms is usually a good starting point.
-
-- **prompt_confirm**: A custom callback for user confirmation. If `nil`, the default selection action is used. This function should handle
-  what happens when the user confirms their selection. The function receives the current Select instance as its first argument, use the
-  provided Select actions as a base e.g Select.bind(Select.default_select, custom_handler). default_select will call the custom handler with
-  the currently selected items as its argument. If you want more control over the selection provide a direct callback but extracting and
-  matching the current entries from the list manually would be required.
 
 - **prompt_query**: The initial user query to start the picker prompt with. This can be used to pre-fill the prompt with a default value,
   which would also trigger prompt_input automatically
@@ -227,33 +260,39 @@ string or a number it will be converted to a table with the appropriate keys, fi
 
 #### Actions
 
-The actions are key mappings for the picker interface, they allow the user to interact with the picker in various ways, That includes
-`prompt_confirm` and `prompt_cancel` which are special actions that are triggered when the user confirms or cancels the selection
-respectively, however their signature and internal mode of operation is the same as for any action provided in the `actions` table
+The actions are key mappings for the picker interface, they allow the user to interact with the picker in various ways. All actions receive
+and are called by default as first argument the `select` instance being acted upon, some of the built-in actions have a second argument
+which is a callback, that is usually the converter that is invoked before the actual action execution - like `:edit` a file or buffer,
+sending to the quick fix list and so on. The special `Select.default_select` is a no-op action which does nothing, but simply invoke its
+callback with the current selection, this is the action entry point that can be used to provide your custom behavior.
 
 ```lua
 -- Example using the built-in select entry action, which edits a resource into a neovim buffer. As mentioned default actions require a
 -- specific structure for the entries, and in this case we ensure that this is the case by adding a converter to the action which takes
 -- care of normalizing each entry into a valid structure understood by the internal actions.
-prompt_confirm = Select.action(Select.select_entry, Select.all(function(entries)
-    local pat = "^([^:]+):(%d+):(%d+):(.+)$"
-    local filename, line_num, col_num = entry:match(pat)
-    return {
-        filename = filename,
-        col = col_num and tonumber(col_num),
-        lnum = line_num and tonumber(line_num),
-    }
-end))
+actions = {
+    ["<cr>"] = Select.action(Select.select_entry, Select.all(function(entries)
+        local pat = "^([^:]+):(%d+):(%d+):(.+)$"
+        local filename, line_num, col_num = entry:match(pat)
+        return {
+            filename = filename,
+            col = col_num and tonumber(col_num),
+            lnum = line_num and tonumber(line_num),
+        }
+    end))
+}
 
--- As mentioned if a more fine grained control is required, a custom action function can be provided for prompt_confirm, however the user has to
+-- As mentioned if a more fine grained control is required, a custom action function can be provided for confirming, however the user has to
 -- extract the current selection manually, here we are showing what that might look like
-prompt_confirm = function(select)
-    -- we extract the cursor position from the select window, and use that to get the current selection from the list of entries with which
-    -- the list is currently populated, closing the view is optional but it makes sense in most scenarios
-    local cursor = vim.api.nvim_win_get_cursor(select.list_window)
-    local selection = callback and select:_list_selection(cursor[1])
-    select:_close_view()
-end
+actions = {
+    ["<cr>"] = function(select)
+        -- we extract the cursor position from the select window, and use that to get the current selection from the list of entries with which
+        -- the list is currently populated, closing the view is optional but it makes sense in most scenarios
+        local cursor = vim.api.nvim_win_get_cursor(select.list_window)
+        local selection = callback and select:_list_selection(cursor[1])
+        select:_close_view()
+    end
+}
 ```
 
 The default actions exposed by Select module invoke the user provided custom converter on all selected items, meaning that the first and
@@ -451,6 +490,7 @@ local picker = Picker.new({
     -- again using the grep_converter to properly parse the entry into a tuple of { filename, lnum, col }, on top of that it provides a
     -- `label` for each action which will be displayed in the picker header section as a hint to the user
     actions = {
+        ["<cr>"] = Select.action(Select.select_entry, Select.all(grep_converter)),
         ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "qflist" },
         ["<c-t>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "tabe" },
         ["<c-v>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "vert" },
@@ -459,7 +499,6 @@ local picker = Picker.new({
     -- tells the picker how to handle user confirmation, using the default selection, with a combination of a custom converter, that
     -- ensures that an entry from the output of ripgrep is properly parsed into a valid tuple of { filename, lnum, col }, as well as
     -- handling multiple selections via the `many` helper function
-    prompt_confirm = Select.action(Select.select_entry, Select.all(grep_converter)),
 })
 picker:open()
 return picker
@@ -490,15 +529,12 @@ local picker = Picker.new({
     -- adds default actions to the picker, in this case sending the selected entries to the quickfix list, and opening them in
     -- various ways, binding directly to the default select actions without additional conversion or parsing
     actions = {
+        ["<cr>"] = Select.select_entry,
         ["<c-q>"] = Select.send_quickfix,
         ["<c-t>"] = Select.select_tab,
         ["<c-v>"] = Select.select_vertical,
         ["<c-s>"] = Select.select_horizontal,
     }
-    -- tells the picker how to handle user confirmation, in this case using the default select entry action, the output of ripgrep
-    -- is a straight up filename string, which will be handled by default, without the need of any converter or parsing, there is also
-    -- no location information to parse
-    prompt_confirm = Select.select_entry,
 })
 picker:open()
 return picker
@@ -533,16 +569,18 @@ local picker = Picker.new({
         --- both marks this picker as interactive, as well as provides the user input prompt to the content function
         interactive = "{prompt}",
     },
+    -- default selection, in this case is a no op function, which simply prints the current entries selection, this is mostly for demonstration
+    -- purposes, in a real world scenario this should be replaced with a proper action that handles the entry.
+    actions = {
+        ["<cr>"] = Select.action(Select.default_select, Select.all(function(entry)
+            print(vim.inspect(entry))
+            return entry
+        end)),
+    },
     -- tells the select how to display the items in the picker, used when the stream represents a complex table like structure this can be a
     -- string key or a function that receives the entry and returns a string. The display will also be used to perform the fuzzy matching on
     -- the entry, in this case matching will be against the name property of the entry
     display = "name",
-    -- default selection, in this case is a no op function, which simply prints the current entries selection, this is mostly for demonstration
-    -- purposes, in a real world scenario this should be replaced with a proper action that handles the entry.
-    prompt_confirm = Select.action(Select.default_select, Select.all(function(entry)
-        print(vim.inspect(entry))
-        return entry
-    end)),
 })
 ```
 
@@ -576,6 +614,7 @@ local picker = Picker.new({
     -- various ways, again using the default select actions without any additional parsing or conversion, no labels are provided, and
     -- no custom header as well
     actions = {
+        ["<cr>"] = Select.select_entry,
         ["<c-q>"] = { Select.send_quickfix, "qflist" },
         ["<c-t>"] = { Select.select_tab, "tabe" },
         ["<c-v>"] = { Select.select_vertical, "vert" },
@@ -583,7 +622,6 @@ local picker = Picker.new({
     }
     -- tell the stream how to handle user confirmation, in this case the entry contains valid fields which do not require any
     -- additional parsing or conversion, so we can simply use the default select entry action
-    prompt_confirm = Select.select_entry,
 })
 return picker:open()
 ```
@@ -604,10 +642,12 @@ vim.ui.select = function(items, opts, choice)
         -- confirm action, in this case we use a custom function that calls the choice callback with the selected entry, we use
         -- the default_select action with a custom handler/converter which picks the first selection and calls the choice callback
         -- with it
-        prompt_confirm = Select.action(Select.default_select, Select.first(function(entry)
-            choice(entry)
-            return entry
-        end)),
+        actions = {
+            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+                choice(entry)
+                return entry
+            end)),
+        },
     })
     picker:open()
     return picker
@@ -617,7 +657,7 @@ end
 ### Advanced ui.select replacement
 
 Below we demonstrate a more advanced replacement for `vim.ui.select`, which includes previewers, decoration providers, as well as additional
-actions such as sending the selected entries to the `quickfix` list, a more complex prompt_confirm handler allows the select to interact with
+actions such as sending the selected entries to the `quickfix` list, a more complex confirm handler allows the select to interact with
 multiple items based on the number of entries in the selection
 
 ```lua
@@ -644,12 +684,12 @@ vim.ui.select = function(items, opts, on_choice)
     },
     -- confirm action, in this case we use a custom function that calls the on_choice callback with the selected entry, we use
     -- the default_select action with a custom handler/converter which picks the first selection and calls the on_choice callback
-    -- with it adds default actions to the picker, in this case allow sending the selected entries to the quickfix list
+    -- with it adds default actions to the picker, in this case allow sending the selected entries to the quickfix list when confirming
+    -- always pick all entries, which would cause all entries to be :edit`ed, if a multi select is active in the picker
     actions = {
+        ["<cr>"] = Select.action(Select.select_entry, Select.all(converter)),
         ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(converter), "qflist" },
     },
-    -- when confirming always pick all entries, which would cause all entries to be :edit`ed, if a multi select is active in the picker
-    prompt_confirm = Select.action(Select.select_entry, Select.all(converter)),
 ```
 
 ### Builtin Buffers module
