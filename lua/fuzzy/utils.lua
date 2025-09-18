@@ -253,10 +253,8 @@ function M.safe_call(callback, ...)
         local ok, res = pcall(callback, ...)
         if not ok and res and #res > 0 then
             vim.notify(res, vim.log.levels.ERROR)
-            return nil, nil
-        else
-            return ok, res
         end
+        return ok, res
     end
     return nil, nil
 end

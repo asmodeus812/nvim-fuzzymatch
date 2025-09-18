@@ -1,9 +1,11 @@
 local Scheduler = require("fuzzy.scheduler")
 local Async = require("fuzzy.async")
 local utils = require("fuzzy.utils")
+local BASEMSG = "Stream failed with"
 
 --- @class Stream
 --- @field public results string[]|nil The results accumulated so far, this is only valid after the stream has finished, or if the stream is ephemeral and a new stream has not yet started.
+--- @field private onexit fun(number, string) The function that will be invoked when the stream exits, this function reports the exit code and possible error messages to the consumer
 --- @field private callback fun(buffer: string[], accum: string[]) The callback function to be called when new data is available, this function receives two arguments, the first is the current buffer of data, the second is the accumulation of all data so far.
 --- @field private mapper? fun(data: string): string|nil A function to transform each line or chunk of data before it is added to the results, defaults to nil
 --- @field private _options StreamOptions The options for the stream
@@ -171,7 +173,6 @@ end
 
 function Stream:_handle_stdout(err, chunk)
     if err or not chunk then return end
-
     assert(type(chunk) == "string")
     if self._options.lines == true then
         -- when the type of stream is defined as lines, split the output based on new lines, this might produce some empty lines
@@ -197,20 +198,29 @@ function Stream:_handle_stdout(err, chunk)
 end
 
 function Stream:_handle_stderr(err, chunk)
-    -- handle stderr, some processes output on stderr instead of stdout, and should also be handled
-    if chunk then assert(not err, chunk) end
+    if err or not chunk then return end
+    self:_handle_stdout(err, chunk)
 end
 
-function Stream:_handle_exit()
-    local callback = self.callback
-    -- on exit make sure that there is nothing more to flush, if there is any size accumulated over the very last call toThe handle
-    -- of stdout or stderr, then we need to finally flush it as well, this is to ensure that there is no left over unprocessed data
-    -- after the stream has closed
-    if self._state.size > 0 then
-        self:_flush_results()
+function Stream:_handle_exit(code, chunk)
+    local onexit = self._options.onexit
+    if code and code == 1 then
+        -- ensure that the error is reported to the user in some capacity, that can be useful to debug the state of the command
+        -- that was being run and what went wrong.
+        self:destroy()
+        utils.safe_call(onexit, code, chunk)
+    else
+        -- on exit make sure that there is nothing more to flush, if there is any size accumulated over the very last call toThe handle
+        -- of stdout or stderr, then we need to finally flush it as well, this is to ensure that there is no left over unprocessed data
+        -- after the stream has closed
+        local callback = self.callback
+        if self._state.size > 0 then
+            self:_flush_results()
+        end
+        self:stop()
+        utils.safe_call(callback)
+        utils.safe_call(onexit, code, chunk)
     end
-    self:stop()
-    utils.safe_call(callback)
 end
 
 --- Returns true if the stream is currently running, i.e. has been started and not yet stopped or exited, false otherwise
@@ -314,9 +324,10 @@ function Stream:start(cmd, opts)
             Async.yield()
         end
         local executor = Async.wrap(function()
-            utils.safe_call(cmd, cb, opts.args)
-            if did_exit == false then
-                self:_handle_exit()
+            local ok, err = utils.safe_call(cmd, cb, opts.args)
+            if not ok and did_exit == false then
+                local code = not ok and 1 or 0
+                self:_handle_exit(code, err)
             end
         end)
         self._state.handle = executor()
@@ -331,6 +342,7 @@ function Stream:start(cmd, opts)
             cwd = opts.cwd,
             env = opts.env,
             stdio = stdio,
+            hide = true,
         }, vim.schedule_wrap(self:_bind_method(
             Stream._handle_exit
         ))))
@@ -360,6 +372,7 @@ end
 --- @field lines? boolean Whether the stream processes data in lines, mutually exclusive with `bytes`, defaults to true
 --- @field step? integer The number of lines or bytes to accumulate before flushing to the callback, defaults to 100000
 --- @field timeout? integer The maximum time to wait in milliseconds when calling :wait, defaults to utils.MAX_TIMEOUT
+--- @field onexit? fun(number, msg): any Report the exit status of the stream to the consumer, invoked with the exit code and optional error message
 
 --- Creates a new Stream instance with the given options, or default options if none are provided
 --- @param opts StreamOptions|nil The options for the stream
@@ -372,12 +385,30 @@ function Stream.new(opts)
         lines = { opts.lines, "boolean", true },
         step = { opts.step, "number", true },
         timeout = { opts.timeout, "number", true },
+        onexit = { opts.onexit, "function", true },
     })
     opts = vim.tbl_deep_extend("force", {
         ephemeral = true,
         bytes = false,
         lines = true,
         step = 100000,
+        onexit = function(code, msg)
+            if not code or code == 0 then
+                return
+            end
+            if type(msg) ~= "string" then
+                msg = string.format(
+                    "%s code %d",
+                    BASEMSG, code
+                )
+            else
+                msg = string.format(
+                    "%s %s and code %d",
+                    BASEMSG, msg, code
+                )
+            end
+            vim.notify(msg, vim.log.levels.ERROR)
+        end
     }, opts)
 
     local self = setmetatable({

@@ -81,6 +81,242 @@ require("fuzzy").setup({
 })
 ```
 
+## Quickstart
+
+`TDDR;` To start using the picker simply require the picker and select modules those are going to be enough for you to create pretty much any
+type of picker you can imagine. Lets see a few examples
+
+Start using this picker instance, it is recommended that you remember and use the instance you have created, if you wish to
+open/close/hide the picker just re-use the instance methods, instead of making - calling Picker.new every time you wish to create the
+same type of picker. Creating a new picker should be reserved for creating unique pickers.
+
+### Simple list
+
+```lua
+-- here is a very basic example that simply provides a list of static string items and prints out the current user selection on confirm, use
+-- <tab> to multi select one than more items and press <cr>
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = {
+        "1 init.lua",
+        "2 select.lua",
+        "3 README.md",
+        "4 CHANGELOG.md",
+        "5 LICENSE",
+    },
+    actions = {
+        ["<cr>"] = Select.action(Select.default_select, Select.all(function(e)
+            vim.print(e)
+            return e
+        end))
+    }
+})
+picker:open()
+```
+
+### Executable stream
+
+```lua
+-- here is a very basic example that simply lists all files in the current directory, using find and only the top level files are listed in
+-- this case
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = "find",
+    context = {
+        args = {
+            ".",
+            "-type",
+            "f",
+            "-maxdepth",
+            "1"
+        }
+    }
+})
+picker:open()
+```
+
+### Interactive query
+
+```lua
+-- here is a more complex one, making the picker interactive, ensuring the user query will be part of the find command, and the command will
+-- execute for every user prompt, in this case passed to grep as pattern to match, grep is slow, use ripgrep in your implementation if
+-- available, we use small match and stream steps to flush results faster, this makes slower commands such as grep feel more snappy and
+-- responsive
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    strem_step = 25000,
+    match_step = 25000,
+    display_step = 50000,
+    content = "grep",
+    context = {
+        args = {
+            "-i",
+            "-r",
+            "--line-buffered",
+            "__prompt__",
+            "."
+        },
+        interactive = "__prompt__",
+    }
+})
+picker:open()
+```
+
+### Preview & icons
+
+```lua
+-- moving further with another example of how to add icons and enable the preview for the buffer, based on the find command we saw above, we
+-- enable the preview along with adding file icons to the list of items
+local Select = require("fuzzy.select")
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = "find",
+    context = {
+        args = {
+            ".",
+            "-type",
+            "f",
+            "-maxdepth",
+            "1"
+        }
+    },
+    preview = Select.BufferPreview.new(),
+    decorators = {
+        Select.IconDecorator.new(),
+    },
+})
+picker:open()
+```
+
+### Actions and context
+
+```lua
+-- opening the picker with a new directory different from the current one, which is the default behavior, we can also pass new
+-- environment variables to the executable process'.
+local Select = require("fuzzy.select")
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = "find",
+    context = {
+        args = {
+            ".",
+            "-type",
+            "f",
+        },
+        env = {
+            MY_NEW_VARIABLE = "value"
+        },
+        cwd = vim.fn.expand("~/.config/nvim")
+    },
+    preview = Select.BufferPreview.new(),
+    decorators = {
+        Select.IconDecorator.new(),
+    },
+    actions = {
+        ["<cr>"] = Select.select_entry,
+        ["<c-q>"] = Select.send_quickfix,
+    },
+})
+picker:open()
+```
+
+### Dynamic context
+
+```lua
+-- opening the picker with a dynamic context, take a note at the way the `cwd` is defined, it is not a raw value, but a callback instead,
+-- this is allows the same picker instance to be used in this case with any current working directory, every time the picker is opened the
+-- context will be evaluated, and if the context is different, in this case it is only the working directory that is dynamic, than what the
+-- picker was opened with before, the internal stream will be re-run for the new context, in other words for the new working directory
+local Select = require("fuzzy.select")
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = "find",
+    context = {
+        -- simple static value
+        args = {
+            ".",
+            "-type",
+            "f",
+        },
+        -- dynamic callback value
+        cwd = vim.loop.cwd
+    },
+    actions = {
+        ["<cr>"] = Select.select_entry,
+        ["<c-q>"] = Select.send_quickfix,
+    },
+})
+picker:open()
+```
+
+### Labels & headers
+
+```lua
+-- take a note of the headers section, where the current working directory in the header is similarly to the context, set to be evaluated on
+-- demand, and not a static value like the rest of the header elements, like the picker name. On top of that the actions have also been
+-- enhanced with a label, which will become part of the header line in the prompt
+local Select = require("fuzzy.select")
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = "find",
+    context = {
+        args = {
+            ".",
+            "-type",
+            "f",
+        },
+    },
+    headers = {
+        {
+            { "Files", "ErrorMsg" },
+            { "::", "ModeMsg" },
+            vim.loop.cwd
+        },
+    },
+    actions = {
+        ["<cr>"] = { Select.select_entry, "edit" },
+        ["<c-q>"] = { Select.send_quickfix, "qflist" },
+    },
+})
+picker:open()
+```
+
+### Dynamic streams
+
+```lua
+-- user provided stream, with a custom preview for the picker along with a default selection action that simply prints out the currently
+-- selected items, use <tab> to trigger and use multi-selection, use <c-g> to enter the fuzzy matching stage, and again <c-g> to toggle
+-- back to the interactive stage.
+local Select = require("fuzzy.select")
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = function(cb, args)
+        for i = 1, 100000, 1 do
+            cb({ name = string.format("%d-%s-name-entry", i, args[1]) })
+        end
+        cb(nil)
+    end,
+    context = {
+        args = {
+            "{prompt}",
+        },
+        interactive = "{prompt}",
+    },
+    actions = {
+        ["<cr>"] = Select.action(Select.default_select, Select.all(function(e)
+            vim.print(e)
+            return e
+        end))
+    },
+    preview = Select.CustomPreview.new(function(e)
+        -- stringify the table into buffer lined
+        return vim.split(vim.inspect(e), "\n")
+    end),
+    display = "name",
+})
+picker:open()
+```
+
 ### Interaction
 
 By default the picker provides several default action bindings to act and interface with the picker, the following are most of the basic
@@ -90,7 +326,7 @@ bindings which are provided out of the box, to perform actions with the picker, 
 ```text
 ["<cr>"]    = confirm current selection
 ["<esc>"]   = close the picker interface
-["<c-c>"]   = hide the picker interface
+["<m-c>"]   = hide the picker interface
 ["<c-g>"]   = toggle fuzzy/interactive stage
 
 ["<c-l>"]   = toggle the preview window,
@@ -451,8 +687,13 @@ setmetatable(EchoPreviewer, { __index = Select.Preview })
 function EchoPreviewer:new()
     local obj = Select.Preview.new()
     setmetatable(obj, Select.EchoPreviewer)
-    obj.buf = vim.api.nvim_create_buf(false, true)
     return obj
+end
+
+function EchoPreviewer:init()
+    -- create the buffer that will be used and populated when the preview window is showing new entries, in this case we use only a single
+    -- buffer for all entries, for demonstration purposes.
+    obj.buf = vim.api.nvim_create_buf(false, true)
 end
 
 function EchoPreviewer:clean()
@@ -485,6 +726,9 @@ into a valid structure, when no converter is passed to them.
 
 `The preview function can return false to signal that the preview did not complete successfully, this will result in no-op for the
 preview for this entry, an optional message can also be returned describing the reason for the failure`
+
+Previewers can optionally override the `clean` and `init` methods which are invoked with the internal lifecycle of the selection interface,
+all you need to care about is cleaning the state in the clean method, that was created in the init method
 
 #### Decorators
 
@@ -523,9 +767,14 @@ function PrefixDecorator.new(converter)
     return obj
 end
 
+function PrefixDecorator:init()
+    -- init the decorator state, this method ensures that the decorator state is initialized and ready, in case any resources need to be
+    -- allocated before the decoration process that has to be done here.
+end
+
 function PrefixDecorator:clean()
     -- do cleanup actions for this decorator, this might make sense if additional resources were allocated during the decoration computation
-    -- or process, take extra care to avoid invaliding the decorator instance for subsequent calls to the decorate method
+    -- or process, take extra care to avoid invaliding the decorator instance for subsequent calls to the decorate method.
 end
 
 function PrefixDecorator:decorate(entry, line)
@@ -544,6 +793,9 @@ end
 The built-in decorators such as `Select.IconDecorator` is accepting a converter as an optional argument, which is used to convert the
 raw entry into a valid entry structure before calculating the decorations for it. The decorator require the same structure as specified
 for the picker `actions` or `previewers`. Otherwise a default internal converter is used which attempts to convert the entry.
+
+Decorators can optionally override the `clean` and `init` methods which are invoked with the internal lifecycle of the selection interface,
+all you need to care about is cleaning the state in the clean method, that was created in the init method
 
 `The decorate function can return false to signal that the decoration should be skipped or did not complete successfully, this will result in
 no-op for the decorator for this entry`
@@ -834,9 +1086,8 @@ The sources provided in the `fuzzy.sources.buffer` module are mostly experimenta
 components of the fuzzy matcher.
 
 ```lua
-require("fuzzy.sources.buffer").buffers({
-    -- source configuration goes here
-})
+local picker = require("fuzzy.sources.buffer").buffers()
+
 ```
 
 ### Builtin Files module
@@ -846,24 +1097,16 @@ components of the fuzzy matcher.
 
 ```lua
 -- list all files in the target directory
-require("fuzzy.sources.files").files({
-    cwd = vim.loop.cwd()
-})
+local picker = require("fuzzy.sources.files").files()
 
 -- list only the directories in target directory
-require("fuzzy.sources.files").dirs({
-    cwd = vim.loop.cwd()
-})
+local picker = require("fuzzy.sources.files").dirs()
 
 -- list files and directory permissions in target directory
-require("fuzzy.sources.files").ls({
-    cwd = vim.loop.cwd()
-})
+local picker = require("fuzzy.sources.files").ls()
 
 -- interactive grep file content within a target directory
-require("fuzzy.sources.files").grep({
-    cwd = vim.loop.cwd()
-})
+local picker = require("fuzzy.sources.files").grep()
 ```
 
 ## Requirements

@@ -376,6 +376,7 @@ function Picker:_create_stage()
             ),
             prompt_decor = picker_options.prompt_decor,
             window_ratio = picker_options.window_size,
+            list_step = picker_options.display_step,
         }),
         match = Match.new({
             timer = picker_options.match_timer,
@@ -625,8 +626,8 @@ function Picker.new(opts)
         match_limit = nil,
         match_timer = 100,
         match_step = 50000,
-        display_step = 100000,
         stream_step = 100000,
+        display_step = 200000,
         stream_type = "lines",
         stream_debounce = 0,
         window_size = 0.15,
@@ -639,7 +640,6 @@ function Picker.new(opts)
     }, opts)
 
     local is_lines = opts.stream_type == "lines"
-    local list_step = opts.display and opts.display_step
     if type(opts.display) == "function" then
         opts.match = { text_cb = opts.display }
     elseif type(opts.display) == "string" then
@@ -693,7 +693,6 @@ function Picker.new(opts)
     })
 
     self.select = Select.new({
-        list_step = list_step,
         preview = opts.preview,
         display = opts.display,
         decorators = opts.decorators,
@@ -706,6 +705,7 @@ function Picker.new(opts)
         prompt_query = opts.prompt_query,
         prompt_decor = opts.prompt_decor,
         window_ratio = opts.window_size,
+        list_step = opts.display_step,
     })
 
     if self:_is_interactive() then

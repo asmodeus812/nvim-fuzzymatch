@@ -62,6 +62,10 @@ function Select.Preview.new()
     return obj
 end
 
+function Select.Preview:init()
+    -- default empty implementation
+end
+
 function Select.Preview:clean()
     -- default empty implementation
 end
@@ -74,6 +78,10 @@ function Select.Decorator.new()
     local obj = {}
     setmetatable(obj, Select.Decorator)
     return obj
+end
+
+function Select.Decorator:init()
+    -- default empty implementation
 end
 
 function Select.Decorator:clean()
@@ -295,6 +303,8 @@ local function populate_buffer(buffer, entries, display, step)
         until start == #entries or start > _end
 
         vim.api.nvim_buf_set_lines(buffer, _end, -1, false, {})
+        vim.print({vim.api.nvim_buf_line_count(buffer), #entries})
+        assert(vim.api.nvim_buf_line_count(buffer) == #entries)
         utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
     else
         if display ~= nil then
@@ -616,13 +626,12 @@ function Select.CustomPreview:preview(entry, window)
             if ft and type(ft) == "string" then
                 vim.bo[buffer].filetype = ft
             end
-            if cursor and type(cursor) == "table" then
-                local ok, err = pcall(vim.api.nvim_win_set_cursor, window, cursor)
-                if not ok and err ~= nil then error(err) end
+            if cursor and type(cursor) == "table" and #cursor == 2 and cursor[2] then
+                vim.api.nvim_win_set_cursor(window, cursor)
             end
         else
             populate_buffer(buffer, {
-                "Unable to display or preview entry",
+                lines or "Unable to preview current entry"
             })
         end
         assert(not vim.tbl_contains(self.buffers, buffer))
@@ -1031,10 +1040,33 @@ function Select:_destroy_view()
     self._state.query = ""
 end
 
+function Select:_init_preview()
+    local preview = self._options.preview or nil
+    if type(preview) == "table" and preview.init then
+        preview:init()
+    end
+end
+
 function Select:_clean_preview()
     local preview = self._options.preview or nil
     if type(preview) == "table" and preview.clean then
         preview:clean()
+    end
+end
+
+function Select:_init_decorators()
+    for _, decor in ipairs(self._options.decorators or {}) do
+        if type(decor) == "table" and decor.init then
+            decor:init()
+        end
+    end
+end
+
+function Select:_clean_decorators()
+    for _, decor in ipairs(self._options.decorators or {}) do
+        if type(decor) == "table" and decor.clean then
+            decor:clean()
+        end
     end
 end
 
@@ -1073,6 +1105,7 @@ function Select:_clear_view(force)
         end
 
         if force == true then
+            self:_clean_decorators()
             self:_clean_preview()
         end
 
@@ -1110,6 +1143,7 @@ function Select:_close_view(force)
         end
 
         if force == true then
+            self:_clean_decorators()
             self:_clean_preview()
             self:_destroy_view()
         end
@@ -1663,6 +1697,10 @@ function Select:open()
         return
     end
     local opts = assert(self._options)
+    if not self:isvalid() then
+        self:_init_decorators()
+        self:_init_preview()
+    end
 
     self.source_window = vim.api.nvim_get_current_win()
     local factor = (opts.prompt_list and opts.preview) and 2.0 or 1.0
@@ -1853,6 +1891,7 @@ function Select:open()
                 pattern = tostring(list_window),
                 callback = function()
                     pcall(vim.api.nvim_del_autocmd, highlight_matches)
+                    if self:isopen() then self:_close_view(false) end
                     return true
                 end,
                 once = true,
