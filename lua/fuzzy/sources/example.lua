@@ -4,7 +4,10 @@ local Picker = require("fuzzy.picker")
 local M = {}
 
 function M.stream(opts)
-    opts = opts or { count = 1000000 }
+    opts = opts or {
+        count = 1000000,
+        cwd = vim.loop.cwd,
+    }
     local picker = Picker.new({
         content = function(cb, args)
             for i = 1, opts.count, 1 do

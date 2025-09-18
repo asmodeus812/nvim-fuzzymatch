@@ -277,16 +277,16 @@ local function populate_buffer(buffer, entries, display, step)
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
     if step ~= nil and step > 0 then
-        local start = 1
-        local _end = math.min(#entries, step)
-        local lines = utils.obtain_table(_end)
-        utils.resize_table(lines, _end, utils.EMPTY_STRING)
+        local size = math.min(#entries, step)
+        local lines = utils.obtain_table(size)
+        utils.resize_table(lines, size, utils.EMPTY_STRING)
 
+        local start, _end = 1, size
         repeat
             for target = start, _end, 1 do
                 lines[(target - start) + 1] = line_mapper(entries[target], display)
             end
-            assert(#lines == _end)
+            assert(#lines == size)
             Async.yield()
 
             vim.api.nvim_buf_set_lines(buffer, start - 1, _end, false, lines)
@@ -901,16 +901,17 @@ function Select:_populate_list(full)
                 self.list_buffer,
                 utils.EMPTY_TABLE
             )
-        elseif full == true then
+        elseif full == true and self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
             populate_buffer(
                 self.list_buffer, entries,
                 self._options.display,
                 self._options.list_step
             )
-        elseif full == false then
+        elseif full == false and self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
             local cursor = vim.api.nvim_win_get_cursor(self.list_window)
             local height = vim.api.nvim_win_get_height(self.list_window)
-            assert(#entries >= cursor[1] and cursor[1] > 0)
+            cursor[1] = math.min(cursor[1], #entries)
+            vim.api.nvim_win_set_cursor(self.list_window, cursor)
             populate_range(
                 self.list_buffer,
                 math.max(1, cursor[1] - height),
@@ -979,9 +980,6 @@ function Select:_display_preview()
 end
 
 function Select:_render_list(full)
-    if self:_is_rendering() then
-        self:_stop_rendering()
-    end
     local executor = Async.wrap(function()
         if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
             self:_populate_list(full)
@@ -997,8 +995,18 @@ function Select:_render_list(full)
             )
         end
     end)
-    self._state.renderer = executor()
-    Scheduler.add(self._state.renderer)
+
+    local renderer = function()
+        self._state.renderer = executor()
+        Scheduler.add(self._state.renderer)
+    end
+
+    if self:_is_rendering() then
+        self._state.renderer:await(renderer)
+        self:_stop_rendering()
+    else
+        renderer()
+    end
 end
 
 function Select:_destroy_view()
@@ -1031,77 +1039,87 @@ function Select:_clean_preview()
 end
 
 function Select:_clear_view(force)
+    local clearer = function()
+        if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
+            populate_buffer(self.prompt_buffer, { "" })
+            local sign_name = string.format(
+                "prompt_line_query_sign_%d",
+                self.prompt_buffer
+            )
+            vim.fn.sign_place(
+                0, "prompt_line_query_group",
+                sign_name, self.prompt_buffer,
+                { lnum = 1, priority = 10 }
+            )
+        end
+        if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
+            vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_DECORATED_NAMESPACE, 0, -1)
+            vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_HIGHLIGHT_NAMESPACE, 0, -1)
+            populate_buffer(self.list_buffer, {})
+        end
+        if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
+            populate_buffer(self.preview_buffer, {})
+        end
+
+        if self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window) then
+            vim.api.nvim_win_set_cursor(self.prompt_window, { 1, 0 })
+        end
+        if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
+            vim.api.nvim_win_set_cursor(self.list_window, { 1, 0 })
+        end
+        if self.preview_window and vim.api.nvim_win_is_valid(self.preview_window) then
+            vim.api.nvim_win_set_buf(self.preview_window, self.preview_buffer)
+            vim.api.nvim_win_set_cursor(self.preview_window, { 1, 0 })
+        end
+
+        if force == true then
+            self:_clean_preview()
+        end
+
+        self._state.streaming = false
+        self._state.positions = nil
+        self._state.entries = nil
+        self._state.query = ""
+    end
+
     if self:_is_rendering() then
+        self._state.renderer:await(clearer)
         self:_stop_rendering()
+    else
+        clearer()
     end
-
-    if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
-        populate_buffer(self.prompt_buffer, { "" })
-        local sign_name = string.format(
-            "prompt_line_query_sign_%d",
-            self.prompt_buffer
-        )
-        vim.fn.sign_place(
-            0, "prompt_line_query_group",
-            sign_name, self.prompt_buffer,
-            { lnum = 1, priority = 10 }
-        )
-    end
-    if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
-        vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_DECORATED_NAMESPACE, 0, -1)
-        vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_HIGHLIGHT_NAMESPACE, 0, -1)
-        populate_buffer(self.list_buffer, {})
-    end
-    if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
-        populate_buffer(self.preview_buffer, {})
-    end
-
-    if self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window) then
-        vim.api.nvim_win_set_cursor(self.prompt_window, { 1, 0 })
-    end
-    if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
-        vim.api.nvim_win_set_cursor(self.list_window, { 1, 0 })
-    end
-    if self.preview_window and vim.api.nvim_win_is_valid(self.preview_window) then
-        vim.api.nvim_win_set_buf(self.preview_window, self.preview_buffer)
-        vim.api.nvim_win_set_cursor(self.preview_window, { 1, 0 })
-    end
-
-    if force == true then
-        self:_clean_preview()
-    end
-
-    self._state.streaming = false
-    self._state.positions = nil
-    self._state.entries = nil
-    self._state.query = ""
 end
 
 function Select:_close_view(force)
+    local closer = function()
+        if self.source_window and vim.api.nvim_win_is_valid(self.source_window) then
+            vim.api.nvim_set_current_win(self.source_window)
+            self.source_window = nil
+        end
+        if self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window) then
+            vim.api.nvim_win_close(self.prompt_window, true)
+            self.prompt_window = nil
+        end
+        if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
+            vim.api.nvim_win_close(self.list_window, true)
+            self.list_window = nil
+        end
+        if self.preview_window and vim.api.nvim_win_is_valid(self.preview_window) then
+            vim.api.nvim_win_close(self.preview_window, true)
+            self.preview_window = nil
+        end
+
+        if force == true then
+            self:_clean_preview()
+            self:_destroy_view()
+        end
+    end
+
     if self:_is_rendering() then
+        self._state.renderer:await(closer)
         self:_stop_rendering()
-    end
-
-    if self.source_window and vim.api.nvim_win_is_valid(self.source_window) then
-        vim.api.nvim_set_current_win(self.source_window)
-        self.source_window = nil
-    end
-    if self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window) then
-        vim.api.nvim_win_close(self.prompt_window, true)
-        self.prompt_window = nil
-    end
-    if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
-        vim.api.nvim_win_close(self.list_window, true)
-        self.list_window = nil
-    end
-    if self.preview_window and vim.api.nvim_win_is_valid(self.preview_window) then
-        vim.api.nvim_win_close(self.preview_window, true)
-        self.preview_window = nil
-    end
-
-    if force == true then
-        self:_clean_preview()
-        self:_destroy_view()
+    else
+        closer()
     end
 end
 
@@ -1145,21 +1163,19 @@ end
 
 --- Moves the cursor in the list by a specified direction, this is a generic function used by other selection methods.
 function Select:move_cursor(dir, callback)
-    local list_window = assert(self.list_window)
+    local entries = assert(self._state.entries)
+    local count = vim.api.nvim_buf_line_count(self.list_buffer)
+    local cursor = vim.api.nvim_win_get_cursor(self.list_window)
 
-    local list_entries = assert(self._state.entries)
-    local line_count = vim.fn.line("$", list_window)
-
-    local cursor = vim.api.nvim_win_get_cursor(list_window)
     -- ensure that if not all entries are rendered, we don't move the cursor past the end of the entries,
     -- meaning we do not allow looping from the first entry to the last one until all entries are rendered
-    dir = (cursor[1] == 1 and dir < 0 and line_count < #list_entries) and 0 or dir
+    dir = (cursor[1] == 1 and dir < 0 and count < #entries) and 0 or dir
 
     if dir and dir ~= 0 then
         if cursor[1] == 1 and dir < 0 then cursor[1] = 0 end
-        cursor[1] = (cursor[1] + dir) % (line_count + 1)
+        cursor[1] = (cursor[1] + dir) % (count + 1)
         if cursor[1] == 0 and dir > 0 then cursor[1] = 1 end
-        vim.api.nvim_win_set_cursor(list_window, cursor)
+        vim.api.nvim_win_set_cursor(self.list_window, cursor)
     end
 
     self:_display_preview()
@@ -1535,8 +1551,7 @@ function Select:list(entries, positions)
     elseif positions == nil then
         utils.time_execution(Select._render_list, self, true)
         if self._state.renderer then
-            self._state.renderer:await(function(_, reason)
-                assert(not reason or #reason == 0)
+            self._state.renderer:await(function()
                 self._state.streaming = false
             end)
         else
@@ -1594,6 +1609,11 @@ function Select:header(header)
                     assert(#element > 0)
                     table.insert(entry, element)
                     table.insert(entry, "SelectHeaderDefault")
+                elseif type(element) == "function" then
+                    local hr, hi = element(self)
+                    assert(hr and #hr > 0)
+                    table.insert(entry, hr)
+                    table.insert(entry, hi or "SelectHeaderDefault")
                 end
                 assert(#entry[1] and #entry[2])
                 table.insert(header_entries, padding)
@@ -1737,15 +1757,6 @@ function Select:open()
             vim.wo[prompt_window][0].signcolumn = 'yes'
             vim.wo[prompt_window][0].cursorline = false
             vim.wo[prompt_window][0].winfixbuf = true
-
-            vim.api.nvim_create_autocmd("WinClosed", {
-                pattern = tostring(prompt_window),
-                callback = function()
-                    self:_close_view(false)
-                    return true
-                end,
-                once = true,
-            })
         end
 
         local query = self:query()
@@ -1760,9 +1771,7 @@ function Select:open()
 
         self.prompt_buffer = prompt_buffer
         self.prompt_window = prompt_window
-        if opts.prompt_headers ~= nil then
-            self:header(opts.prompt_headers)
-        end
+        self:header(opts.prompt_headers or {})
     end
 
     if opts.prompt_list then
@@ -1844,7 +1853,6 @@ function Select:open()
                 pattern = tostring(list_window),
                 callback = function()
                     pcall(vim.api.nvim_del_autocmd, highlight_matches)
-                    self:_close_view(false)
                     return true
                 end,
                 once = true,
@@ -1853,6 +1861,7 @@ function Select:open()
 
         self.list_buffer = list_buffer
         self.list_window = list_window
+        self:_render_list(false)
     end
 
     if opts.prompt_list and opts.preview then

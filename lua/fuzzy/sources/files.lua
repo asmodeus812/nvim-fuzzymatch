@@ -47,7 +47,7 @@ end
 
 function M.files(opts)
     opts = opts or {
-        cwd = vim.loop.cwd()
+        cwd = vim.loop.cwd
     }
 
     local picker = Picker.new({
@@ -61,7 +61,7 @@ function M.files(opts)
                 "--files",
                 "--hidden",
             },
-            cwd = opts.cwd,
+            cwd = opts.cwd
         },
         preview = Select.BufferPreview.new(
         ),
@@ -82,7 +82,7 @@ end
 
 function M.grep(opts)
     opts = opts or {
-        cwd = vim.loop.cwd()
+        cwd = vim.loop.cwd
     }
 
     local picker = Picker.new({
@@ -125,12 +125,15 @@ function M.grep(opts)
 end
 
 function M.dirs(opts)
-    opts = opts or {}
+    opts = opts or {
+        cwd = vim.loop.cwd
+    }
 
     local picker = Picker.new({
         content = "find",
         headers = {
-            { "Directories" }
+            { "Directories" },
+            { opts.cwd }
         },
         context = {
             args = {
@@ -163,12 +166,15 @@ function M.dirs(opts)
 end
 
 function M.ls(opts)
-    opts = opts or {}
+    opts = opts or {
+        cwd = vim.loop.cwd
+    }
 
     local picker = Picker.new({
         content = "ls",
         headers = {
-            { "Ls" }
+            { "Ls" },
+            { opts.cwd }
         },
         context = {
             args = {

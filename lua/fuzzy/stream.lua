@@ -326,9 +326,9 @@ function Stream:start(cmd, opts)
         assert(vim.fn.executable(cmd) == 1)
 
         self._state.handle = assert(vim.loop.spawn(cmd, {
-            cwd = opts.cwd or vim.loop.cwd(),
-            args = opts.args or {},
             detached = false,
+            args = opts.args,
+            cwd = opts.cwd,
             env = opts.env,
             stdio = stdio,
         }, vim.schedule_wrap(self:_bind_method(

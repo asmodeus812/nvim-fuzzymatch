@@ -22,16 +22,33 @@ local utils = require("fuzzy.utils")
 local Picker = {}
 Picker.__index = Picker
 
+function Picker:_clear_picker()
+    self.match:stop()
+    self.stream:stop()
+    self.select:clear()
+    self.match:destroy()
+    self.stream:destroy()
+end
+
 function Picker:_close_picker()
     self.match:stop()
     self.stream:stop()
     self.select:close()
+    self.match:destroy()
+    self.stream:destroy()
 end
 
 function Picker:_hide_picker()
-    self.match:stop()
-    self.stream:stop()
     self.select:hide()
+end
+
+function Picker:_clear_stage()
+    local stage = self._state.stage
+    if stage and next(stage) then
+        stage.match:stop()
+        stage.select:clear()
+        stage.match:destroy()
+    end
 end
 
 function Picker:_close_stage()
@@ -39,32 +56,49 @@ function Picker:_close_stage()
     if stage and next(stage) then
         stage.match:stop()
         stage.select:close()
+        stage.match:destroy()
     end
 end
 
 function Picker:_hide_stage(clear)
     local stage = self._state.stage
     if stage and next(stage) then
-        stage.match:stop()
         stage.select:hide()
         if clear == true then
+            stage.match:stop()
             stage.select:clear()
         end
     end
 end
 
-function Picker:_interactive_args(query)
-    local command_args = vim.fn.copy(self._state.context.args)
-    if type(self._state.context.interactive) == "string" then
+function Picker:_context_evaluate(key, ...)
+    local context = assert(self._state.context)
+    if key == nil then
+        local evaluated = {}
+        for k, _ in pairs(context) do
+            evaluated[k] = self:_context_evaluate(k, ...)
+        end
+        return evaluated
+    else
+        if type(context[key]) == "function" then
+            return context[key](...)
+        end
+        return context[key]
+    end
+end
+
+function Picker:_interactive_args(context, query)
+    local command_args = context.args and vim.fn.copy(context.args)
+    if type(context.interactive) == "string" then
         for indx, argument in ipairs(command_args or {}) do
-            if argument == self._state.context.interactive then
+            if argument == context.interactive then
                 command_args[indx] = query
                 break
             end
             assert(indx < #command_args)
         end
-    elseif type(self._state.context.interactive) == "number" then
-        table.insert(assert(command_args), self._state.context.interactive, query)
+    elseif type(context.interactive) == "number" then
+        table.insert(assert(command_args), context.interactive, query)
     else
         table.insert(assert(command_args), query)
     end
@@ -110,11 +144,14 @@ function Picker:_input_prompt()
                 -- when interactive string it means that the string is an argument placeholder, that should be replaced
                 -- with the query, inside the arguments, otherwise the query is just appended to the args list as last
                 -- argument
+                local evaluated_context = assert(self._state._evaluated_context)
                 self.stream:start(self._state.content, {
-                    transform = self._state.context.map,
-                    args = self:_interactive_args(query),
-                    cwd = self._state.context.cwd,
-                    env = self._state.context.env,
+                    cwd = evaluated_context.cwd,
+                    env = evaluated_context.env,
+                    transform = evaluated_context.map,
+                    args = self:_interactive_args(
+                        evaluated_context, query
+                    ),
                     callback = function(_, all)
                         if all == nil then
                             -- notify that the streaming is done, so the renderer can update the status,
@@ -405,7 +442,7 @@ function Picker:_generate_headers(headers, actions)
 
     -- add the rest of the labels defined for the picker
     headers = headers or self._options.headers
-    headers = headers and vim.fn.deepcopy(headers) or {}
+    headers = headers and vim.fn.deepcopy(headers)
     return vim.list_extend(headers, action_headers)
 end
 
@@ -459,7 +496,12 @@ function Picker:open()
         return
     end
 
-    if self:isvalid() == true then
+    local evaluated_context = self:_context_evaluate()
+    local needs_run = not utils.compare_tables(
+        evaluated_context, self._state._evaluated_context
+    )
+
+    if not needs_run and self:isvalid() == true then
         local stage = self._state.stage
         local active = self._state.staging
         if active and stage and stage.select:isvalid() then
@@ -468,21 +510,25 @@ function Picker:open()
             self.select:open()
         end
     else
+        if needs_run then
+            self:_clear_stage()
+            self:_clear_picker()
+        end
         self.select:open()
 
+        self._state._evaluated_context = assert(evaluated_context)
         if type(self._state.content) ~= "table" then
             -- when a string or a function is provided the content is expected to be a command that produces output, or a function
             -- that produces output by calling a callback method for each entry in the stream
             assert(type(self._state.content) == "string" or type(self._state.content) == "function")
-            if not self.stream.results and not self:_is_interactive() then
-                self.stream:start(
-                    self._state.content, {
-                        cwd = self._state.context.cwd,
-                        env = self._state.context.env,
-                        args = self._state.context.args,
-                        callback = self:_flush_results(),
-                        transform = self._state.context.map,
-                    })
+            if (needs_run or not self.stream.results) and not self:_is_interactive() then
+                self.stream:start(self._state.content, {
+                    cwd = evaluated_context.cwd,
+                    env = evaluated_context.env,
+                    args = evaluated_context.args,
+                    transform = evaluated_context.map,
+                    callback = self:_flush_results(),
+                })
             elseif self.stream.results and self.select:isempty() then
                 self.select:list(
                     self.stream.results,
@@ -568,9 +614,9 @@ function Picker.new(opts)
         content = nil,
         context = {
             args = {},
-            env = nil,
             map = nil,
-            cwd = vim.loop.cwd(),
+            env = nil,
+            cwd = vim.loop.cwd,
             interactive = false,
         },
         preview = nil,
