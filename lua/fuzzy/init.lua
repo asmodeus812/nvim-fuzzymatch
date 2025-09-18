@@ -2,15 +2,17 @@ Picker = require("fuzzy.picker")
 Select = require("fuzzy.select")
 Scheduler = require("fuzzy.scheduler")
 
-local M = {}
+local M = {
+    config = {}
+}
 
 function M.setup(opts)
-    opts = vim.tbl_deep_extend("keep", opts or {}, {
-        override_select = true
+    M.config = vim.tbl_deep_extend("keep", opts or {}, {
+        override_select = true,
     })
     Scheduler.new({})
 
-    if opts.override_select then
+    if M.config.override_select then
         ---@diagnostic disable-next-line: duplicate-set-field
         vim.ui.select = function(items, o, confirm)
             local picker = Picker.new({
@@ -29,7 +31,7 @@ function M.setup(opts)
                         confirm(entry)
                         return false
                     end)),
-                    ["<tab>"] = Select.noop_select
+                    ["<tab>"] = false
                 }
             })
             picker:open()

@@ -88,20 +88,33 @@ bindings which are provided out of the box, to perform actions with the picker, 
 `actions` property, described below
 
 ```text
-["<cr>"]  = confirm current selection
-["<esc>"] = close the picker
-["<c-c>"] = hide the picker
-["<tab>"] = toggle entry selection
-["<c-p>"] = select next entry
-["<c-n>"] = select next entry
-["<c-k>"] = select prev entry
-["<c-j>"] = select prev entry
-["<c-f>"] = preview page down
-["<c-b>"] = preview page up
-["<c-d>"] = preview half page down
-["<c-u>"] = preview half page up
-["<c-e>"] = preview line down
-["<c-y>"] = preview line down
+["<cr>"]    = confirm current selection
+["<esc>"]   = close the picker interface
+["<c-c>"]   = hide the picker interface
+
+["<c-l>"]   = toggle the preview window,
+["<c-d>"]   = preview page half down
+["<c-u>"]   = preview page half up
+
+["<m-p>"]   = list move up
+["<m-n>"]   = list move down
+["<c-p>"]   = list move up
+["<c-n>"]   = list move down
+["<c-k>"]   = list move up
+["<c-j>"]   = list move down
+
+["<tab>"]   = toggle current entry and move down
+["<s-tab>"] = toggle current entry and mmove up
+
+["<c-e>"]   = move to the end of the query prompt
+["<c-a>"]   = move to the start of the query prompt
+["<c-b>"]   = move one character to the left (back) in the query prompt
+["<c-f>"]   = move one character to the right (forward) in the query prompt
+["<m-b>"]   = move one word to the left (back) in the query prompt
+["<m-f>"]   = move one word to the right (forward) in the query prompt
+
+["<m-bs>"]  = delete prev word to the left (back) of the cursor in the query prompt
+["<m-d>"]   = delete next word to the right (forward) of the cursor in the query prompt
 ```
 
 Take a good note of the `close` and `hide` actions, those are different and very powerful, when used together, the `hide` action allows you
@@ -118,6 +131,64 @@ list, and now instead of hiding the picker you instead `close` the picker, calli
 underlying content stream to be re-run, the new file that was created will be now part of the list, the old query will of course be lost and
 all previous matches and the last item that was under preview.
 
+All built-in actions accept as an argument a callback, that callback will be invoked during the execution of the action, however for some
+actions this callback is necessary, as it is also acting as the converter of the `selected` items (see below for more details on what action
+converters are) - like `select_entry`. For others like `default_select`, `toggle_entry`, `close_view` and so on and so forth where no
+conversion is required or they simply do not act on the user selection at all, the callback is executed normally during the execution of the
+action. The callback will receive as its only argument the current user selection. Some actions are exceptions such as the preview related
+ones which will receive the current cursor position in the preview window, or the prompt related ones which would also receive the current
+cursor position in the prompt, after the primary action has executed (i.e after moving the prompt cursor, the callback will be invoked with
+the current cursor position in the prompt, similarly for the preview related actions as well).
+
+Below is a list of the built-in actions that the Select module exposes for use, by the users, you can bind these however you see fit,
+directly to the `actions` property or with a `Select.action` binding to make use of the callback mechanism that they provide, mentioned
+above. Some like the `close_view, noop_select and default_select` can be used to be the primary entry points for new custom user actions.
+
+```lua
+-- General actions
+Select.close_view
+Select.noop_select
+Select.default_select
+
+-- List actions
+Select.move_down
+Select.move_up
+Select.toggle_entry
+Select.toggle_up
+Select.toggle_down
+
+-- Select actions
+Select.select_entry
+Select.select_next
+Select.select_prev
+Select.select_tab
+Select.select_vertical
+Select.select_horizontal
+Select.send_locliset
+Select.send_quickfix
+
+-- Preview actions
+Select.line_down
+Select.line_up
+Select.half_down
+Select.half_up
+Select.page_down
+Select.page_up
+Select.toggle_preview
+
+-- Prompt actions
+Select.prompt_end
+Select.prompt_home
+Select.prompt_left
+Select.prompt_left_word
+Select.prompt_right
+Select.prompt_right_word
+Select.prompt_delete_end
+Select.prompt_delete_home
+Select.prompt_delete_word_left
+Select.prompt_delete_word_right
+```
+
 `Be careful leaving pickers in a hidden state, you should take care of making sure that if a picker remains hidden, at some point if it is
 no longer used and never re-opened it is closed or destroyed to avoid retaining persistent state`
 
@@ -128,7 +199,7 @@ no longer used and never re-opened it is closed or destroyed to avoid retaining 
 | `content`         | `string,function,table`  | The content for the picker. Can be a string (command), function (generates entries dynamically), or table (static entries). Tables make the picker non-interactive by default. Functions/tables can contain strings or tables (requires a `display` function for extracting).                                      |
 | `context`         | `table?`                 | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), `map` (function to transform entries from the content stream), and `interactive` (boolean, string, or number to configure interactivity).                                                                         |
 | `display`         | `function,string,nil`    | Custom function for displaying entries. If `nil`, the entry itself is displayed. If a string, it’s treated as a key to extract from the entry table. If a function, it is used as a callback which receives the entry as its only input and must return a string                                                   |
-| `actions`         | `table?`                 | Key mappings for actions in the picker interface. Specify as `["key"] = callback` OR `["key"] = { callback, label }`. Labels (optional) can be `string` or `function`.                                                                                                                                             |
+| `actions`         | `table?`                 | Key mappings for actions in the picker interface. Specify as `["key"] = callback` OR `["key"] = { callback, label }` OR `["key"] = false` to disable the action for that key. Labels (optional) can be `string` or `function`.                                                                                     |
 | `headers`         | `table?`                 | Help or information headers for the prompt interface. Can be a user-provided table or auto-generated based on `actions`.                                                                                                                                                                                           |
 | `preview`         | `Select.Preview,boolean` | Configures whether entries generate a preview. Set `false` for none, Or provide an instance of a class sub-classing off of `Select.Preview` such as - `Select.BufferPreview`.                                                                                                                                      |
 | `decorators`      | `Select.Decorator[]`     | Table of decorators for the entries. The decoration providers are instances of `Select.Decorators` and by default the Select module provides several built in ones like Select.IconDecorator.                                                                                                                      |
@@ -161,22 +232,28 @@ no longer used and never re-opened it is closed or destroyed to avoid retaining 
 
 - **actions**: Key mappings for actions in the picker interface. This is a table where keys are the keybindings (e.g., `"<CR>"`, `"<C-q>"`)
   and values are either a callback function or a tuple of `{ callback, label }`. The label is optional and can be a string or a function that
-  returns a string. Labels are used to generate headers automatically if no custom headers are provided. By default the picker provides a
-  very minimal set of operations
+  returns a string. Labels are used to generate headers automatically if no custom headers are provided. By default the picker provides a very
+  minimal set of operations. Use `false` as the value of the key-value pair to disable the action, effectively making the action for that key
+  a `noop`, this is useful if your user configuration overrides insert or normal mappings globally and overrides certain keys which you do not
+  wish to be applied to the prompt or preview window.
 
 - **decorators**: A table of selection list entry decorators. The decorators govern how the entries are visually decorated - the decorations
   are always inserted in front of the entry line in the list interface. They must of sub-classes of `Select.Decorator`, each decorator must
-  override the decorate function which receives the current raw entry as provided by the stream along with the display line for the same entry
+  override the decorate function which receives the current raw entry as provided by the stream along with the display line for the same
+  entry, the function can return a single string, a tuple of string and a highlight group, a table of strings, and a table of highlight groups
+  or simply `false` to skip the decoration. The string represents the decoration added to the line and the highlight of the decoration.
 
 - **preview**: Configures whether entries generate a preview. If set to `false`, no preview is shown. If set to `true`, the default
   `Select.BufferPreview` is used. You can also provide a custom instance of a child class of `Select.Preview`. Each previewer must override
-  the preview function which receives as single argument the raw entry as it was provided by the stream
+  the preview function which receives as single argument the raw entry as it was provided by the stream. The preview function can return a
+  `boolean` denoting the result of the preview - `true or false`, and a `status result message`, which is mostly relevant if the preview
+  failed, the message will be used as information to the user.
 
-- **headers**: Headers are optional lines of text shown at the top of the picker interface. They can provide help or information to the
-  user. If not provided, headers can be auto-generated based on the configured actions, that have labels, to give the user hints on how to
+- **headers**: Headers are optional components of text shown at the top of the picker interface. They can provide help or information to the
+  user. If not provided, `headers can be auto-generated based on the configured actions`, that have labels, to give the user hints on how to
   interact with the picker. The headers consists of blocks, each block is separated with a comma, each block can contain multiple lines, each
-  block contains the components of a single header block, and must be a table of strings or tuple of string and highlight group, i.e. `{
-"Header Text", "HighlightGroup" }`
+  block contains the components of a single header block, and must be a table of strings or tuple of string and the highlight group name, i.e
+  for a single header block - `{ { "Header Text", "HighlightGroup" } }`
 
 - **match_limit**: The maximum number of matches to stop after, if `nil` there is no limit and all matches will be kept, the matcher will
   not stop until all entries have been processed.
@@ -274,6 +351,14 @@ actions = {
     ["<cr>"] = Select.action(Select.select_entry, Select.all(function(entries)
         local pat = "^([^:]+):(%d+):(%d+):(.+)$"
         local filename, line_num, col_num = entry:match(pat)
+        -- in case no filename could be matched, we can of course return false, to skip this entry entirely from being considered by the
+        -- action itself, meaning that no operation will be executed on this particular entry
+        if not filename or #filename == 0 then
+            return false
+        end
+        -- convert the entry into a valid structure that select_entry can use, in this case we read and parse the result of grep into it, we
+        -- mostly care about getting a valid file name from the grep output, the rest are optional positional fields where the matching
+        -- string is located into the file
         return {
             filename = filename,
             col = col_num and tonumber(col_num),
@@ -357,6 +442,11 @@ function EchoPreviewer:clean()
 end
 
 function EchoPreviewer:preview(entry, win)
+    -- note that we can return a status from the preview as well, which can give more context to the user why a given entry could not be
+    -- previewed at this time, the status result must be a boolean value, and an optional message can be present too.
+    if type(entry) == "boolean" then
+        return false, "Unsupported entry type for preview"
+    end
     -- user is responsible for managing the buffer if needed, here we are simply reusing a single buffer and clearing it on each preview call
     -- if the buffer needs to be cleared after the selection interface is closed return the buffer number from the preview function as well
     local lines = type(entry) == "string" and { entry } or vim.split(vim.inspect(entry), "\n")
@@ -370,6 +460,9 @@ is used to convert the raw entry into a valid entry structure before previewing 
 valid format for the previewer to handle directly. These previewers require the same structure as specified for the picker `actions` in the
 entries section. Otherwise a default internal converter is used which is the same default converter used for `actions` as well, when no
 converter is passed to them.
+
+`The preview function can return false to signal that the preview did not complete successfully, this will result in no-op for the
+preview for this entry, an optional message can also be returned describing the reason for the failure`
 
 #### Decorators
 
@@ -414,6 +507,11 @@ function PrefixDecorator:clean()
 end
 
 function PrefixDecorator:decorate(entry, line)
+    -- similarly to the actions and the previewers, we can also skip a decoration by simply returning false for the text component of the
+    -- decoration logic
+    if entry == "not-real" then
+        return false
+    end
     -- add something simple, to each entry, to simply demonstrate what the decoration provider can return from its function, the hl group is
     -- optional and if not provided a default one will be added - `SelectDecoratorDefault`. Returning nil or "" for the decoration text tells
     -- the decorator handler that this decorator is going to be skipped entirely from being added to the final decorated line
@@ -426,6 +524,9 @@ entry into a valid entry structure before calculating the decorations for it, th
 format for the previewer to handle directly. The decorator require the same structure as specified for the picker `actions` in the entries
 section. Otherwise a default internal converter is used which is the same default converter used for `actions` or `previewers` well, when no
 converter is passed.
+
+`The decorate function can return false to signal that the decoration was skipped or did not complete successfully, this will result in
+no-op for the decorator for this entry`
 
 ## Sources
 

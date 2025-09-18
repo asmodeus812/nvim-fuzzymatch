@@ -25,6 +25,10 @@ local Scheduler = require("fuzzy.scheduler")
 local Select = {}
 Select.__index = Select
 
+--- @class Select.Preview
+Select.Preview = {}
+Select.Preview.__index = Select.Preview
+
 --- @class Select.Decorator
 Select.Decorator = {}
 Select.Decorator.__index = Select.Decorator
@@ -51,10 +55,6 @@ setmetatable(Select.CombineDecorator, { __index = Select.Decorator })
 Select.ChainDecorator = {}
 Select.ChainDecorator.__index = Select.ChainDecorator
 setmetatable(Select.CombineDecorator, { __index = Select.Decorator })
-
---- @class Select.Preview
-Select.Preview = {}
-Select.Preview.__index = Select.Preview
 
 function Select.Preview.new()
     local obj = {}
@@ -88,7 +88,7 @@ end
 --- the buffer contents.
 --- @class Select.BufferPreview
 --- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
---- @field default number A default dummy buffer used to be displayed in windows when a preview is not possible for the entry
+--- @field ignored string[]|nil A list of ignored file type extensions that should not be previewed by the buffer, usually used for executable file formats and the like
 --- @field buffers table A table of buffers that are held for clean up for the preview window
 Select.BufferPreview = {}
 Select.BufferPreview.__index = Select.BufferPreview
@@ -191,6 +191,11 @@ local function entry_mapper(entry)
     }
 end
 
+local function compute_height(multiplier, factor)
+    local ratio = math.abs(multiplier / factor)
+    return math.ceil(vim.o.lines * ratio)
+end
+
 local function compute_offsets(str, start_char, char_len)
     local start_byte = vim.str_byteindex(str, start_char)
     local end_char = start_char + char_len
@@ -202,6 +207,9 @@ local function compute_decoration(entry, str, decorators)
     local text, highlights = {}, {}
     for _, decor in ipairs(decorators) do
         local txt, hl = decor:decorate(entry, str)
+        if txt ~= nil and txt == false then
+            goto continue
+        end
         if type(txt) == "table" then
             vim.list_extend(text, txt)
         elseif type(txt) == "string" then
@@ -212,9 +220,29 @@ local function compute_decoration(entry, str, decorators)
         elseif type(hl) == "string" then
             table.insert(highlights, hl)
         end
+        ::continue::
     end
     assert(#text == #highlights)
     return text, highlights
+end
+
+local function send_input(input, window, callback, mode)
+    local term_codes = vim.api.nvim_replace_termcodes(
+        assert(input), false, false, true
+    )
+
+    vim.api.nvim_win_call(window, function()
+        local old_ignore = vim.o.eventignore
+        vim.o.eventignore = "ModeChanged"
+        if mode == "i" then
+            vim.api.nvim_feedkeys(term_codes, mode, false)
+        else
+            vim.cmd.normal({ args = { term_codes }, bang = true })
+        end
+        local cursor = vim.api.nvim_win_get_cursor(window)
+        vim.o.eventignore = old_ignore
+        utils.safe_call(callback, cursor)
+    end)
 end
 
 local function initialize_window(window)
@@ -415,23 +443,57 @@ local function decorate_range(buffer, start, _end, entries, decorators, display,
     Async.yield()
 end
 
-local function display_entry(strategy, entry, window)
+local function display_entry(strategy, entry, window, buffer)
     vim.schedule(function()
         local old_ignore = vim.o.eventignore
         vim.o.eventignore = "all"
-        local ok, res = pcall(strategy.preview, strategy, entry, window)
-        if not ok and res then vim.notify(res, vim.log.levels.ERROR) end
+        local ok, res, msg = pcall(strategy.preview, strategy, entry, window)
+        if ok and res == false then
+            vim.api.nvim_win_set_buf(window, assert(buffer))
+            vim.api.nvim_win_set_cursor(window, { 1, 0 })
+            populate_buffer(buffer, {
+                msg or "Unable to preview current entry",
+            })
+        elseif not ok and res and #res > 0 then
+            vim.notify(res, vim.log.levels.ERROR)
+        end
         vim.o.eventignore = old_ignore
     end)
 end
 
 --- Create a new buffer previewer instance, the converter is used to map the entry to a table with bufnr, filename, lnum and col fields. By
 --- default the converter is `entry_mapper`, which tries its best to extract those fields from the entry.
---- @param converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
-function Select.BufferPreview.new(converter)
+--- @param ignored? string[]|nil A list of ignored file extensions that must not be previewed by vim, this usually includes executable file formats
+--- @param converter? function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
+function Select.BufferPreview.new(ignored, converter)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.BufferPreview)
     obj.converter = converter or entry_mapper
+    obj.ignored = ignored or {
+        -- Executable/Binary
+        "exe", "dll", "so", "dylib", "bin", "app", "msi",
+        -- Archives
+        "zip", "rar", "7z", "tar", "gz", "bz2", "xz", "zst", "lzma", "lz4",
+        -- Disk Images
+        "iso", "img", "dmg", "vhdx", "vhd", "vdi", "vmdk",
+        -- Media
+        "mp3", "mp4", "avi", "mkv", "mov", "wav", "flac",
+        "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff",
+        -- Documents
+        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt",
+        -- Databases
+        "db", "sqlite", "sqlite3", "mdb",
+        -- Virtual Machines
+        "ova", "ovf",
+        -- Game Files
+        "pak", "dat", "sav",
+        -- Other Binary
+        "class", "jar", "pyc", "mo",
+        -- System
+        "sys", "drv",
+        -- Fonts
+        "ttf", "otf", "woff", "woff2"
+    }
     obj.buffers = {}
     return obj
 end
@@ -443,7 +505,7 @@ end
 function Select.BufferPreview:preview(entry, window)
     entry = self.converter(entry)
     if entry == false then
-        return
+        return false
     end
     assert(entry ~= nil)
 
@@ -453,6 +515,10 @@ function Select.BufferPreview:preview(entry, window)
     elseif entry.filename and vim.fn.bufexists(entry.filename) ~= 0 then
         buffer = vim.fn.bufnr(entry.filename, false)
     elseif entry.filename and vim.loop.fs_stat(entry.filename) then
+        local ext = vim.fn.fnamemodify(entry.filename, ':e') or ""
+        if vim.tbl_contains(self.ignored, string.lower(ext)) then
+            return false, "Unable to preview an ignored entry"
+        end
         buffer = assert(vim.fn.bufadd(entry.filename))
         assert(not vim.tbl_contains(self.buffers, buffer))
         initialize_buffer(buffer, "", "")
@@ -479,29 +545,16 @@ function Select.BufferPreview:preview(entry, window)
             end
         })
     else
-        if not self.default or not vim.api.nvim_buf_is_valid(self.default) then
-            self.default = assert(vim.api.nvim_create_buf(false, true))
-            self.default = initialize_buffer(self.default, "fuzzy-preview")
-            populate_buffer(self.default, { "Unable to preview current entry" })
-            table.insert(self.buffers, self.default)
-        end
-        vim.api.nvim_win_set_buf(window, self.default)
-        vim.api.nvim_win_set_cursor(window, { 1, 0 })
-        return
+        return false, "Unable to read or access current entry"
     end
 
     local cursor = { entry.lnum or 1, entry.col and (entry.col - 1) or 0 }
     assert(buffer ~= nil and vim.api.nvim_buf_is_valid(buffer))
 
-    local done = vim.wait(1000, function()
-        local ok, err = pcall(vim.fn.bufload, buffer)
-        if not ok and err ~= nil then error(ok) end
-        return ok
-    end, 250, false)
-
-    if done then
+    local ok, err = pcall(vim.fn.bufload, buffer)
+    if ok then
         vim.api.nvim_win_set_buf(window, buffer)
-        local ok, err = pcall(vim.api.nvim_win_set_cursor, window, cursor)
+        ok, err = pcall(vim.api.nvim_win_set_cursor, window, cursor)
         if not ok and err ~= nil then error(err) end
 
         if not vim.b[buffer].ts_highlight then
@@ -515,9 +568,10 @@ function Select.BufferPreview:preview(entry, window)
                 end
             end)
         end
+    elseif err and #err > 0 then
+        return ok, err
     else
-        vim.api.nvim_win_set_buf(window, self.default)
-        vim.api.nvim_win_set_cursor(window, { 1, 0 })
+        return false, "Unable to load the entry into a buffer"
     end
 end
 
@@ -537,7 +591,7 @@ end
 
 function Select.CustomPreview:preview(entry, window)
     if entry == false then
-        return
+        return false
     end
     assert(type(entry) == "string" or type(entry) == "table")
 
@@ -583,7 +637,7 @@ end
 --- converter is used to map the entry to a table with bufnr, filename, lnum and col fields. By default the converter is `entry_mapper`,
 --- which tries its best to extract those fields from the entry.
 --- @param command string|table The command to run, can be a string or a table where the first element is the command and the rest are arguments.
---- @param converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
+--- @param converter? function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
 function Select.CommandPreview.new(command, converter)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.CommandPreview)
@@ -603,7 +657,7 @@ end
 function Select.CommandPreview:preview(entry, window)
     entry = self.converter(entry)
     if entry == false then
-        return
+        return false
     end
     assert(entry ~= nil)
 
@@ -909,13 +963,16 @@ function Select:_display_preview()
             local buffer = assert(self.preview_buffer)
             assert(vim.api.nvim_win_is_valid(window))
             vim.api.nvim_win_set_buf(window, buffer)
+            vim.api.nvim_win_set_cursor(window, { 1, 0 })
+            populate_buffer(buffer, {})
         else
             local cursor = vim.api.nvim_win_get_cursor(self.list_window)
             assert(#entries >= cursor[1] and cursor[1] > 0)
             local entry = assert(entries[cursor[1]])
             display_entry(
                 previewer, entry,
-                self.preview_window
+                self.preview_window,
+                self.preview_buffer
             )
         end
     end
@@ -1076,18 +1133,14 @@ function Select:default_select(callback)
     utils.safe_call(callback, selection)
 end
 
---- Scrolls the preview window by sending normal mode commands to it, this is a generic function used by other selection methods.
-function Select:scroll_preview(input, callback)
-    local preview_window = assert(self.preview_window)
-    local term_codes = vim.api.nvim_replace_termcodes(
-        assert(input), false, false, true
-    )
+--- Sends commands to the prompt window by sending normal mode commands to it, this is a generic function used by other selection methods.
+function Select:position_prompt(input, callback)
+    send_input(input, self.prompt_window, callback, "i")
+end
 
-    vim.api.nvim_win_call(preview_window, function()
-        vim.cmd.normal({ args = { term_codes }, bang = true })
-        local cursor = vim.api.nvim_win_get_cursor(preview_window)
-        utils.safe_call(callback, cursor)
-    end)
+--- Sends commands to the preview window by sending normal mode commands to it, this is a generic function used by other selection methods.
+function Select:scroll_preview(input, callback)
+    send_input(input, self.preview_window, callback, "n")
 end
 
 --- Moves the cursor in the list by a specified direction, this is a generic function used by other selection methods.
@@ -1132,6 +1185,10 @@ function Select:exec_command(command, mods, callback)
     end
 
     for _, entry in ipairs(result) do
+        if not entry or entry == false then
+            goto continue
+        end
+
         local cmd
         local arg = entry.filename
         if entry.bufnr ~= nil then
@@ -1146,6 +1203,7 @@ function Select:exec_command(command, mods, callback)
             arg = entry.bufnr
         end
 
+        assert(arg ~= nil)
         vim.cmd[command]({
             args = { arg },
             mods = mods,
@@ -1157,6 +1215,8 @@ function Select:exec_command(command, mods, callback)
         local lnum = entry.lnum or 1
         local position = { lnum, col - 1 }
         pcall(vim.api.nvim_win_set_cursor, 0, position)
+
+        ::continue::
     end
 end
 
@@ -1179,7 +1239,7 @@ function Select:send_fixlist(type, callback)
     local args = {
         nr = "$",
         items = vim.tbl_filter(function(item)
-            return item ~= nil and (item.filename or item.bufnr)
+            return item ~= nil and item ~= false
         end, result),
         title = "[Fuzzymatch]",
     }
@@ -1199,6 +1259,35 @@ function Select:send_fixlist(type, callback)
         ), {}, " ", args)
         self._options.loclist_open()
     end
+end
+
+function Select:toggle_preview(callback)
+    if not self._options.prompt_list or not self._options.preview then
+        return
+    end
+
+    if not self.preview_window or not vim.api.nvim_win_is_valid(self.preview_window) then
+        local preview_height = compute_height(self._options.window_ratio, 2.0)
+        self.preview_window = vim.api.nvim_open_win(self.preview_buffer, false, {
+            split = self.list_window and "above" or "below",
+            height = preview_height,
+            noautocmd = false,
+            win = self.list_window or -1,
+        })
+
+        vim.api.nvim_win_set_height(self.preview_window, preview_height)
+        self.preview_window = initialize_window(self.preview_window)
+
+        vim.wo[self.preview_window].relativenumber = false
+        vim.wo[self.preview_window].number = true
+
+        self:_display_preview()
+    else
+        vim.api.nvim_win_close(self.preview_window, true)
+    end
+
+    local selection = callback and self:_list_selection()
+    utils.safe_call(callback, selection)
 end
 
 --- Toggles the selection state of the current entry in the list, using signs to indicate selection, and moves the cursor down by one
@@ -1234,15 +1323,75 @@ function Select:toggle_entry(callback)
         )
     end
 
-    self:move_cursor(1)
-
     local selection = callback and self:_list_selection()
     utils.safe_call(callback, selection)
+end
+
+function Select:toggle_up(callback)
+    self:toggle_entry(function()
+        self:move_cursor(-1, callback)
+    end)
+end
+
+function Select:toggle_down(callback)
+    self:toggle_entry(function()
+        self:move_cursor(1, callback)
+    end)
+end
+
+-- Move the prompt cursor to the start of the prompt line
+function Select:prompt_home(callback)
+    self:position_prompt("<home>", callback)
+end
+
+-- Move the prompt cursor to the end of the prompt line
+function Select:prompt_end(callback)
+    self:position_prompt("<end>", callback)
+end
+
+-- Move the prompt cursor one position to the left
+function Select:prompt_left(callback)
+    self:position_prompt("<left>", callback)
+end
+
+-- Move the prompt cursor one position to the right
+function Select:prompt_right(callback)
+    self:position_prompt("<right>", callback)
+end
+
+-- Move the prompt cursor one word to the left
+function Select:prompt_left_word(callback)
+    self:position_prompt("<c-o>b", callback)
+end
+
+-- Move the prompt cursor one word to the right
+function Select:prompt_right_word(callback)
+    self:position_prompt("<c-o>w", callback)
 end
 
 --- Scrolls the preview window up by one page.
 function Select:page_down(callback)
     self:scroll_preview("<c-f>", callback)
+end
+
+-- Delete a word from the prompt forwards
+function Select:prompt_delete_word_right(callback)
+    self:position_prompt("<c-o>:noautocmd lockmarks normal! \"_dw<cr>", callback)
+end
+
+-- Delete a word from the prompt backwards
+function Select:prompt_delete_word_left(callback)
+    self:position_prompt("<c-o>:noautocmd lockmarks normal! \"_db<cr>", callback)
+end
+
+-- Delete the prompt query up until the home position
+function Select:prompt_delete_home(callback)
+    self:position_prompt("<c-o>:noautocmd lockmarks normal! \"_d^<cr>", callback)
+end
+
+-- Delete the prompt query up until the end position
+function Select:prompt_delete_end(callback)
+    self:position_prompt("<c-o>:noautocmd lockmarks normal! \"_d$<cr>", callback)
 end
 
 --- Scrolls the preview window down by one page.
@@ -1271,16 +1420,30 @@ function Select:line_down(callback)
 end
 
 --- Moves the cursor to the next entry in the list.
-function Select:select_next(callback)
-    return self:move_cursor(1, callback)
+function Select:move_down(callback)
+    self:move_cursor(1, callback)
 end
 
 --- Moves the cursor to the previous entry in the list.
-function Select:select_prev(callback)
-    return self:move_cursor(-1, callback)
+function Select:move_up(callback)
+    self:move_cursor(-1, callback)
 end
 
---- Opens the selected entry in the source window. See `:edit` and Select.source_window.
+--- Selects the next entry in the list and acts on it
+function Select:select_next(callback)
+    self:move_cursor(1, function(_)
+        self:exec_command("edit", {}, callback)
+    end)
+end
+
+--- Selects the prev entry in the liset and acts on it
+function Select:select_prev(callback)
+    self:move_cursor(-1, function(_)
+        self:exec_command("edit", {}, callback)
+    end)
+end
+
+--- Opens the selected entry in the origin/source window.
 function Select:select_entry(callback)
     self:exec_command("edit", {}, callback)
 end
@@ -1482,9 +1645,8 @@ function Select:open()
     local opts = assert(self._options)
 
     self.source_window = vim.api.nvim_get_current_win()
-    local factor = opts.preview and 2.0 or 1.0
-    local ratio = math.abs(opts.window_ratio / factor)
-    local size = math.ceil(vim.o.lines * ratio)
+    local factor = (opts.prompt_list and opts.preview) and 2.0 or 1.0
+    local size = compute_height(opts.window_ratio, factor)
 
     if opts.prompt_input then
         local prompt_buffer = self.prompt_buffer
@@ -1572,7 +1734,7 @@ function Select:open()
             });
             vim.api.nvim_win_set_height(prompt_window, 1)
             prompt_window = initialize_window(prompt_window)
-            vim.wo[prompt_window][0].signcolumn = 'number'
+            vim.wo[prompt_window][0].signcolumn = 'yes'
             vim.wo[prompt_window][0].cursorline = false
             vim.wo[prompt_window][0].winfixbuf = true
 
@@ -1665,7 +1827,7 @@ function Select:open()
             });
             vim.api.nvim_win_set_height(list_window, list_height)
             list_window = initialize_window(list_window)
-            vim.wo[list_window][0].signcolumn = 'number'
+            vim.wo[list_window][0].signcolumn = 'yes'
             vim.wo[list_window][0].cursorline = true
             vim.wo[list_window][0].winfixbuf = true
 
@@ -1804,7 +1966,7 @@ end
 --- @field list_step? integer|nil Number of entries to render at a time when populating the list.
 --- @field quickfix_open? fun() Function to open the quickfix list.
 --- @field loclist_open? fun() Function to open the location list.
---- @field mappings? table<string, fun(self: Select, callback: fun(selection: any, cursor: integer[]|nil): any)> Key mappings for the selection interface. The keys are the key sequences and the values are functions that take the Select instance and an optional callback as arguments.
+--- @field mappings? table<string, fun(self: Select, callback: fun(selection: any, cursor: integer[]|boolean|nil): any)> Key mappings for the selection interface. The keys are the key sequences and the values are functions that take the Select instance and an optional callback as arguments. If `false` is provided for the value of the key-value pair the mapping for that key is disabled
 --- @field preview? Select.Preview|boolean|nil Preview instance or boolean indicating whether to show the preview window. If an instance is provided, it will be used to render the preview. The preview instance must be a subclass of Select.Preview. Preview instances must implement the `preview` method.
 --- @field display? string|fun(entry: any): string|string|nil Function or string to format the display of entries in the list. If a function is provided, it will be called with each entry and should return a string to display. If a string is provided, it will be used as the property name to extract from each entry for display.
 --- @field decorators? Select.Decorator[]|nil List of decorators to apply to entries in the list. Each decorator should be a table with a `decorate` function that takes an entry and returns a decorated string along with optional highlight group information.
@@ -1830,6 +1992,13 @@ function Select.new(opts)
         decorators = { opts.decorators, "table", true },
         mappings = { opts.mappings, "table", true },
     })
+
+    for key, mapping in pairs(opts.mappings or {}) do
+        if type(mapping) == "boolean" and mapping == false then
+            opts.mappings[key] = Select.noop_select
+        end
+    end
+
     opts = vim.tbl_deep_extend("force", {
         prompt_list = true,
         prompt_input = true,
@@ -1844,19 +2013,27 @@ function Select.new(opts)
         preview = nil,
         display = nil,
         mappings = {
-            ["<cr>"]  = Select.default_select,
-            ["<tab>"] = Select.toggle_entry,
-            ["<esc>"] = Select.close,
-            ["<c-p>"] = Select.select_prev,
-            ["<c-n>"] = Select.select_next,
-            ["<c-k>"] = Select.select_prev,
-            ["<c-j>"] = Select.select_next,
-            ["<c-f>"] = Select.page_down,
-            ["<c-b>"] = Select.page_up,
-            ["<c-d>"] = Select.half_down,
-            ["<c-u>"] = Select.half_up,
-            ["<c-e>"] = Select.line_down,
-            ["<c-y>"] = Select.line_up,
+            ["<cr>"]    = Select.default_select,
+            ["<esc>"]   = Select.close,
+            ["<c-l>"]   = opts.preview ~= false and Select.toggle_preview or Select.noop_select,
+            ["<c-d>"]   = opts.preview ~= false and Select.half_down or Select.noop_select,
+            ["<c-u>"]   = opts.preview ~= false and Select.half_up or Select.noop_select,
+            ["<m-p>"]   = opts.prompt_list ~= false and Select.move_down or Select.noop_select,
+            ["<m-n>"]   = opts.prompt_list ~= false and Select.move_up or Select.noop_select,
+            ["<c-p>"]   = opts.prompt_list ~= false and Select.move_up or Select.noop_select,
+            ["<c-n>"]   = opts.prompt_list ~= false and Select.move_down or Select.noop_select,
+            ["<c-k>"]   = opts.prompt_list ~= false and Select.move_up or Select.noop_select,
+            ["<c-j>"]   = opts.prompt_list ~= false and Select.move_down or Select.noop_select,
+            ["<tab>"]   = opts.prompt_list ~= false and Select.toggle_down or Select.noop_select,
+            ["<s-tab>"] = opts.prompt_list ~= false and Select.toggle_up or Select.noop_select,
+            ["<c-e>"]   = opts.prompt_input ~= false and Select.prompt_end or Select.noop_select,
+            ["<c-a>"]   = opts.prompt_input ~= false and Select.prompt_home or Select.noop_select,
+            ["<c-b>"]   = opts.prompt_input ~= false and Select.prompt_left or Select.noop_select,
+            ["<c-f>"]   = opts.prompt_input ~= false and Select.prompt_right or Select.noop_select,
+            ["<m-b>"]   = opts.prompt_input ~= false and Select.prompt_left_word or Select.noop_select,
+            ["<m-f>"]   = opts.prompt_input ~= false and Select.prompt_right_word or Select.noop_select,
+            ["<m-bs>"]  = opts.prompt_input ~= false and Select.prompt_delete_word_left or Select.noop_select,
+            ["<m-d>"]   = opts.prompt_input ~= false and Select.prompt_delete_word_right or Select.noop_select,
         },
         quickfix_open = vim.cmd.copen,
         loclist_open = vim.cmd.lopen,
