@@ -1727,18 +1727,18 @@ function Select:clear()
     self:_clear_view(false)
 end
 
+--- Checks if the selection interface is showing any entries, the entries can be rendered or set using the `list` method, which renders the specified entries into the list.
+--- @return boolean True if the list is empty, false otherwise.
+function Select:isempty()
+    return not self._state.entries or #self._state.entries == 0
+end
+
 --- Checks if the selection interface is currently open, this is determined by checking if both the prompt and list windows are valid.
 --- @return boolean True if the selection interface is open, false otherwise.
 function Select:isopen()
     local prompt = self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window)
     local list = self.list_window and vim.api.nvim_win_is_valid(self.list_window)
     return list ~= nil and prompt ~= nil and list and prompt
-end
-
---- Checks if the selection interface is showing any entries, the entries can be rendered or set using the `list` method, which renders the specified entries into the list.
---- @return boolean True if the list is empty, false otherwise.
-function Select:isempty()
-    return not self._state.entries or #self._state.entries == 0
 end
 
 --- Checks if the selection interface is valid, meaning that it has been initialized/opened at least once and has not been destroyed by calling the `close` method which would invalidate its curent state
@@ -1918,8 +1918,9 @@ function Select:open()
                     pcall(vim.api.nvim_del_autocmd, prompt_trigger)
                     pcall(vim.api.nvim_del_autocmd, mode_changed)
                     assert(vim.fn.sign_undefine(sign_name) == 0)
-                    self.prompt_buffer = nil
-                    self.prompt_window = nil
+                    self:_close_view(false)
+                    self:_clean_decorators()
+                    self:_clean_preview()
                     return true
                 end,
                 once = true,
@@ -2011,11 +2012,9 @@ function Select:open()
                 buffer = list_buffer,
                 callback = function()
                     assert(vim.fn.sign_undefine(sign_name) == 0)
-                    self._state.streaming = false
-                    self._state.positions = nil
-                    self._state.entries = nil
-                    self.list_buffer = nil
-                    self.list_window = nil
+                    self:_close_view(false)
+                    self:_clean_decorators()
+                    self:_clean_preview()
                     return true
                 end,
                 once = true,
@@ -2039,6 +2038,9 @@ function Select:open()
             vim.api.nvim_win_set_height(list_window, list_height)
             list_window = initialize_window(list_window, opts.window_options.list)
 
+            local offset = math.floor(math.ceil(size * 0.20))
+            vim.wo[list_window].scrolloff = math.max(1, offset)
+
             local highlight_matches = vim.api.nvim_create_autocmd("WinScrolled", {
                 pattern = tostring(list_window),
                 callback = function()
@@ -2052,7 +2054,7 @@ function Select:open()
                 pattern = tostring(list_window),
                 callback = function()
                     pcall(vim.api.nvim_del_autocmd, highlight_matches)
-                    if self:isopen() then self:_close_view(false) end
+                    self:_close_view(false)
                     return true
                 end,
                 once = true,

@@ -94,6 +94,8 @@ function M.grep(opts)
         context = {
             args = {
                 "--column",
+                -- "--hidden",
+                -- "--no-ignore",
                 "--line-number",
                 "--no-heading",
                 "{prompt}",
