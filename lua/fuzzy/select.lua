@@ -1,6 +1,7 @@
 local LIST_HIGHLIGHT_NAMESPACE = vim.api.nvim_create_namespace("list_highlight_namespace")
 local LIST_DECORATED_NAMESPACE = vim.api.nvim_create_namespace("list_decorated_namespace")
 local LIST_STATUS_NAMESPACE = vim.api.nvim_create_namespace("list_status_namespace")
+local LIST_TOGGLE_NAMESPACE = vim.api.nvim_create_namespace("list_toggle_namespace")
 local LIST_HEADER_NAMESPACE = vim.api.nvim_create_namespace("list_header_namespace")
 
 local highlight_extmark_opts = { limit = 1, type = "highlight", details = false, hl_name = false }
@@ -234,6 +235,18 @@ local function compute_decoration(entry, str, decorators)
     return text, highlights
 end
 
+local function toggled_count(entries, toggled)
+    local count = toggled.all == true and #entries or 0
+    for _, value in pairs(toggled.entries or {}) do
+        if toggled.all == true and value == false then
+            count = count - 1
+        elseif value == true then
+            count = count + 1
+        end
+    end
+    return count
+end
+
 local function send_input(input, window, callback, mode)
     local term_codes = vim.api.nvim_replace_termcodes(
         assert(input), false, false, true
@@ -253,19 +266,22 @@ local function send_input(input, window, callback, mode)
     end)
 end
 
-local function initialize_window(window)
-    vim.wo[window][0].relativenumber = false
-    vim.wo[window][0].number = false
-    vim.wo[window][0].list = false
-    vim.wo[window][0].showbreak = ""
-    vim.wo[window][0].foldexpr = "0"
-    vim.wo[window][0].foldmethod = "manual"
-    vim.wo[window][0].breakindent = false
-    vim.wo[window][0].fillchars = "eob: "
-    vim.wo[window][0].cursorline = false
-    vim.wo[window][0].winfixheight = true
-    vim.wo[window][0].winfixwidth = true
-    vim.wo[window][0].wrap = false
+local function initialize_window(window, opts)
+    vim.wo[window].relativenumber = false
+    vim.wo[window].number = false
+    vim.wo[window].list = false
+    vim.wo[window].showbreak = ""
+    vim.wo[window].foldexpr = "0"
+    vim.wo[window].foldmethod = "manual"
+    vim.wo[window].fillchars = "eob: "
+    vim.wo[window].cursorline = false
+    vim.wo[window].signcolumn = "yes"
+    vim.wo[window].winfixheight = true
+    vim.wo[window].winfixwidth = true
+    vim.wo[window].wrap = false
+    for key, value in pairs(opts or {}) do
+        vim.wo[window][key] = value
+    end
     return window
 end
 
@@ -279,6 +295,32 @@ local function initialize_buffer(buffer, ft, bt)
     vim.bo[buffer].autoread = false
     vim.bo[buffer].undofile = false
     return buffer
+end
+
+local function restore_buffer(buffer)
+    vim.bo[buffer].bufhidden = vim.o.bufhidden
+    vim.bo[buffer].buflisted = vim.o.buflisted
+    vim.bo[buffer].swapfile = vim.o.swapfile
+    vim.bo[buffer].autoread = vim.o.autoread
+    vim.bo[buffer].undofile = vim.o.undofile
+end
+
+local function virtual_content(buffer, ns, line, col, text, lines)
+    vim.api.nvim_buf_clear_namespace(buffer, ns, 0, 1)
+    vim.api.nvim_buf_set_extmark(buffer, ns, line, col, {
+        priority = 1000,
+        hl_mode = "combine",
+        right_gravity = false,
+        -- virtual text fields
+        virt_text = text,
+        virt_text_pos = "eol",
+        virt_text_win_col = nil,
+        -- virtual lines fields
+        virt_lines = lines,
+        virt_lines_above = true,
+        virt_lines_leftcol = true,
+        virt_lines_overflow = "trunc",
+    })
 end
 
 local function populate_buffer(buffer, entries, display, step)
@@ -303,7 +345,6 @@ local function populate_buffer(buffer, entries, display, step)
         until start == #entries or start > _end
 
         vim.api.nvim_buf_set_lines(buffer, _end, -1, false, {})
-        vim.print({vim.api.nvim_buf_line_count(buffer), #entries})
         assert(vim.api.nvim_buf_line_count(buffer) == #entries)
         utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
     else
@@ -453,6 +494,27 @@ local function decorate_range(buffer, start, _end, entries, decorators, display,
     Async.yield()
 end
 
+local function toggle_range(buffer, start, _end, name, toggled)
+    vim.fn.sign_unplace(
+        "list_toggle_entry_group",
+        { buffer = buffer }
+    )
+    assert(start <= _end and start > 0)
+    for target = start, _end, 1 do
+        local line = tostring(target)
+        if (toggled.all == true and toggled.entries[line] == nil) or toggled.entries[line] == true then
+            vim.fn.sign_place(target,
+                "list_toggle_entry_group",
+                name, buffer,
+                {
+                    lnum = target,
+                    priority = 10,
+                }
+            )
+        end
+    end
+end
+
 local function display_entry(strategy, entry, window, buffer)
     vim.schedule(function()
         local old_ignore = vim.o.eventignore
@@ -530,30 +592,23 @@ function Select.BufferPreview:preview(entry, window)
             return false, "Unable to preview an ignored entry"
         end
         buffer = assert(vim.fn.bufadd(entry.filename))
-        assert(not vim.tbl_contains(self.buffers, buffer))
         initialize_buffer(buffer, "", "")
-        table.insert(self.buffers, buffer)
         vim.api.nvim_create_autocmd("BufWinEnter", {
             buffer = buffer,
             callback = function(args)
-                for idx, buf in ipairs(self.buffers) do
-                    if buf == args.buf then
-                        table.remove(self.buffers, idx)
-                        break
-                    end
-                end
-
-                vim.bo[args.buf].swapfile = vim.o.swapfile
-                vim.bo[args.buf].autoread = vim.o.autoread
-                vim.bo[args.buf].undofile = vim.o.undofile
-                vim.bo[args.buf].buflisted = vim.o.buflisted
-
+                assert(utils.table_remove(
+                    self.buffers,
+                    args.buf
+                ) == true)
+                restore_buffer(assert(args.buf))
                 vim.schedule(function()
                     vim.cmd.edit({ bang = true })
                 end)
                 return true
             end
         })
+        assert(not vim.tbl_contains(self.buffers, buffer))
+        table.insert(self.buffers, buffer)
     else
         return false, "Unable to read or access current entry"
     end
@@ -586,7 +641,7 @@ function Select.BufferPreview:preview(entry, window)
 end
 
 --- Create a new custom previewer instance, the callback is invoked on each entry that has to be previewed
---- @param callback function A function that takes the entry, buffer and window as arguments and returns optionally the lines, filetype, buftype and cursor position.
+--- @param callback? function A function that takes the entry, buffer and window as arguments and returns optionally the lines, filetype, buftype and cursor position.
 function Select.CustomPreview.new(callback)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.CustomPreview)
@@ -863,21 +918,37 @@ function Select:_list_selection()
         return {}
     end
 
+    local toggled = assert(self._state.toggled)
     local entries = assert(self._state.entries)
-    local list_window = assert(self.list_window)
-    local cursor = vim.api.nvim_win_get_cursor(list_window)
-    local placed = vim.fn.sign_getplaced(self.list_buffer, {
-        group = "list_toggle_entry_group",
-    })
-
-    if placed and #placed > 0 and placed[1].signs and #placed[1].signs > 0 then
-        return vim.tbl_map(function(s)
-            assert(s.lnum <= #entries)
-            return entries[s.lnum]
-        end, placed[1].signs)
+    local size = toggled_count(entries, toggled)
+    if size == 0 then
+        local list_window = assert(self.list_window)
+        local cursor = vim.api.nvim_win_get_cursor(list_window)
+        assert(cursor[1] >= 1 and cursor[1] <= #entries)
+        return { entries[cursor[1]] }
     else
-        assert(#entries == 0 or cursor[1] <= #entries)
-        return #entries > 0 and { entries[cursor[1]] } or {}
+        local index, current = 1, 0
+        local selection = utils.obtain_table(size)
+        for line, status in pairs(toggled.entries) do
+            if status == true then
+                local position = tonumber(line)
+                assert(position <= #entries)
+                selection[current + 1] = entries[position]
+                current = current + 1
+            end
+        end
+        while index <= #entries and current < size do
+            local line = tostring(index)
+            local status = toggled.entries[line]
+            if toggled.all == true and status == nil then
+                selection[current + 1] = entries[index]
+                current = current + 1
+            end
+            index = index + 1
+        end
+        assert(current > 0 and current == size)
+        utils.resize_table(selection, size, nil)
+        return selection
     end
 end
 
@@ -930,6 +1001,25 @@ function Select:_populate_list(full)
     end
 end
 
+function Select:_display_toggle()
+    local toggled = self._state.toggled
+    local entries = self._state.entries
+    if toggled ~= nil and entries and #entries >= 0 then
+        local sign_name = string.format(
+            "list_toggle_entry_sign_%d",
+            self.list_buffer
+        )
+        local cursor = vim.api.nvim_win_get_cursor(self.list_window)
+        local height = vim.api.nvim_win_get_height(self.list_window)
+        toggle_range(
+            self.list_buffer,
+            math.max(1, cursor[1] - height),
+            math.min(#entries, cursor[1] + height),
+            sign_name, toggled
+        )
+    end
+end
+
 function Select:_highlight_list()
     local entries = self._state.entries
     local positions = self._state.positions
@@ -953,7 +1043,6 @@ function Select:_decorate_list()
     if entries and #entries > 0 and decorators and #decorators > 0 then
         local cursor = vim.api.nvim_win_get_cursor(self.list_window)
         local height = vim.api.nvim_win_get_height(self.list_window)
-        assert(#entries >= cursor[1] and cursor[1] > 0)
         decorate_range(
             self.list_buffer,
             math.max(1, cursor[1] - height),
@@ -977,7 +1066,6 @@ function Select:_display_preview()
             populate_buffer(buffer, {})
         else
             local cursor = vim.api.nvim_win_get_cursor(self.list_window)
-            assert(#entries >= cursor[1] and cursor[1] > 0)
             local entry = assert(entries[cursor[1]])
             display_entry(
                 previewer, entry,
@@ -997,6 +1085,7 @@ function Select:_render_list(full)
         if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
             self:_decorate_list()
             self:_highlight_list()
+            self:_display_toggle()
             self:_display_preview()
             vim.api.nvim_win_call(
                 self.list_window,
@@ -1018,26 +1107,15 @@ function Select:_render_list(full)
     end
 end
 
-function Select:_destroy_view()
-    if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
-        vim.api.nvim_buf_delete(self.list_buffer, { force = true })
-        self.list_buffer = nil
-    end
-
-    if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
-        vim.api.nvim_buf_delete(self.prompt_buffer, { force = true })
-        self.prompt_buffer = nil
-    end
-
-    if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
-        vim.api.nvim_buf_delete(self.preview_buffer, { force = true })
-        self.preview_buffer = nil
-    end
-
+function Select:_reset_state()
     self._state.streaming = false
     self._state.positions = nil
     self._state.entries = nil
     self._state.query = ""
+    self._state.toggled = {
+        all = false,
+        entries = {}
+    }
 end
 
 function Select:_init_preview()
@@ -1068,6 +1146,25 @@ function Select:_clean_decorators()
             decor:clean()
         end
     end
+end
+
+function Select:_destroy_view()
+    if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
+        vim.api.nvim_buf_delete(self.list_buffer, { force = true })
+        self.list_buffer = nil
+    end
+
+    if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
+        vim.api.nvim_buf_delete(self.prompt_buffer, { force = true })
+        self.prompt_buffer = nil
+    end
+
+    if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
+        vim.api.nvim_buf_delete(self.preview_buffer, { force = true })
+        self.preview_buffer = nil
+    end
+
+    self:_reset_state()
 end
 
 function Select:_clear_view(force)
@@ -1108,11 +1205,7 @@ function Select:_clear_view(force)
             self:_clean_decorators()
             self:_clean_preview()
         end
-
-        self._state.streaming = false
-        self._state.positions = nil
-        self._state.entries = nil
-        self._state.query = ""
+        self:_reset_state()
     end
 
     if self:_is_rendering() then
@@ -1167,49 +1260,62 @@ end
 
 --- Closes all open windows associated with the selection interface and returns focus to the source window. This action however does not
 --- clear any of the internal state and acts more akin to calling `hide` method on select instance
+--- @param callback? function A function that takes no arguments and returns nothing.
 function Select:close_view(callback)
     self:_close_view(false)
     utils.safe_call(callback)
 end
 
 -- Does simply invoke the callback without any arguments or any context, when the action is invoked through the select interface. Useful to perform stateless operations or simply ignore an existing action binding temporarily.
+--- @param callback? function A function that takes no arguments and returns nothing.
 function Select:noop_select(callback)
     utils.safe_call(callback)
 end
 
---- Executes user callback with the current selection passed in, the action performs a no operation and is entirely reliant on the user
---- callback to perform any action, this is a generic function used to invoke the user callback with current selection
+--- Executes user callback with the current selection passed in, the action performs a no operation and is entirely reliant on the user callback to perform any action, this is a generic function used to invoke the user callback with current selection
+--- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list.
 function Select:default_select(callback)
     local selection = callback and self:_list_selection()
     self:_close_view(true)
     utils.safe_call(callback, selection)
 end
 
---- Sends commands to the prompt window by sending normal mode commands to it, this is a generic function used by other selection methods.
+--- Sends commands to the prompt window by sending normal mode commands to it, this is a generic function used by other selection methods. The mode argument can be "n" for normal mode commands or "i" for insert mode commands.
+--- @param input string The input to send to the prompt window, can be any insert mode command.
 function Select:position_prompt(input, callback)
     send_input(input, self.prompt_window, callback, "i")
 end
 
 --- Sends commands to the preview window by sending normal mode commands to it, this is a generic function used by other selection methods.
+--- @param input string The input to send to the preview window, can be any normal mode command.
 function Select:scroll_preview(input, callback)
     send_input(input, self.preview_window, callback, "n")
 end
 
---- Moves the cursor in the list by a specified direction, this is a generic function used by other selection methods.
+--- Moves the cursor in the list by in a specified direction, this is a generic function used by other selection methods. The dir argument can be a positive or negative integer, where positive values move the cursor down, negative values move the cursor up, values greater than 1 move to the end, and values less than -1 move to the start.
+--- @param dir integer The direction to move the cursor, positive values move down, negative values move up, values greater than 1 move to the end, values less than -1 move to the start
 function Select:move_cursor(dir, callback)
-    local entries = assert(self._state.entries)
+    local entries = self._state.entries
     local count = vim.api.nvim_buf_line_count(self.list_buffer)
-    local cursor = vim.api.nvim_win_get_cursor(self.list_window)
 
-    -- ensure that if not all entries are rendered, we don't move the cursor past the end of the entries,
-    -- meaning we do not allow looping from the first entry to the last one until all entries are rendered
-    dir = (cursor[1] == 1 and dir < 0 and count < #entries) and 0 or dir
+    if dir > 1 then
+        count = entries and math.max(#entries, count) or count
+        vim.api.nvim_win_set_cursor(self.list_window, { count, 0 })
+    elseif dir < -1 then
+        vim.api.nvim_win_set_cursor(self.list_window, { 1, 0 })
+    else
+        local cursor = vim.api.nvim_win_get_cursor(self.list_window)
 
-    if dir and dir ~= 0 then
-        if cursor[1] == 1 and dir < 0 then cursor[1] = 0 end
-        cursor[1] = (cursor[1] + dir) % (count + 1)
-        if cursor[1] == 0 and dir > 0 then cursor[1] = 1 end
-        vim.api.nvim_win_set_cursor(self.list_window, cursor)
+        -- ensure that if not all entries are rendered, we don't move the cursor past the end of the entries,
+        -- meaning we do not allow looping from the first entry to the last one until all entries are rendered
+        dir = (cursor[1] == 1 and dir < 0 and count < #entries) and 0 or dir
+
+        if dir and dir ~= 0 then
+            if cursor[1] == 1 and dir < 0 then cursor[1] = 0 end
+            cursor[1] = (cursor[1] + dir) % (count + 1)
+            if cursor[1] == 0 and dir > 0 then cursor[1] = 1 end
+            vim.api.nvim_win_set_cursor(self.list_window, cursor)
+        end
     end
 
     self:_display_preview()
@@ -1220,6 +1326,9 @@ end
 
 --- Executes command against the selected entry as an argument passed to that command, this is a generic function used by other
 --- selection methods.
+--- @param command string The command to execute, can be any vim command that takes a filename or buffer number as an argument, like edit, split, vsplit, tabedit, etc.
+--- @param mods? table|nil A table of command modifiers to pass to the command,
+--- @param callback? function A function that takes the selection and returns a table of entries to execute the command against, if the callback returns false, the command is not executed.
 function Select:exec_command(command, mods, callback)
     local selection = self:_list_selection()
     self:_close_view(true)
@@ -1272,6 +1381,8 @@ end
 
 --- Sends the selected entries to the quickfix or location list, using the provided callback to extract filenames from entries, the type
 --- argument value must be either "quickfix" or "loclist".
+--- @param type string The type of list to send the entries to, can be either "quickfix" or "loclist".
+--- @param callback? function A function that takes the selection and returns a table of entries to send. If the callback returns false, the entries are not sent to the fix list.
 function Select:send_fixlist(type, callback)
     local selection = self:_list_selection()
     self:_close_view(true)
@@ -1311,6 +1422,8 @@ function Select:send_fixlist(type, callback)
     end
 end
 
+--- Toggles the preview window, opening it if it is closed and closing it if it is open. The callback is invoked with the current selection after toggling the preview window. If the prompt list or preview options are not enabled, this function does nothing.
+--- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list.
 function Select:toggle_preview(callback)
     if not self._options.prompt_list or not self._options.preview then
         return
@@ -1324,13 +1437,14 @@ function Select:toggle_preview(callback)
             noautocmd = false,
             win = self.list_window or -1,
         })
-
-        vim.api.nvim_win_set_height(self.preview_window, preview_height)
-        self.preview_window = initialize_window(self.preview_window)
-
-        vim.wo[self.preview_window].relativenumber = false
-        vim.wo[self.preview_window].number = true
-
+        vim.api.nvim_win_set_height(
+            self.preview_window,
+            preview_height
+        )
+        self.preview_window = initialize_window(
+            self.preview_window,
+            self._options.window_options.preview
+        )
         self:_display_preview()
     else
         vim.api.nvim_win_close(self.preview_window, true)
@@ -1340,146 +1454,208 @@ function Select:toggle_preview(callback)
     utils.safe_call(callback, selection)
 end
 
---- Toggles the selection state of the current entry in the list, using signs to indicate selection, and moves the cursor down by one
---- entry by default.
+--- Toggles the selection state of the current entry in the list, using signs to indicate selection, and moves the cursor down by one entry by default.
+--- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list. If the callback is nil, no action is performed after toggling the entry.
 function Select:toggle_entry(callback)
     local list_window = assert(self.list_window)
+    local entries = assert(self._state.entries)
     local cursor = vim.api.nvim_win_get_cursor(list_window)
-    local placed = vim.fn.sign_getplaced(self.list_buffer, {
-        group = "list_toggle_entry_group", lnum = cursor[1],
+
+    local line = tostring(cursor[1])
+    local toggled = self._state.toggled
+
+    local istoggled = toggled.entries[assert(line)]
+    if istoggled == nil then istoggled = toggled.all end
+
+    toggled.entries[line] = not istoggled
+    self:_display_toggle()
+
+    virtual_content(self.prompt_buffer, LIST_TOGGLE_NAMESPACE, 0, -1, {
+        { string.format("(%d)", toggled_count(entries, toggled)), "SelectToggleCount" }
     })
-    if placed and #placed > 0 and placed[1].signs and #placed[1].signs > 0 and placed[1].signs[1] then
-        vim.fn.sign_unplace(
-            "list_toggle_entry_group",
-            {
-                buffer = self.list_buffer,
-                id = placed[1].signs[1].id,
-            }
-        )
-    else
-        local sign_name = string.format(
-            "list_toggle_entry_sign_%d",
-            self.list_buffer
-        )
-        vim.fn.sign_place(
-            cursor[1],
-            "list_toggle_entry_group",
-            sign_name,
-            self.list_buffer,
-            {
-                lnum = cursor[1],
-                priority = 10,
-            }
-        )
-    end
 
     local selection = callback and self:_list_selection()
     utils.safe_call(callback, selection)
 end
 
+--- Sets the selection state of all entries in the list to selected, using signs to indicate selection. The callback is invoked with the current selection after selecting all entries.
+--- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list, or the entry where the cursor is currently positioned if no entries are selected.
+function Select:toggle_all(callback)
+    self._state.toggled.all = true
+    self._state.toggled.entries = {}
+    self:_display_toggle()
+
+    virtual_content(self.prompt_buffer, LIST_TOGGLE_NAMESPACE, 0, -1, {
+        { string.format("(%d)", #self._state.entries), "SelectToggleCount" }
+    })
+
+    local selection = callback and self:_list_selection()
+    utils.safe_call(callback, selection)
+end
+
+--- Clears the selection state of all entries in the list, removing any signs used to indicate selection. The callback is invoked with the current selection after clearing the selection.
+--- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list. Or the entry where the cursor is currently positioned if no entries are selected.
+function Select:toggle_clear(callback)
+    self._state.toggled.all = false
+    self._state.toggled.entries = {}
+    self:_display_toggle()
+
+    virtual_content(self.prompt_buffer, LIST_TOGGLE_NAMESPACE, 0, -1, {
+        { "(0)", "SelectToggleCount" }
+    })
+
+    local selection = callback and self:_list_selection()
+    utils.safe_call(callback, selection)
+end
+
+--- Toggles the selection state of all entries in the list, if all entries are selected, it clears the selection, otherwise it selects all entries. The callback is invoked with the current selection after toggling.
+--- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list.
+function Select:toggle_list(callback)
+    if self._state.toggled.all == true then
+        self:toggle_clear(callback)
+    else
+        self:toggle_all(callback)
+    end
+end
+
+--- Toggles the selection state of the current entry in the list, using signs to indicate selection, and moves the cursor up by one entry. By default.
+--- @param callback? function A function that takes the selection and is not required to return anything
 function Select:toggle_up(callback)
     self:toggle_entry(function()
         self:move_cursor(-1, callback)
     end)
 end
 
+--- Toggles the selection state of the current entry in the list, using signs to indicate selection, and moves the cursor down by one entry. By default.
+--- @param callback? function A function that takes the selection and is not required to return anything
 function Select:toggle_down(callback)
     self:toggle_entry(function()
         self:move_cursor(1, callback)
     end)
 end
 
--- Move the prompt cursor to the start of the prompt line
+--- Move the prompt cursor to the beginning of the prompt line.
+--- @param callback? function A function that takes prompt cursor position and returns nothing, the position is a table with line and column fields.
 function Select:prompt_home(callback)
     self:position_prompt("<home>", callback)
 end
 
--- Move the prompt cursor to the end of the prompt line
+--- Move the prompt cursor to the end of the prompt line
+--- @param callback? function A function that takes prompt cursor position and returns nothing, the position is a table with line and column fields.
 function Select:prompt_end(callback)
     self:position_prompt("<end>", callback)
 end
 
--- Move the prompt cursor one position to the left
+--- Move the prompt cursor one position to the left
+--- @param callback? function A function that takes prompt cursor position and returns nothing, the position is a table with line and column fields.
 function Select:prompt_left(callback)
     self:position_prompt("<left>", callback)
 end
 
--- Move the prompt cursor one position to the right
+--- Move the prompt cursor one position to the right
+--- @param callback? function A function that takes prompt cursor position and returns nothing, the position is a table with line and column fields.
 function Select:prompt_right(callback)
     self:position_prompt("<right>", callback)
 end
 
 -- Move the prompt cursor one word to the left
+--- @param callback? function A function that takes prompt cursor position and returns nothing, the position is a table with line and column fields.
 function Select:prompt_left_word(callback)
     self:position_prompt("<c-o>b", callback)
 end
 
 -- Move the prompt cursor one word to the right
+--- @param callback? function A function that takes prompt cursor position and returns nothing, the position is a table with line and column fields.
 function Select:prompt_right_word(callback)
     self:position_prompt("<c-o>w", callback)
 end
 
---- Scrolls the preview window up by one page.
-function Select:page_down(callback)
-    self:scroll_preview("<c-f>", callback)
-end
-
 -- Delete a word from the prompt forwards
+--- @param callback? function A function that takes prompt cursor position and returns nothing, the position is a table with line and column fields.
 function Select:prompt_delete_word_right(callback)
     self:position_prompt("<c-o>:noautocmd lockmarks normal! \"_dw<cr>", callback)
 end
 
 -- Delete a word from the prompt backwards
+--- @param callback? function A function that takes prompt cursor position and returns nothing, the position is a table with line and column fields.
 function Select:prompt_delete_word_left(callback)
     self:position_prompt("<c-o>:noautocmd lockmarks normal! \"_db<cr>", callback)
 end
 
 -- Delete the prompt query up until the home position
+--- @param callback? function A function that takes prompt cursor position and returns nothing, the position is a table with line and column fields.
 function Select:prompt_delete_home(callback)
     self:position_prompt("<c-o>:noautocmd lockmarks normal! \"_d^<cr>", callback)
 end
 
--- Delete the prompt query up until the end position
+--- Delete the prompt query up until the end position
+--- @param callback? function A function that takes prompt cursor position and returns nothing, the position is a table with line and column fields.
 function Select:prompt_delete_end(callback)
     self:position_prompt("<c-o>:noautocmd lockmarks normal! \"_d$<cr>", callback)
 end
 
 --- Scrolls the preview window down by one page.
+--- @param callback? function A function that takes the curosr position in the preview window and returns nothing, the position is a table with line and column fields.
 function Select:page_up(callback)
     self:scroll_preview("<c-b>", callback)
 end
 
+--- Scrolls the preview window up by one page.
+--- @param callback? function A function that takes the curosr position in the preview window and returns nothing, the position is a table with line and column fields.
+function Select:page_down(callback)
+    self:scroll_preview("<c-f>", callback)
+end
+
 --- Scrolls the preview window up by half a page.
+--- @param callback? function A function that takes the curosr position in the preview window and returns nothing, the position is a table with line and column fields.
 function Select:half_up(callback)
     self:scroll_preview("<c-u>", callback)
 end
 
 --- Scrolls the preview window down by half a page.
+--- @param callback? function A function that takes the curosr position in the preview window and returns nothing, the position is a table with line and column fields.
 function Select:half_down(callback)
     self:scroll_preview("<c-d>", callback)
 end
 
 --- Scrolls the preview window up by one line.
+--- @param callback? function A function that takes the curosr position in the preview window and returns nothing, the position is a table with line and column fields.
 function Select:line_up(callback)
     self:scroll_preview("<c-y>", callback)
 end
 
 --- Scrolls the preview window down by one line.
+--- @param callback? function A function that takes the curosr position in the preview window and returns nothing, the position is a table with line and column fields.
 function Select:line_down(callback)
     self:scroll_preview("<c-e>", callback)
 end
 
 --- Moves the cursor to the next entry in the list.
+--- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list.
 function Select:move_down(callback)
     self:move_cursor(1, callback)
 end
 
 --- Moves the cursor to the previous entry in the list.
+--- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list.
 function Select:move_up(callback)
     self:move_cursor(-1, callback)
 end
 
+--- Moves the cursor to the first valid entry in the list
+--- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list.
+function Select:move_top(callback)
+    self:move_cursor(-100, callback)
+end
+
+--- Moves the cursor to the last valid entry in the list
+--- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list.
+function Select:move_bot(callback)
+    self:move_cursor(100, callback)
+end
+
 --- Selects the next entry in the list and acts on it
+--- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:select_next(callback)
     self:move_cursor(1, function(_)
         self:exec_command("edit", {}, callback)
@@ -1487,6 +1663,7 @@ function Select:select_next(callback)
 end
 
 --- Selects the prev entry in the liset and acts on it
+--- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:select_prev(callback)
     self:move_cursor(-1, function(_)
         self:exec_command("edit", {}, callback)
@@ -1494,37 +1671,42 @@ function Select:select_prev(callback)
 end
 
 --- Opens the selected entry in the origin/source window.
+--- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:select_entry(callback)
     self:exec_command("edit", {}, callback)
 end
 
 --- Opens the selected entry in a horizontal split.
+--- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:select_horizontal(callback)
     self:exec_command("split", { horizontal = true }, callback)
 end
 
 --- Opens the selected entry in a vertical split.
+--- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:select_vertical(callback)
     self:exec_command("split", { vertical = true }, callback)
 end
 
 --- Opens the selected entry in a new tab.
+--- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:select_tab(callback)
     self:exec_command("tabedit", {}, callback)
 end
 
 --- Sends the selected entries to the quickfix list and opens it.
+--- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:send_quickfix(callback)
     self:send_fixlist("quickfix", callback)
 end
 
 --- Sends the selected entries to the location list and opens it.
+--- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:send_locliset(callback)
     self:send_fixlist("loclist", callback)
 end
 
---- Gets the current query from the prompt input. The query is updated on each input change in the prompt. It is not extracted directly from
---- the prompt buffer on-demand but is captured with each input change using TextChangedI and TextChanged autocmd events.
+--- Gets the current query from the prompt input. The query is updated on each input change in the prompt. It is not extracted directly from the prompt buffer on-demand but is captured with each input change using TextChangedI and TextChanged autocmd events.
 --- @return string The current query string, the query will never be nil, otherwise that represents invalid state of the selection interface.
 function Select:query()
     return assert(self._state.query)
@@ -1559,8 +1741,7 @@ function Select:isempty()
     return not self._state.entries or #self._state.entries == 0
 end
 
---- Checks if the selection interface is valid, meaning that it has been initialized/opened at least once and has not been destroyed by
---- calling any of the `destroy` or `close` methods which would invalidate its state
+--- Checks if the selection interface is valid, meaning that it has been initialized/opened at least once and has not been destroyed by calling the `close` method which would invalidate its curent state
 --- @return boolean True if the select interface is still valid, false otherwise.
 function Select:isvalid()
     local prompt = self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer)
@@ -1568,10 +1749,9 @@ function Select:isvalid()
     return list ~= nil and prompt ~= nil and list and prompt
 end
 
--- Render a list of entries in the list window, with optional highlighting positions and display formatting function or property.
+-- Render a list of entries in the list window, with optional highlighting positions. If entries is nil, it will re-render the current list fully with existing entries and positions. Sending nil for both parameters signals to the interface that the streaming of entries is complete and it should finalize the rendering. This method is optimized to handle large lists of entries efficiently by rendering only the visible portion of the list and updating it as needed around the cursor position. The list is incrementally updated as new entries are provided, allowing for a smooth and responsive user experience even with large datasets.
 -- @param entries? any[]|string[]|nil The list of entries to display.
 -- @param positions? integer[][]|nil The list of positions for highlighting
--- @param display? string|fun(entry: any): string|nil The field or function to use for displaying entries.
 function Select:list(entries, positions)
     vim.validate {
         entries = { entries, { "table", "nil" }, true },
@@ -1594,8 +1774,9 @@ function Select:list(entries, positions)
     end
 end
 
---- Render the current status of the select, providing information about the selection list, preview or prompt, as virtual text in the select interface
+--- Render the current status of the select, providing information about the selection list, preview or prompt, as virtual text in the select interface. The status is displayed at the end of the prompt line, and can be customized with highlight groups. For example the status value can be "10/100 items" to indicate that 10 out of 100 items are currently displayed in the list. The status can also include information about the current query or any other relevant information.
 --- @param status string the status data to render in the window
+--- @param hl? string|nil The highlight group to use for the status text, defaults
 function Select:status(status, hl)
     vim.validate {
         status = { status, "string" },
@@ -1605,23 +1786,14 @@ function Select:status(status, hl)
     local decor = self._options.prompt_decor or nil
     local suffix = type(decor) == "table" and assert(decor.suffix)
 
-    vim.api.nvim_buf_clear_namespace(self.prompt_buffer, LIST_STATUS_NAMESPACE, 0, 1)
-    vim.api.nvim_buf_set_extmark(self.prompt_buffer, LIST_STATUS_NAMESPACE, 0, 0, {
-        priority = 1000,
-        hl_mode = "combine",
-        right_gravity = false,
-        virt_text_pos = "eol",
-        virt_text_win_col = nil,
-        virt_text = {
-            suffix and { suffix, "SelectPrefixText" },
-            { assert(status), hl or "SelectStatusText" },
-        },
+    virtual_content(self.prompt_buffer, LIST_STATUS_NAMESPACE, 0, 0, {
+        suffix and { suffix, "SelectPrefixText" },
+        { status, hl or "SelectStatusText" },
     })
 end
 
---- Render a header at the top of the selection interface, the header can be a string or a table of strings or string/highlight pairs, where each
---- inner table represents a block of header entries.
---- @param header string|table The header to render, can be a string or a table of strings or string/highlight pairs.
+--- Render a header at the top of the selection interface, the header can be a string or a table of strings or string/highlight pairs, where each inner table represents a block of header entries.
+--- @param header string|table The header to render, can be a string or a table of strings or string/highlight pairs. For example: { {"Header 1", "HighlightGroup1"}, {"Header 2", "HighlightGroup2"} }, or { "Header 1", "Header 2" }, or { {"Header 1"}, {"Header 2"} }, or { function(select) return "Header 1", "HighlightGroup1" end, function(select) return "Header 2", "HighlightGroup2" end }
 function Select:header(header)
     vim.validate {
         header = { header, { "table", "string" } },
@@ -1671,15 +1843,11 @@ function Select:header(header)
         vim.api.nvim_win_set_height(self.prompt_window, 2)
     end
 
-    vim.api.nvim_buf_clear_namespace(self.prompt_buffer, LIST_HEADER_NAMESPACE, 0, 1)
-    vim.api.nvim_buf_set_extmark(self.prompt_buffer, LIST_HEADER_NAMESPACE, 0, 0, {
-        priority = 2000,
-        hl_mode = "combine",
-        virt_lines_above = true,
-        virt_lines_leftcol = true,
-        virt_lines_overflow = "trunc",
-        virt_lines = { header_entries }
-    })
+    virtual_content(
+        self.prompt_buffer,
+        LIST_HEADER_NAMESPACE,
+        0, 0, nil, { header_entries }
+    )
 
     -- TODO: https://github.com/neovim/neovim/issues/27967
     vim.api.nvim_win_call(self.prompt_window, function()
@@ -1690,8 +1858,7 @@ function Select:header(header)
     end)
 end
 
---- Opens the selection interface, creating necessary buffers and windows as needed, and sets up autocommands and mappings, if no set. If
---- the interface is already open, this method is a no-op and does nothing.
+--- Opens the selection interface, creating necessary buffers and windows as needed, and sets up autocommands and mappings, if no set. This method would ensure that even if the interface was previously closed or hidden, it will be re-initialized and opened properly. If the interface is already open, this method is a no-op and does nothing.
 function Select:open()
     if self:isopen() then
         return
@@ -1791,10 +1958,7 @@ function Select:open()
                 split = "below", win = -1, height = 1, noautocmd = false
             });
             vim.api.nvim_win_set_height(prompt_window, 1)
-            prompt_window = initialize_window(prompt_window)
-            vim.wo[prompt_window][0].signcolumn = 'yes'
-            vim.wo[prompt_window][0].cursorline = false
-            vim.wo[prompt_window][0].winfixbuf = true
+            prompt_window = initialize_window(prompt_window, opts.window_options.prompt)
         end
 
         local query = self:query()
@@ -1873,10 +2037,7 @@ function Select:open()
                 split = self.prompt_window and "above" or "below",
             });
             vim.api.nvim_win_set_height(list_window, list_height)
-            list_window = initialize_window(list_window)
-            vim.wo[list_window][0].signcolumn = 'yes'
-            vim.wo[list_window][0].cursorline = true
-            vim.wo[list_window][0].winfixbuf = true
+            list_window = initialize_window(list_window, opts.window_options.list)
 
             local highlight_matches = vim.api.nvim_create_autocmd("WinScrolled", {
                 pattern = tostring(list_window),
@@ -1921,9 +2082,7 @@ function Select:open()
                 win = self.list_window or -1,
             });
             vim.api.nvim_win_set_height(preview_window, preview_height)
-            preview_window = initialize_window(preview_window)
-            vim.wo[preview_window].relativenumber = false
-            vim.wo[preview_window].number = true
+            preview_window = initialize_window(preview_window, opts.window_options.preview)
         end
 
         self.preview_window = preview_window
@@ -2011,6 +2170,7 @@ end
 --- @field prompt_decor? table|string Symbol decoration to display in the query prompt window. A table of two items can be provided show around the prompt query, or a single string which by default is interpreted as the prompt prefix. If a table is provided key value pairs are expected of prefix and suffix i.e { prefix = "> ", suffix = "< " }.
 --- @field toggle_prefix? string Prefix to display for toggled entries in the list, when multi select is enabled
 --- @field window_ratio? number Ratio of the window height to the total editor height.
+--- @field window_options? table Options to configure the prompt, list and preview windows. The table should have keys `prompt`, `list` and `preview`, each containing a table of window local options
 --- @field list_step? integer|nil Number of entries to render at a time when populating the list.
 --- @field quickfix_open? fun() Function to open the quickfix list.
 --- @field loclist_open? fun() Function to open the location list.
@@ -2032,6 +2192,7 @@ function Select.new(opts)
         prompt_decor = { opts.prompt_decor, { "table", "string" }, true },
         toggle_prefix = { opts.toggle_prefix, "string", true },
         window_ratio = { opts.window_ratio, "number", true },
+        window_options = { opts.window_options, "table", true },
         list_step = { opts.list_step, { "number", "nil" }, true },
         quickfix_open = { opts.quickfix_open, "function", true },
         loclist_open = { opts.loclist_open, "function", true },
@@ -2056,6 +2217,20 @@ function Select.new(opts)
         toggle_prefix = "✓",
         preview_timeout = 500,
         window_ratio = 0.20,
+        window_options = {
+            preview = {
+                cursorline = true,
+                winfixbuf = false,
+            },
+            prompt = {
+                cursorline = false,
+                winfixbuf = true,
+            },
+            list = {
+                cursorline = true,
+                winfixbuf = true,
+            },
+        },
         list_step = nil,
         decorators = {},
         preview = nil,
@@ -2072,6 +2247,7 @@ function Select.new(opts)
             ["<c-n>"]   = opts.prompt_list ~= false and Select.move_down or Select.noop_select,
             ["<c-k>"]   = opts.prompt_list ~= false and Select.move_up or Select.noop_select,
             ["<c-j>"]   = opts.prompt_list ~= false and Select.move_down or Select.noop_select,
+            ["<c-z>"]   = opts.prompt_list ~= false and Select.toggle_list or Select.noop_select,
             ["<tab>"]   = opts.prompt_list ~= false and Select.toggle_down or Select.noop_select,
             ["<s-tab>"] = opts.prompt_list ~= false and Select.toggle_up or Select.noop_select,
             ["<c-e>"]   = opts.prompt_input ~= false and Select.prompt_end or Select.noop_select,
@@ -2098,6 +2274,10 @@ function Select.new(opts)
         _state = {
             query = "",
             buffers = {},
+            toggled = {
+                all = false,
+                entries = {}
+            },
             entries = nil,
             positions = nil,
             streaming = false

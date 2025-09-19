@@ -15,7 +15,7 @@
 - **Actions**: Predefined actions for common operations like editing, sending selection to quickfix, etc.
 - **Preview**: Predefined previewers allowing previewing common types of resources like files, directories, etc.
 - **Decoration**: Predefined decorators enhancing the visual appearance of the items in the list
-- **Cross-Platform**: Works on any system with a modern version of Neovim or Vim, does not depend on external binaries.
+- **Cross-Platform**: Works on any system with a modern version of Neovim, does not depend on external binaries.
 - **Built-in Sources**: Includes example sources for user-streams, files, buffers, and more.
 
 ## Description
@@ -83,14 +83,18 @@ require("fuzzy").setup({
 
 ## Quickstart
 
+Start using this picker instance, `it is recommended that you remember and use the instance you have created`, if you wish to
+open/close/hide the picker just re-use the instance methods, instead of making - calling Picker.new every time you wish to create the same
+type of picker with the same context value. `Creating a new picker should be reserved for creating unique pickers`.
+
+Reusing the same picker instance is important as it allows the picker to retain its state, and if the context has changed since the last
+time it was opened, the content stream will be re-run with the new context values. Regardless of whether the picker was closed or hidden,
+when the picker is re-opened the context will be re-evaluated and if it has changed the content stream will be re-run.
+
 `TDDR;` To start using the picker simply require the picker and select modules those are going to be enough for you to create pretty much any
 type of picker you can imagine. Lets see a few examples
 
-Start using this picker instance, it is recommended that you remember and use the instance you have created, if you wish to
-open/close/hide the picker just re-use the instance methods, instead of making - calling Picker.new every time you wish to create the
-same type of picker. Creating a new picker should be reserved for creating unique pickers.
-
-### Simple list
+### Static table
 
 ```lua
 -- here is a very basic example that simply provides a list of static string items and prints out the current user selection on confirm, use
@@ -106,10 +110,37 @@ local picker = Picker.new({
     },
     actions = {
         ["<cr>"] = Select.action(Select.default_select, Select.all(function(e)
+            -- does nothing special, just prints out the current selection
             vim.print(e)
             return e
         end))
     }
+})
+picker:open()
+```
+
+### Callback function
+
+```lua
+-- here is a very basic example that simply provides a list of dynamic string items from a user provided callback and prints out the current
+-- user selection on confirm, use <cr> to confirm your selection
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = function()
+        for i = 1, 100000, 1 do
+            cb({ name = string.format("%d-name-entry", i) })
+        end
+    end,
+    actions = {
+        ["<cr>"] = Select.action(Select.default_select, Select.all(function(e)
+            -- does nothing special, just prints out the current selection
+            vim.print(e)
+            return e
+        end))
+    },
+    -- the display field is required when the stream provides tables as entries, it tells the picker how to extract the display string which
+    -- is also used for the fuzzy matching process as well
+    display = "name",
 })
 picker:open()
 ```
@@ -204,7 +235,7 @@ local picker = Picker.new({
             "f",
         },
         env = {
-            MY_NEW_VARIABLE = "value"
+            MY_NEW_CUSTOM_VARIABLE = "value"
         },
         cwd = vim.fn.expand("~/.config/nvim")
     },
@@ -253,8 +284,8 @@ picker:open()
 
 ```lua
 -- take a note of the headers section, where the current working directory in the header is similarly to the context, set to be evaluated on
--- demand, and not a static value like the rest of the header elements, like the picker name. On top of that the actions have also been
--- enhanced with a label, which will become part of the header line in the prompt
+-- demand, and not a static value like the rest of the header elements. On top of that the actions have also been enhanced with a label,
+-- which will become part of the header line in the prompt
 local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
 local picker = Picker.new({
@@ -265,6 +296,7 @@ local picker = Picker.new({
             "-type",
             "f",
         },
+        cwd = vim.loop.cwd
     },
     headers = {
         {
@@ -317,7 +349,32 @@ local picker = Picker.new({
 picker:open()
 ```
 
-### Interaction
+### Stream buffering
+
+```lua
+-- here is an example of using `stdbuf` to make grep stdout line buffered, this is useful when the executable does not support line buffering,
+-- even though grep does have --line-buffered flag, this is just for demonstration purposes, you can apply this to any executable that does
+-- not support line buffering, or you can use it to make any executable output byte buffered instead of line buffered, by using `-o0` flag
+-- instead of `-oL`. This can greatly improve the responsiveness of the picker when dealing with executables that produce a lot of output
+-- quickly.
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = "stdbuf",
+    context = {
+        args = {
+            "-oL",
+            "grep",
+            "-i",
+            "-r",
+            "pattern",
+            "."
+        }
+    }
+})
+picker:open()
+```
+
+## Interaction
 
 By default the picker provides several default action bindings to act and interface with the picker, the following are most of the basic
 bindings which are provided out of the box, to perform actions with the picker, those of course can be customized by overriding the
@@ -341,7 +398,7 @@ bindings which are provided out of the box, to perform actions with the picker, 
 ["<c-j>"]   = list move down
 
 ["<tab>"]   = toggle current entry and move down
-["<s-tab>"] = toggle current entry and mmove up
+["<s-tab>"] = toggle current entry and move up
 
 ["<c-e>"]   = move to the end of the query prompt
 ["<c-a>"]   = move to the start of the query prompt
@@ -354,23 +411,28 @@ bindings which are provided out of the box, to perform actions with the picker, 
 ["<m-d>"]   = delete next word to the right (forward) of the cursor in the query prompt
 ```
 
-First to look at the default binding for toggling between the `interactive and fuzzy` stages of the picker, when a picker is configured
-with an interactive state, the user is able to switch between them both - the interactive state is such that the user provided `content`
-stream is restarted based on the user input and new results are obtained from it. For example imagine that you would like to do a live
-grep of the current user query on a directory, while you type it in the results will be streamed into the picker from grep, once the
-grep command finishes, the user can optionally toggle into the fuzzy stage, to further fuzzy match on the results from the live grep.
+### Interactive and Fuzzy stages
+
+Picker can be in one of two modes fuzzy or interactive, one can toggle between the `interactive and fuzzy` stages of the picker, when a
+picker is configured with an `interactive state`, the user is able to switch between them both - the interactive state is such that the user
+provided `content` stream is restarted based on the user input and new results are obtained from it. For example imagine that you would like
+to do a live grep of the current user query on a directory, while you type it in the results will be streamed into the picker from grep,
+once the grep command finishes, the user can optionally toggle into the fuzzy stage, to further fuzzy match on the results from the live
+grep.
 
 By default all pickers are non-interactive, and the default first and only stage that is available is the fuzzy matching stage, that is
 the normal operation of most all types of pickers.
 
-Another actions that deserves some attention are - `close` and `hide`, those are different and very powerful, when used together, the
-`hide` action allows you to hide the current picker away, retaining all of its state, and the picker state can be resumed again at any
-time by calling `open` method again on the same instance that was hidden. The `close` action is different and it usually destroys the
-state of the `picker` instance. However you can still call `open` on the same picker instance, which would cause the internal state to
-be re-initialized.
+### Closing and hiding pickers
 
-A neat feature that the hide feature provides is that you can `hide the picker while it is processing matches or streaming data in`, and
-revisit/resume it later, the streaming or/and matching `will not be canceled and will still be working in the background`
+A picker state can be in either a closed or hidden state using methods such as - `close` and `hide`, or the built-in default bindings to
+trigger them, those are different and very powerful, when used together, the `hide` action allows you to hide the current picker away,
+retaining all of its state, and the picker state can be resumed again at any time by calling `open` method again on the same instance that
+was hidden. The `close` action is different and it usually destroys the state of the `picker` instance. However you can still call `open` on
+the same picker instance, which would cause the internal state to be re-initialized.
+
+A neat side-effect that the hide feature provides is that you can `hide the picker while it is still processing matches or streaming data
+in`, and revisit/resume it later, the streaming or/and matching `will not be canceled and will still be working in the background`
 
 Lets take an example, imagine you have created a picker that shows all files in the current directory, you have done some matching on it and
 now you `hide` it, calling `open` on the same picker instance will resume its state exactly as you have left it off. The same list of files
@@ -382,10 +444,20 @@ match processing, by default), and now instead of hiding the picker you instead 
 picker instance will cause the underlying content stream to be re-run, the new file that was created will be now part of the list, the old
 query will of course be lost and all previous matches and the last item that was under preview.
 
-Another trigger that will cause the picker stream to be re-run is any changes in the picker `context`, if instead of simple primitive values
-you provide callbacks for the `env`, `cwd` or `args`, when the picker detects that the context has changed compared to what it was
-originally used to run the data stream with, the content will be automatically refreshed, regardless of whether you have `hidden or closed`
-the picker and now re-opening it.
+### Dynamic context evaluation
+
+The context is the primary data that is used to invoke a stream and collect output from it, either user provided static table, callback or a
+system executable, it does not matter, the `context`, if provided with, callbacks instead of simple primitive values, for the `env`, `cwd`
+or `args`, the picker detects when the context has changed compared to what it was originally used to run the data stream with, the content
+stream will be automatically refreshed, regardless of whether you have `hidden or closed` the picker and now re-opening it.
+
+
+### Picker actions & interaction
+
+Below is a list of the built-in actions that the Select module exposes for use, by the users, you can bind these however you see fit,
+directly to the `actions` property or with a `Select.action` binding to make use of the callback mechanism that they provide, mentioned
+above. Some like the `close_view, noop_select and default_select` can be used to be the primary entry points for new custom user actions.
+The purpose of these actions is to streamline and simplify the process of creating new custom actions, by composing them from the built-in ones.
 
 All built-in actions accept as an argument a callback, that callback will be invoked during the execution of the action, however for some
 actions this callback is necessary, as it is also acting as the converter of the `selected` items (see below for more details on what action
@@ -396,10 +468,6 @@ ones which will receive the current cursor position in the preview window, or th
 cursor position in the prompt, after the primary action has executed (i.e after moving the prompt cursor, the callback will be invoked with
 the current cursor position in the prompt, similarly for the preview related actions as well).
 
-Below is a list of the built-in actions that the Select module exposes for use, by the users, you can bind these however you see fit,
-directly to the `actions` property or with a `Select.action` binding to make use of the callback mechanism that they provide, mentioned
-above. Some like the `close_view, noop_select and default_select` can be used to be the primary entry points for new custom user actions.
-
 ```lua
 -- General actions
 Select.close_view
@@ -409,6 +477,9 @@ Select.default_select
 -- List actions
 Select.move_down
 Select.move_up
+Select.toggle_all
+Select.toggle_list
+Select.toggle_clear
 Select.toggle_entry
 Select.toggle_up
 Select.toggle_down
@@ -448,7 +519,7 @@ Select.prompt_delete_word_right
 `Be careful leaving pickers in a hidden state, you should take care of making sure that if a picker remains hidden, at some point if it is
 no longer used and never re-opened it is closed or destroyed to avoid retaining persistent state`
 
-### Basic Properties
+### Picker Options
 
 | Field             | Type                     | Description                                                                                                                                                                                                                                                                                                        |
 | ----------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -471,7 +542,7 @@ no longer used and never re-opened it is closed or destroyed to avoid retaining 
 | `prompt_query`    | `string`                 | Initial user query for starting the picker prompt with.                                                                                                                                                                                                                                                            |
 | `prompt_decor`    | `string,table`           | Prefix/suffix for the prompt. Can take the form of a string (just one) or a table (both) providing a table with `{ suffix = "", prefix = "" }` keys.                                                                                                                                                               |
 
-### Detailed Description
+### Option details
 
 - **content**: The content can be a string, function, or table. If it’s a string, it’s treated as an executable command. This is your
   entrypoint into the picker. If it’s a function, it should accept a callback and an `args` table, and call the callback with each entry to
@@ -550,7 +621,7 @@ no longer used and never re-opened it is closed or destroyed to avoid retaining 
 - **prompt_decor**: The prefix/suffix for the prompt. This can be a single string (used as a prefix), or a table providing both a `prefix`
   and `suffix` key. This can be used to add visual cues to the prompt
 
-### In-depth inspection
+### In-depth look
 
 There are a few key elements which need a bit more attention, when using the picker in different scenarios, these are the actions,
 previewers and decorators. And more specifically when using the built-in provided `actions`, `previewers` and `decorators`
@@ -806,35 +877,20 @@ The internal sources are currently only provided to flex and test the features o
 eventually provide a core set of sources such as - buffers, tabs, user-commands, as well as sources based on system utilities such as
 `ripgrep`, find and more.
 
+Sources just like your own pickers are simply instances of the `Picker` class, with pre-configured options to provide a specific
+functionality. It is also advised that you prioritize using the Picker instances provided by the sources over re-creating them by repeatedly
+calling the source functions e.g. - require("fuzzy.sources.files").files() as this will create a new instance of the picker each time,
+instead you should call it once and re-use the same instance by storing it in a variable somewhere in your configuration. That of course
+depends on your use case, re-creating a source is valid if the context or configuration of the source is expected to change between
+invocations.
+
 | Module     | Description                                                                                  |
 | ---------- | -------------------------------------------------------------------------------------------- |
 | `Files`    | Provides a list of system file and directory related sources and pickers                     |
 | `Buffers`  | Provides a list of neovim buffer related sources and pickers                                 |
 | `Examples` | Provides a list of example sources and pickers demonstrating the core features of the plugin |
 
-## Basic Usage
-
-The sources provided in the `fuzzy.sources.example` module are purely a collection of examples to demonstrate the features of the internal
-core they are not meant to be used in user configurations. Below we provide a few examples of our own, demonstrating the various ways one
-can use the plugin to create rich and interactive fuzzy matching pickers.
-
-### Basic Usage
-
-Shows which modules to require to get started with creating a basic picker, the actual configuration of the picker is left out, please refer
-to the other sections to see how to configure the picker for different purposes. Most of the time you will need to use the Select and Picker
-modules. The Select module provides a number of built-in `previewer, decorator and actions` which can be used as building blocks to make
-most types of pickers.
-
-```lua
-local Select = require("fuzzy.select")
-local Picker = require("fuzzy.picker")
-
-local picker = Picker.new({
-    -- picker configuration goes here
-})
-```
-
-### Interactive executable streams
+### Interactive grep
 
 ```lua
 local picker = Picker.new({
@@ -879,7 +935,7 @@ picker:open()
 return picker
 ```
 
-### Static Executable streams
+### Static grep
 
 ```lua
 local picker = Picker.new({
@@ -915,7 +971,7 @@ picker:open()
 return picker
 ```
 
-### Interactive user streams
+### Interactive user callback
 
 The example below shows how a function provided by the user can be converted into an interactive stream, take a note of the
 `context.interactive` property which controls this picker behavior. Interactive in this case means that on each user input the stream
@@ -965,7 +1021,7 @@ local picker = Picker.new({
 })
 ```
 
-### Static user streams
+### Static user tables
 
 In the case below a static user defined table is provided. The stream is not and should not be marked with context.interactive, since
 that is not possible state the picker can be in with a static table of values. The thing to take a note of here is that our entries
@@ -1111,7 +1167,17 @@ local picker = require("fuzzy.sources.files").grep()
 
 ## Requirements
 
-- Neovim 0.11.0 or higher
+### Mandatory
+
+- Neovim 0.11.0 or higher with support for `fuzzymatch` and `fuzzymatchpos`
+
+### Optional
+
+- `tree-sitter`- parsers required for the `Select.BufferPreview` previewer
+
+- `ripgrep` - required for the `Files.grep` source and other executable based pickers
+- `bat` - required for the `Select.CommandPreview` previewer used in various sources
+- `fd` - required for the `Files.files` and `Files.dirs` picker sources
 
 ## Contributing
 
@@ -1131,9 +1197,5 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE - see the [LICENSE
 - [telescope](https://github.com/nvim-telescope/telescope.nvim)
 
 ## Changelog
-
-### [Unreleased]
-
-- Initial core components and sources release
 
 See [CHANGELOG.md](CHANGELOG.md) for full history.

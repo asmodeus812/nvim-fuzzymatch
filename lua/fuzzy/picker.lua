@@ -73,10 +73,14 @@ end
 
 function Picker:_context_evaluate(key, ...)
     local context = assert(self._state.context)
-    if key == nil then
+    if key == nil or type(key) == "table" then
         local evaluated = {}
-        for k, _ in pairs(context) do
-            evaluated[k] = self:_context_evaluate(k, ...)
+        for k, v in pairs(context) do
+            if key and vim.tbl_contains(key, k) then
+                evaluated[k] = self:_context_evaluate(k, ...)
+            else
+                evaluated[k] = v
+            end
         end
         return evaluated
     else
@@ -130,6 +134,8 @@ function Picker:_input_prompt()
     -- debounce the user input to avoid flooding the matching and rendering logic with too many updates, especially when dealing
     -- with large result sets or fast typers
     return utils.debounce_callback(self._options.prompt_debounce, function(query)
+        self.select:move_top()
+        self.select:toggle_clear()
         if query == nil then
             self:_close_stage()
             self:_close_picker()
@@ -290,6 +296,8 @@ function Picker:_create_stage()
         return utils.debounce_callback(self._options.prompt_debounce, function(query)
             local stage = self._state.stage
             assert(stage and next(stage))
+            stage.select:move_top()
+            stage.select:toggle_clear()
             if query == nil then
                 self:_close_stage()
                 self:_close_picker()
@@ -492,12 +500,15 @@ function Picker:hide()
     self:_hide_picker()
 end
 
+--- Open the picker, if the picker is already open this is a no-op. If the picker was previously opened and then hidden, this will restore the picker to its previous state. If the picker was never opened before, or if the context has changed since the last time it was opened, this will re-evaluate the context, and re-run the content command or function to populate the stream with new results. When the content is a static table of entries, this will simply display them in the list.
 function Picker:open()
     if self:isopen() then
         return
     end
 
-    local evaluated_context = self:_context_evaluate()
+    local evaluated_context = self:_context_evaluate(
+        { "args", "cwd", "env" }, self
+    )
     local needs_run = not utils.compare_tables(
         evaluated_context, self._state._evaluated_context
     )
@@ -652,11 +663,11 @@ function Picker.new(opts)
         select = nil,
         _options = opts,
         _state = {
+            staging = false,
+            match = opts.match,
             display = opts.display,
             content = opts.content,
             context = opts.context,
-            match = opts.match,
-            staging = false,
         },
     }, Picker)
 
@@ -672,18 +683,21 @@ function Picker.new(opts)
         lines = is_lines,
     })
 
-    if self:_is_interactive() then
-        local stream = self.stream
-        self._options.actions["<c-g>"] = { function()
-            if assert(stream) and stream:running() then
-                vim.notify(
-                    "Content stream is still running...",
-                    vim.log.levels.WARN
-                )
-                return
-            end
-            self:_toggle_stage()
-        end, "fuzzy" }
+    if self:_is_interactive() and self._options.actions then
+        self._options.actions["<c-g>"] = {
+            function(_)
+                ---@diagnostic disable-next-line: invisible
+                if assert(self.stream) and self.stream:running() then
+                    vim.notify(
+                        "Content stream is still running...",
+                        vim.log.levels.WARN
+                    )
+                    return
+                end
+                self:_toggle_stage()
+            end,
+            "fuzzy"
+        }
     end
 
     self._options.actions = vim.tbl_deep_extend("keep", self._options.actions, {

@@ -309,8 +309,7 @@ function Stream:start(cmd, opts)
 
     if type(cmd) == "function" then
         local did_exit = false
-        assert(self._options.lines)
-        local cb = function(data)
+        local callback = function(data)
             if not did_exit and data ~= nil then
                 self:_handle_data(
                     data,
@@ -323,14 +322,16 @@ function Stream:start(cmd, opts)
             end
             Async.yield()
         end
-        local executor = Async.wrap(function()
-            local ok, err = utils.safe_call(cmd, cb, opts.args)
-            if not ok and did_exit == false then
-                local code = not ok and 1 or 0
-                self:_handle_exit(code, err)
+        local executor = Async.wrap(function(stream)
+            local ok, err = utils.safe_call(
+                cmd, callback, opts.args
+            )
+            local code = not ok and 1 or 0
+            if did_exit == false then
+                stream:_handle_exit(code, err)
             end
         end)
-        self._state.handle = executor()
+        self._state.handle = executor(self)
         Scheduler.add(self._state.handle)
     else
         local stdio = self:_make_stream()
@@ -372,7 +373,7 @@ end
 --- @field lines? boolean Whether the stream processes data in lines, mutually exclusive with `bytes`, defaults to true
 --- @field step? integer The number of lines or bytes to accumulate before flushing to the callback, defaults to 100000
 --- @field timeout? integer The maximum time to wait in milliseconds when calling :wait, defaults to utils.MAX_TIMEOUT
---- @field onexit? fun(number, msg): any Report the exit status of the stream to the consumer, invoked with the exit code and optional error message
+--- @field onexit? fun(number, msg): any Report the exit status of the stream to the consumer, this function receives two arguments, the exit code and an optional message, defaults to a function which notifies the user of non zero exit code.
 
 --- Creates a new Stream instance with the given options, or default options if none are provided
 --- @param opts StreamOptions|nil The options for the stream
@@ -398,12 +399,12 @@ function Stream.new(opts)
             end
             if type(msg) ~= "string" then
                 msg = string.format(
-                    "%s code %d",
+                    "%s code: %d",
                     BASEMSG, code
                 )
             else
                 msg = string.format(
-                    "%s %s and code %d",
+                    "%s: %s and code: %d",
                     BASEMSG, msg, code
                 )
             end

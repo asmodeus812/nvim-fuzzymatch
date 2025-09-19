@@ -42,6 +42,7 @@ function M.setup(opts)
     vim.api.nvim_set_hl(0, "SelectToggleSign", { link = "Special", default = false })
     vim.api.nvim_set_hl(0, "SelectPrefixText", { link = "Normal", default = false })
     vim.api.nvim_set_hl(0, "SelectStatusText", { link = "NonText", default = false })
+    vim.api.nvim_set_hl(0, "SelectToggleCount", { link = "NonText", default = false })
 
     vim.api.nvim_set_hl(0, "SelectHeaderDefault", { link = "Normal", default = false })
     vim.api.nvim_set_hl(0, "SelectHeaderPadding", { link = "NonText", default = false })

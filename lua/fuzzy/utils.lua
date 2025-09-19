@@ -174,6 +174,21 @@ function M.compare_tables(t1, t2, visited)
     return true
 end
 
+--- Removes all elements form a table matching by value. If at least one element is removed, the function returns true, otherwise false.
+--- @param tbl table The table to remove the element from
+--- @param o any The element to remove by value
+function M.table_remove(tbl, o)
+    assert(tbl and #tbl >= 0)
+    local removed = false
+    for i = #tbl, 1, -1 do
+        if tbl[i] == o then
+            table.remove(tbl, i)
+            removed = true
+        end
+    end
+    return removed
+end
+
 --- Measure and log the execution time of a function, including its name and definition location. The function is called with the provided arguments, and any errors during execution are propagated.
 --- @param func function The function to measure
 --- @param ... any Arguments to pass to the function

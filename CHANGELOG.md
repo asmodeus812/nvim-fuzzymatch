@@ -1,3 +1,13 @@
+## [0.0.1] - 2025-09-19
+
+### Added
+
+- Initial release of the `picker` library.
+
+### Fixed
+
+- Fixing various bugs and issues found during initial testing.
+
 ## [Unreleased]
 
 ### Added
