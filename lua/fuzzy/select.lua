@@ -1959,7 +1959,7 @@ function Select:open()
                 split = "below", win = -1, height = 1, noautocmd = false
             });
             vim.api.nvim_win_set_height(prompt_window, 1)
-            prompt_window = initialize_window(prompt_window, opts.window_options.prompt)
+            initialize_window(prompt_window, opts.window_options.prompt)
         end
 
         local query = self:query()
@@ -2036,7 +2036,7 @@ function Select:open()
                 split = self.prompt_window and "above" or "below",
             });
             vim.api.nvim_win_set_height(list_window, list_height)
-            list_window = initialize_window(list_window, opts.window_options.list)
+            initialize_window(list_window, opts.window_options.list)
 
             local offset = math.floor(math.ceil(size * 0.20))
             vim.wo[list_window].scrolloff = math.max(1, offset)
@@ -2084,7 +2084,7 @@ function Select:open()
                 win = self.list_window or -1,
             });
             vim.api.nvim_win_set_height(preview_window, preview_height)
-            preview_window = initialize_window(preview_window, opts.window_options.preview)
+            initialize_window(preview_window, opts.window_options.preview)
         end
 
         self.preview_window = preview_window
