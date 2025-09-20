@@ -32,11 +32,21 @@ Picker.Converter = {}
 Picker.Converter.__index = Picker.Converter
 
 --- Simple conveter that is a no-op, it returns the entry as is, without any conversion. This can be useful when the entries are already in the desired format, or when no conversion is needed. No extra validation or checks are performed on the entry, it is simply returned as is.
+--- @param entry any the entry to convert, can be of any type
+--- @return any the same entry that was passed in, without any conversion
 function Picker.noop_converter(entry)
     return entry
 end
 
+--- Simple conveter that wraps around the Select.default_converter, it attempts to convert the entry, into the proper structure understood by the built-in modules, it can interpret entries such as numbers, strings and tables
+--- @param entry any the entry to convert, can be a number, string or table
+--- @return table|false|nil a table with at least the following keys - `filename` - string, `lnum` - number, `col` - number, or false if the entry could not be converted
+function Picker.default_converter(entry)
+    return Select.default_converter(entry)
+end
+
 --- A simple converter that can be used to convert error-like entries, the expected format is `filename:line:col: type: message`, where filename is the path to the file, line is the line number, col is the column number, type is the type of error (e.g. error, warning, info), and message is the rest of the line. The converter returns a table with the following keys - `filename` - string, `lnum` - number, `col` - number, or false if the entry could not be converted.
+--- @param entry string the entry to convert, must be a non-empty string
 function Picker.err_converter(entry)
     assert(type(entry) == "string" and #entry > 0)
     local pat = "^([^:]+):(%d+):(%d+):%s*[^:]+:%s*(.+)$"
@@ -67,6 +77,7 @@ function Picker.ls_converter(entry)
 end
 
 --- A simple converter function that can be used to convert grep-like entries, the expected format is `filename:line:col:message`, where filename is the path to the file, line is the line number, col is the column number, and message is the rest of the line. The message part is ignored by this converter. The converter returns a table with the following keys - `filename` - string, `lnum` - number, `col` - number, or false if the entry could not be converted.
+--- @param entry string the entry to convert, must be a non-empty string
 function Picker.grep_converter(entry)
     local pat = "^([^:]+):(%d+):(%d+):(.+)$"
     assert(type(entry) == "string" and #entry >= 0)
@@ -82,6 +93,7 @@ function Picker.grep_converter(entry)
 end
 
 --- A visitor function that can be used to ensure that the filename in the entry is absolute, based on the current working directory of the picker. If the filename is already absolute, it is returned as is. If the filename is relative, it is joined with the cwd from the picker context to produce an absolute path
+--- @param entry string the entry to convert, must be a non-empty string
 function Picker.cwd_visitor(entry, context)
     if entry == false or entry == nil then
         return false
@@ -517,7 +529,6 @@ function Picker:_create_stage()
             ),
             prompt_decor = picker_options.prompt_decor,
             window_ratio = picker_options.window_size,
-            list_step = picker_options.display_step,
         }),
         match = Match.new({
             timer = picker_options.match_timer,
@@ -725,7 +736,6 @@ end
 --- @field match_limit? number|nil the maximum number of matches to keep, nil means no limit.
 --- @field match_timer? number the time in milliseconds to wait before flushing the matching results, this is useful when dealing with large result sets.
 --- @field match_step? number the number of entries to process in each matching step, this is useful when dealing with large result sets.
---- @field display_step? number of entries to process in a single batch when rendering items into the list, useful when using a more complex or demanding display function that takes some time to process.
 --- @field stream_type? "lines"|"bytes" whether the stream produces lines or bytes, when lines is used the stream will be split on newlines, when bytes is used the stream will be split on byte size.
 --- @field stream_step? number the number of bytes or lines to read in each streaming step, this is useful when dealing with large result sets.
 --- @field stream_debounce? number the time in milliseconds to debounce the flush calls of the stream, this is useful to avoid stream batch flushes in quick succession, when the results accumulate fast enough that we can combine into a single flush call instead, caused by the executable being too fast, or the `stream_step` being too small.
@@ -750,7 +760,6 @@ function Picker.new(opts)
         match_limit = { opts.match_limit, { "number", "nil" }, true },
         match_timer = { opts.match_timer, "number", true },
         match_step = { opts.match_step, "number", true },
-        display_step = { opts.display_step, "number", true },
         stream_step = { opts.stream_step, "number", true },
         stream_type = { opts.stream_type, { "string", "nil" }, true, { "lines", "bytes" } },
         stream_debounce = { opts.stream_debounce, { "number", "nil" }, true },
@@ -777,7 +786,6 @@ function Picker.new(opts)
         match_timer = 100,
         match_step = 50000,
         stream_step = 100000,
-        display_step = 200000,
         stream_type = "lines",
         stream_debounce = 0,
         window_size = 0.15,
@@ -858,7 +866,6 @@ function Picker.new(opts)
         prompt_query = opts.prompt_query,
         prompt_decor = opts.prompt_decor,
         window_ratio = opts.window_size,
-        list_step = opts.display_step,
     })
 
     if self:_is_interactive() then

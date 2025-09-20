@@ -9,7 +9,7 @@ function M.files(opts)
     }
 
     local converter = Picker.Converter.new(
-        Picker.noop_converter,
+        Picker.default_converter,
         Picker.cwd_visitor
     )
     local cb = converter:get()
@@ -26,17 +26,16 @@ function M.files(opts)
             },
             cwd = opts.cwd
         },
-        preview = Select.BufferPreview.new(
-        ),
+        preview = Select.BufferPreview.new(nil, cb),
         actions = {
-            ["<cr>"] = Select.action(Select.select_entry, cb),
-            ["<c-q>"] = Select.action(Select.send_quickfix, cb),
-            ["<c-t>"] = Select.action(Select.select_tab, cb),
-            ["<c-v>"] = Select.action(Select.select_vertical, cb),
-            ["<c-s>"] = Select.action(Select.select_horizontal, cb),
+            ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
+            ["<c-q>"] = Select.action(Select.send_quickfix, Select.all(cb)),
+            ["<c-t>"] = Select.action(Select.select_tab, Select.all(cb)),
+            ["<c-v>"] = Select.action(Select.select_vertical, Select.all(cb)),
+            ["<c-s>"] = Select.action(Select.select_horizontal, Select.all(cb)),
         },
         decorators = {
-            Select.IconDecorator.new(cb),
+            Select.IconDecorator.new(),
         },
     })
     converter:bind(picker)
@@ -63,8 +62,8 @@ function M.grep(opts)
         context = {
             args = {
                 "--column",
-                -- "--hidden",
-                -- "--no-ignore",
+                "--hidden",
+                "--no-ignore",
                 "--line-number",
                 "--no-heading",
                 "{prompt}",
@@ -72,20 +71,13 @@ function M.grep(opts)
             cwd = opts.cwd,
             interactive = "{prompt}",
         },
-        preview = Select.CommandPreview.new(
-            {
-                "bat",
-                "--plain",
-                "--paging=never",
-            },
-            cb
-        ),
+        -- preview = Select.CommandPreview.new("cat", cb),
         actions = {
             ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
             ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(cb)), "qflist" },
-            ["<c-t>"] = { Select.action(Select.send_quickfix, Select.all(cb)), "tabe" },
-            ["<c-v>"] = { Select.action(Select.send_quickfix, Select.all(cb)), "vert" },
-            ["<c-s>"] = { Select.action(Select.send_quickfix, Select.all(cb)), "split" },
+            ["<c-t>"] = { Select.action(Select.select_tab, Select.all(cb)), "tabe" },
+            ["<c-v>"] = { Select.action(Select.select_vertical, Select.all(cb)), "vert" },
+            ["<c-s>"] = { Select.action(Select.select_horizontal, Select.all(cb)), "split" },
         },
         decorators = {
             Select.IconDecorator.new(cb)
@@ -102,7 +94,7 @@ function M.dirs(opts)
     }
 
     local converter = Picker.Converter.new(
-        Picker.noop_converter,
+        Picker.default_converter,
         Picker.cwd_visitor
     )
     local cb = converter:get()
@@ -129,11 +121,11 @@ function M.dirs(opts)
             "ls", "-lah"
         }, cb),
         actions = {
-            ["<cr>"] = Select.action(Select.select_entry, cb),
-            ["<c-q>"] = Select.action(Select.send_quickfix, cb),
-            ["<c-t>"] = Select.action(Select.select_tab, cb),
-            ["<c-v>"] = Select.action(Select.select_vertical, cb),
-            ["<c-s>"] = Select.action(Select.select_horizontal, cb),
+            ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
+            ["<c-q>"] = Select.action(Select.send_quickfix, Select.all(cb)),
+            ["<c-t>"] = Select.action(Select.select_tab, Select.all(cb)),
+            ["<c-v>"] = Select.action(Select.select_vertical, Select.all(cb)),
+            ["<c-s>"] = Select.action(Select.select_horizontal, Select.all(cb)),
         },
         -- find`s a bit slow
         stream_step = 50000,

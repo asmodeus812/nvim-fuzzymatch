@@ -162,44 +162,6 @@ local function line_mapper(entry, display)
     end
 end
 
-local function entry_mapper(entry)
-    local col = 1
-    local lnum = 1
-    local fname = nil
-    local bufnr = nil
-
-    if type(entry) == "table" then
-        col = entry.col or 1
-        lnum = entry.lnum or 1
-        bufnr = entry.bufnr or nil
-        fname = entry.filename or nil
-        if bufnr and not fname and assert(vim.api.nvim_buf_is_valid(bufnr)) then
-            fname = vim.api.nvim_buf_get_name(bufnr)
-        end
-    elseif type(entry) == "number" then
-        assert(entry > 0 and vim.api.nvim_buf_is_valid(entry))
-        bufnr = entry
-        fname = vim.api.nvim_buf_get_name(bufnr)
-    elseif type(entry) == "string" then
-        assert(#entry > 0)
-        fname = entry
-        bufnr = vim.fn.bufnr(fname, false)
-        bufnr = bufnr > 0 and bufnr or nil
-    end
-    -- TODO: normalize the fname to be absolute, vim.fn.expand ?
-    -- buf_get_name and expand can differ based on the cwd, this
-    -- needs to be taken care of when taking the full buffer name
-    assert(fname ~= nil or bufnr ~= nil)
-    assert(#fname > 0 or bufnr > 0)
-
-    return {
-        col = col,
-        lnum = lnum,
-        bufnr = bufnr,
-        filename = fname,
-    }
-end
-
 local function compute_height(multiplier, factor)
     local ratio = math.abs(multiplier / factor)
     return math.ceil(vim.o.lines * ratio)
@@ -260,9 +222,9 @@ local function send_input(input, window, callback, mode)
         else
             vim.cmd.normal({ args = { term_codes }, bang = true })
         end
-        local cursor = vim.api.nvim_win_get_cursor(window)
+        local position = vim.api.nvim_win_get_cursor(window)
         vim.o.eventignore = old_ignore
-        utils.safe_call(callback, cursor)
+        utils.safe_call(callback, position)
     end)
 end
 
@@ -323,172 +285,178 @@ local function virtual_content(buffer, ns, line, col, text, lines)
     })
 end
 
-local function populate_buffer(buffer, entries, display, step)
+local function populate_buffer(buffer, items, display, step)
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
     if step ~= nil and step > 0 then
-        local size = math.min(#entries, step)
+        local size = math.min(#items, step)
         local lines = utils.obtain_table(size)
         utils.resize_table(lines, size, utils.EMPTY_STRING)
 
         local start, _end = 1, size
         repeat
             for target = start, _end, 1 do
-                lines[(target - start) + 1] = line_mapper(entries[target], display)
+                lines[(target - start) + 1] = line_mapper(items[target], display)
             end
             assert(#lines == size)
             Async.yield()
 
             vim.api.nvim_buf_set_lines(buffer, start - 1, _end, false, lines)
-            start = math.min(#entries, _end + 1)
-            _end = math.min(#entries, _end + step)
-        until start == #entries or start > _end
+            start = math.min(#items, _end + 1)
+            _end = math.min(#items, _end + step)
+        until start == #items or start > _end
 
         vim.api.nvim_buf_set_lines(buffer, _end, -1, false, {})
-        assert(vim.api.nvim_buf_line_count(buffer) == #entries)
+        assert(vim.api.nvim_buf_line_count(buffer) == #items)
         utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
     else
         if display ~= nil then
             local mapper = function(entry)
                 return line_mapper(entry, display)
             end
-            entries = vim.tbl_map(mapper, entries)
+            items = vim.tbl_map(mapper, items)
         end
-        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, entries)
+        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, items)
     end
     vim.bo[buffer].modifiable = oldma
     vim.bo[buffer].modified = false
 end
 
 local function populate_range(buffer, start, _end, entries, display)
-    assert(start <= _end and start > 0)
-    local diff = math.abs(_end - start) + 1
-    local lines = utils.obtain_table(diff)
-    utils.resize_table(lines, diff, utils.EMPTY_STRING)
-
-    for target = start, _end, 1 do
-        lines[(target - start) + 1] = line_mapper(entries[target], display)
-    end
-    assert(#lines == diff)
-    Async.yield()
-
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
-    vim.api.nvim_buf_set_lines(buffer, start - 1, _end, false, lines)
-    utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
+
+    if _end > 0 then
+        assert(start <= _end and start > 0)
+        local diff = math.abs(_end - start) + 1
+        local lines = utils.obtain_table(diff)
+        utils.resize_table(lines, diff, utils.EMPTY_STRING)
+
+        for target = start, _end, 1 do
+            lines[(target - start) + 1] = line_mapper(entries[target], display)
+        end
+        assert(#lines == diff)
+        Async.yield()
+
+        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
+        utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
+    else
+        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, utils.EMPTY_TABLE)
+    end
+
     vim.bo[buffer].modifiable = oldma
     vim.bo[buffer].modified = false
 end
 
-local function highlight_range(buffer, start, _end, entries, positions, display, override)
+local function highlight_range(buffer, start, _end, entries, positions, display)
+    vim.api.nvim_buf_clear_namespace(buffer,
+        LIST_HIGHLIGHT_NAMESPACE, 0, -1
+    )
+
+    if _end == 0 then return end
     assert(start <= _end and start > 0)
+
     for target = start, _end, 1 do
-        if positions and #positions > 0 and target <= #positions then
-            assert(target <= #entries)
-            local marks = (override == false) and vim.api.nvim_buf_get_extmarks(
-                buffer, LIST_HIGHLIGHT_NAMESPACE,
-                { target - 1, 0 }, { target - 1, -1 },
-                highlight_extmark_opts
+        assert(target <= #entries)
+        local entry = entries[target]
+        local matches = positions[target]
+        local index = (target - start) + 1
+        assert(#matches % 2 == 0 and entry ~= nil)
+
+        local decors = vim.api.nvim_buf_get_extmarks(
+            buffer, LIST_DECORATED_NAMESPACE,
+            { index - 1, 0 }, { index - 1, -1 },
+            detailed_extmark_opts
+        )
+
+        -- if the line has been decorated, we need to offset the highlights by the
+        -- length of the last decoration, as it is the one that will be at the end
+        local decor = decors ~= nil and #decors > 0 and decors[#decors]
+        local offset = (decor and #decor >= 4 and decor[4].end_col + 1 or 0)
+
+        for i = 1, #matches, 2 do
+            local byte_start, byte_end = compute_offsets(
+                line_mapper(entry, display), matches[i + 0], matches[i + 1]
             )
-            if not marks or #marks < 1 then
-                local entry = entries[target]
-                local matches = positions[target]
-                assert(#matches % 2 == 0 and entry ~= nil)
-
-                local decors = vim.api.nvim_buf_get_extmarks(
-                    buffer, LIST_DECORATED_NAMESPACE,
-                    { target - 1, 0 }, { target - 1, -1 },
-                    detailed_extmark_opts
-                )
-
-                -- if the line has been decorated, we need to offset the highlights by the
-                -- length of the last decoration, as it is the one that will be at the end
-                local decor = decors ~= nil and #decors > 0 and decors[#decors]
-                local offset = (decor and #decor >= 4 and decor[4].end_col + 1 or 0)
-
-                for i = 1, #matches, 2 do
-                    local byte_start, byte_end = compute_offsets(
-                        line_mapper(entry, display), matches[i + 0], matches[i + 1]
-                    )
-                    vim.api.nvim_buf_set_extmark(
-                        buffer,
-                        LIST_HIGHLIGHT_NAMESPACE,
-                        target - 1,
-                        offset + byte_start,
-                        {
-                            strict = false,
-                            hl_eol = false,
-                            invalidate = true,
-                            ephemeral = false,
-                            undo_restore = false,
-                            right_gravity = true,
-                            end_right_gravity = true,
-                            hl_group = "IncSearch",
-                            end_line = target - 1,
-                            end_col = offset + byte_end
-                        }
-                    )
-                end
-            end
+            vim.api.nvim_buf_set_extmark(
+                buffer,
+                LIST_HIGHLIGHT_NAMESPACE,
+                index - 1,
+                offset + byte_start,
+                {
+                    strict = false,
+                    hl_eol = false,
+                    invalidate = true,
+                    ephemeral = false,
+                    undo_restore = false,
+                    right_gravity = true,
+                    end_right_gravity = true,
+                    hl_group = "IncSearch",
+                    end_line = index - 1,
+                    end_col = offset + byte_end
+                }
+            )
         end
     end
     Async.yield()
 end
 
-local function decorate_range(buffer, start, _end, entries, decorators, display, override)
+local function decorate_range(buffer, start, _end, entries, decorators, display)
+    vim.api.nvim_buf_clear_namespace(buffer,
+        LIST_DECORATED_NAMESPACE, 0, -1
+    )
+
+    if _end == 0 then return end
     assert(start <= _end and start > 0)
+
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
+
     for target = start, _end, 1 do
-        local marks = (override == false) and vim.api.nvim_buf_get_extmarks(
-            buffer, LIST_DECORATED_NAMESPACE,
-            { target - 1, 0 }, { target - 1, -1 },
-            highlight_extmark_opts
+        local entry = entries[target]
+        local index = (target - start) + 1
+        local content, highlights = compute_decoration(entry,
+            line_mapper(entry, display), decorators
         )
-        if not marks or #marks < 1 then
-            local entry = entries[target]
-            local content, highlights = compute_decoration(entry,
-                line_mapper(entry, display), decorators
+        if #content > 0 then
+            assert(#content == #highlights)
+
+            -- prefix the line with the decorations, they are concatenated in order from the content table,
+            -- afterwards the matching highlights are inserted as extmarks, this will make sure that this append
+            -- is going to shift the extmarks forward
+            table.insert(content, "") -- extra padding
+            local decor = table.concat(content, " ")
+            vim.api.nvim_buf_set_text(buffer,
+                index - 1, 0, index - 1, 0, { decor }
             )
-            if #content > 0 then
-                assert(#content == #highlights)
 
-                -- prefix the line with the decorations, they are concatenated in order from the content table,
-                -- afterwards the matching highlights are inserted as extmarks, this will make sure that this append
-                -- is going to shift the extmarks forward
-                table.insert(content, "") -- extra padding
-                local decor = table.concat(content, " ")
-                vim.api.nvim_buf_set_text(buffer,
-                    target - 1, 0, target - 1, 0, { decor }
+            local offset = 0
+            for position, highlight in ipairs(highlights) do
+                local decor_item = content[position]
+                local end_col = offset + #decor_item
+                vim.api.nvim_buf_set_extmark(
+                    buffer,
+                    LIST_DECORATED_NAMESPACE,
+                    index - 1,
+                    offset,
+                    {
+                        strict = true,
+                        hl_eol = false,
+                        invalidate = true,
+                        ephemeral = false,
+                        undo_restore = false,
+                        end_col = end_col,
+                        end_line = index - 1,
+                        right_gravity = true,
+                        end_right_gravity = true,
+                        hl_group = highlight,
+                    }
                 )
-
-                local offset = 0
-                for index, highlight in ipairs(highlights) do
-                    local decor_item = content[index]
-                    local end_col = offset + #decor_item
-                    vim.api.nvim_buf_set_extmark(
-                        buffer,
-                        LIST_DECORATED_NAMESPACE,
-                        target - 1,
-                        offset,
-                        {
-                            strict = true,
-                            hl_eol = false,
-                            invalidate = true,
-                            ephemeral = false,
-                            undo_restore = false,
-                            end_col = end_col,
-                            end_line = target - 1,
-                            right_gravity = true,
-                            end_right_gravity = true,
-                            hl_group = highlight,
-                        }
-                    )
-                    offset = end_col + 1
-                end
+                offset = end_col + 1
             end
         end
     end
+
     vim.bo[buffer].modifiable = oldma
     vim.bo[buffer].modified = false
     Async.yield()
@@ -499,15 +467,19 @@ local function toggle_range(buffer, start, _end, name, toggled)
         "list_toggle_entry_group",
         { buffer = buffer }
     )
+
+    if _end == 0 then return end
     assert(start <= _end and start > 0)
+
     for target = start, _end, 1 do
         local line = tostring(target)
+        local index = (target - start) + 1
         if (toggled.all == true and toggled.entries[line] == nil) or toggled.entries[line] == true then
             vim.fn.sign_place(target,
                 "list_toggle_entry_group",
                 name, buffer,
                 {
-                    lnum = target,
+                    lnum = index,
                     priority = 10,
                 }
             )
@@ -515,11 +487,11 @@ local function toggle_range(buffer, start, _end, name, toggled)
     end
 end
 
-local function display_entry(strategy, entry, window, buffer)
+local function display_entry(previewer, entry, window, buffer)
     vim.schedule(function()
         local old_ignore = vim.o.eventignore
         vim.o.eventignore = "all"
-        local ok, res, msg = pcall(strategy.preview, strategy, entry, window)
+        local ok, res, msg = pcall(previewer.preview, previewer, entry, window)
         if ok and res == false then
             vim.api.nvim_win_set_buf(window, assert(buffer))
             vim.api.nvim_win_set_cursor(window, { 1, 0 })
@@ -540,7 +512,7 @@ end
 function Select.BufferPreview.new(ignored, converter)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.BufferPreview)
-    obj.converter = converter or entry_mapper
+    obj.converter = converter or Select.default_converter
     obj.ignored = ignored or {
         -- Executable/Binary
         "exe", "dll", "so", "dylib", "bin", "app", "msi",
@@ -579,7 +551,7 @@ end
 --- an empty buffer is created. If the filename has an ignored extension the entry is not previewed.
 --- @param entry any The entry to preview, this is passed to the converter function to extract the bufnr, filename, lnum and col fields.
 --- @param window integer The window ID of the preview window where the output should be displayed.
---- @return boolean Returns false if the entry could not be previewed
+--- @return boolean, any? Returns false if the entry could not be previewed
 function Select.BufferPreview:preview(entry, window)
     entry = self.converter(entry)
     if entry == false then
@@ -644,6 +616,7 @@ function Select.BufferPreview:preview(entry, window)
     else
         return false, "Unable to load the entry into a buffer"
     end
+    return true
 end
 
 --- Create a new custom previewer instance, the callback is invoked on each entry that has to be previewed
@@ -707,6 +680,7 @@ function Select.CustomPreview:preview(entry, window)
         local buffer = assert(vim.fn.bufnr(name, false))
         vim.api.nvim_win_set_buf(window, buffer)
     end
+    return true
 end
 
 --- Create a new command previewer instance, the command is run in a terminal job and the output is streamed to the preview buffer, the
@@ -717,7 +691,7 @@ end
 function Select.CommandPreview.new(command, converter)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.CommandPreview)
-    obj.converter = converter or entry_mapper
+    obj.converter = converter or Select.default_converter
     obj.command = assert(command)
     obj.buffers = {}
     obj.jobs = {}
@@ -801,8 +775,8 @@ function Select.CommandPreview:preview(entry, window)
         local on_stdata = function(_, data)
             for _, value in ipairs(data or {}) do
                 if value and #value > 0 then
-                    vim.api.nvim_chan_send(chan, value)
-                    vim.api.nvim_chan_send(chan, "\r\n")
+                    pcall(vim.api.nvim_chan_send, chan, value)
+                    pcall(vim.api.nvim_chan_send, chan, "\r\n")
                 end
             end
         end
@@ -847,7 +821,7 @@ end
 function Select.IconDecorator.new(converter)
     local obj = Select.Decorator.new()
     setmetatable(obj, Select.IconDecorator)
-    obj.converter = converter or entry_mapper
+    obj.converter = converter or Select.default_converter
     return obj
 end
 
@@ -952,8 +926,7 @@ function Select:_list_selection()
     local entries = assert(self._state.entries)
     local size = toggled_count(entries, toggled)
     if size == 0 then
-        local list_window = assert(self.list_window)
-        local cursor = vim.api.nvim_win_get_cursor(list_window)
+        local cursor = assert(self._state.cursor)
         assert(cursor[1] >= 1 and cursor[1] <= #entries)
         return { entries[cursor[1]] }
     else
@@ -1002,32 +975,17 @@ function Select:_create_mappings(buffer, mode, mappings)
     end
 end
 
-function Select:_populate_list(full)
+function Select:_populate_list()
     local entries = self._state.entries
-    local streaming = self._state.streaming
-    if streaming == true and entries and #entries >= 0 then
-        if #entries == 0 then
-            populate_buffer(
-                self.list_buffer,
-                utils.EMPTY_TABLE
-            )
-        elseif full == true and self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
-            populate_buffer(
-                self.list_buffer, entries,
-                self._options.display,
-                self._options.list_step
-            )
-        elseif full == false and self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
-            local cursor = vim.api.nvim_win_get_cursor(self.list_window)
-            local height = vim.api.nvim_win_get_height(self.list_window)
-            cursor[1] = math.min(cursor[1], #entries)
-            vim.api.nvim_win_set_cursor(self.list_window, cursor)
-            populate_range(
-                self.list_buffer,
-                math.max(1, cursor[1] - height),
-                math.min(#entries, cursor[1] + height),
-                entries, self._options.display)
-        end
+    if entries and #entries >= 0 then
+        local position = vim.api.nvim_win_get_cursor(self.list_window)
+        local height = vim.api.nvim_win_get_height(self.list_window)
+        local cursor = assert(self._state.cursor)
+        populate_range(
+            self.list_buffer,
+            math.max(1, cursor[1] - (position[1] - 1)),
+            math.min(#entries, cursor[1] + (height - position[1])),
+            entries, self._options.display)
     end
 end
 
@@ -1039,12 +997,13 @@ function Select:_display_toggle()
             "list_toggle_entry_sign_%d",
             self.list_buffer
         )
-        local cursor = vim.api.nvim_win_get_cursor(self.list_window)
+        local position = vim.api.nvim_win_get_cursor(self.list_window)
         local height = vim.api.nvim_win_get_height(self.list_window)
+        local cursor = assert(self._state.cursor)
         toggle_range(
             self.list_buffer,
-            math.max(1, cursor[1] - height),
-            math.min(#entries, cursor[1] + height),
+            math.max(1, cursor[1] - (position[1] - 1)),
+            math.min(#entries, cursor[1] + (height - position[1])),
             sign_name, toggled
         )
     end
@@ -1053,33 +1012,33 @@ end
 function Select:_highlight_list()
     local entries = self._state.entries
     local positions = self._state.positions
-    if entries and #entries > 0 and positions and #positions > 0 then
-        local cursor = vim.api.nvim_win_get_cursor(self.list_window)
+    if entries and #entries >= 0 and positions and #positions > 0 then
+        local position = vim.api.nvim_win_get_cursor(self.list_window)
         local height = vim.api.nvim_win_get_height(self.list_window)
+        local cursor = assert(self._state.cursor)
         assert(#entries == #positions)
         highlight_range(
             self.list_buffer,
-            math.max(1, cursor[1] - height),
-            math.min(#entries, cursor[1] + height),
+            math.max(1, cursor[1] - (position[1] - 1)),
+            math.min(#entries, cursor[1] + (height - position[1])),
             entries, positions,
-            self._options.display,
-            self._state.streaming)
+            self._options.display)
     end
 end
 
 function Select:_decorate_list()
     local entries = self._state.entries
     local decorators = self._options.decorators
-    if entries and #entries > 0 and decorators and #decorators > 0 then
-        local cursor = vim.api.nvim_win_get_cursor(self.list_window)
+    if entries and #entries >= 0 and decorators and #decorators > 0 then
+        local position = vim.api.nvim_win_get_cursor(self.list_window)
         local height = vim.api.nvim_win_get_height(self.list_window)
+        local cursor = assert(self._state.cursor)
         decorate_range(
             self.list_buffer,
-            math.max(1, cursor[1] - height),
-            math.min(#entries, cursor[1] + height),
+            math.max(1, cursor[1] - (position[1] - 1)),
+            math.min(#entries, cursor[1] + (height - position[1])),
             entries, decorators,
-            self._options.display,
-            self._state.streaming)
+            self._options.display)
     end
 end
 
@@ -1095,7 +1054,7 @@ function Select:_display_preview()
             vim.api.nvim_win_set_cursor(window, { 1, 0 })
             populate_buffer(buffer, {})
         else
-            local cursor = vim.api.nvim_win_get_cursor(self.list_window)
+            local cursor = assert(self._state.cursor)
             local entry = assert(entries[cursor[1]])
             display_entry(
                 previewer, entry,
@@ -1106,10 +1065,10 @@ function Select:_display_preview()
     end
 end
 
-function Select:_render_list(full)
+function Select:_render_list()
     local executor = Async.wrap(function()
         if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
-            self:_populate_list(full)
+            self:_populate_list()
         end
 
         if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
@@ -1326,27 +1285,46 @@ end
 --- @param dir integer The direction to move the cursor, positive values move down, negative values move up, values greater than 1 move to the end, values less than -1 move to the start
 function Select:move_cursor(dir, callback)
     local entries = self._state.entries
-    local count = vim.api.nvim_buf_line_count(self.list_buffer)
+    local cursor = self._state.cursor
+    if not entries or #entries == 0 then
+        return
+    end
+
+    assert(cursor[1] >= 1 and cursor[1] <= #entries)
+    assert(vim.wo[self.list_window].scrolloff == 0)
+
+    local position = vim.api.nvim_win_get_cursor(self.list_window)
+    local height = vim.api.nvim_win_get_height(self.list_window)
+
+    local offset = self._options.list_offset
+    height = math.min(height, #entries)
+
+    if cursor[1] == 1 and dir < 0 then cursor[1] = 0 end
+    cursor[1] = (cursor[1] + dir) % (#entries + 1)
+    if cursor[1] == 0 and dir > 0 then cursor[1] = 1 end
 
     if dir > 1 then
-        count = entries and math.max(#entries, count) or count
-        vim.api.nvim_win_set_cursor(self.list_window, { count, 0 })
+        cursor[1] = #entries
+        position[1] = height
+        self:_render_list()
     elseif dir < -1 then
-        vim.api.nvim_win_set_cursor(self.list_window, { 1, 0 })
+        cursor[1] = 1
+        position[1] = 1
+        self:_render_list()
     else
-        local cursor = vim.api.nvim_win_get_cursor(self.list_window)
-
-        -- ensure that if not all entries are rendered, we don't move the cursor past the end of the entries,
-        -- meaning we do not allow looping from the first entry to the last one until all entries are rendered
-        dir = (cursor[1] == 1 and dir < 0 and count < #entries) and 0 or dir
-
-        if dir and dir ~= 0 then
-            if cursor[1] == 1 and dir < 0 then cursor[1] = 0 end
-            cursor[1] = (cursor[1] + dir) % (count + 1)
-            if cursor[1] == 0 and dir > 0 then cursor[1] = 1 end
-            vim.api.nvim_win_set_cursor(self.list_window, cursor)
+        if (dir < 0 and position[1] > (offset + 1)) or (dir > 0 and position[1] < (height - offset)) then
+            position[1] = math.min(math.max(position[1] + dir, 1), height)
+        else
+            if cursor[1] <= offset then
+                position[1] = cursor[1]
+            elseif cursor[1] >= (#entries - offset) then
+                position[1] = height - (#entries - cursor[1])
+            end
+            position[1] = math.max(math.min(position[1], height), 1)
+            self:_render_list()
         end
     end
+    vim.api.nvim_win_set_cursor(self.list_window, position)
 
     self:_display_preview()
 
@@ -1368,7 +1346,7 @@ function Select:exec_command(command, mods, callback)
         return
     else
         result = vim.tbl_map(
-            entry_mapper,
+            Select.default_converter,
             result or selection
         )
     end
@@ -1422,7 +1400,7 @@ function Select:send_fixlist(type, callback)
         return
     else
         result = vim.tbl_map(
-            entry_mapper,
+            Select.default_converter,
             result or selection
         )
     end
@@ -1487,9 +1465,8 @@ end
 --- Toggles the selection state of the current entry in the list, using signs to indicate selection, and moves the cursor down by one entry by default.
 --- @param callback? function A function that takes the selection and returns nothing, the selection is a table of entries currently selected in the list. If the callback is nil, no action is performed after toggling the entry.
 function Select:toggle_entry(callback)
-    local list_window = assert(self.list_window)
     local entries = assert(self._state.entries)
-    local cursor = vim.api.nvim_win_get_cursor(list_window)
+    local cursor = assert(self._state.cursor)
 
     local line = tostring(cursor[1])
     local toggled = self._state.toggled
@@ -1791,16 +1768,12 @@ function Select:list(entries, positions)
         self._state.positions = positions
         self._state.entries = entries
         self._state.streaming = true
-        utils.time_execution(Select._render_list, self, false)
+        utils.time_execution(
+            Select._render_list,
+            self, false
+        )
     elseif positions == nil then
-        utils.time_execution(Select._render_list, self, true)
-        if self._state.renderer then
-            self._state.renderer:await(function()
-                self._state.streaming = false
-            end)
-        else
-            self._state.streaming = false
-        end
+        self._state.streaming = false
     end
 end
 
@@ -2067,11 +2040,9 @@ function Select:open()
             });
             vim.api.nvim_win_set_height(list_window, list_height)
             initialize_window(list_window, opts.window_options.list)
+            vim.wo[list_window].scrolloff = 0
 
-            local offset = math.floor(math.ceil(size * 0.20))
-            vim.wo[list_window].scrolloff = math.max(1, offset)
-
-            local highlight_matches = vim.api.nvim_create_autocmd("WinScrolled", {
+            local highlight_matches = vim.api.nvim_create_autocmd("WinResized", {
                 pattern = tostring(list_window),
                 callback = function()
                     if not self:_is_rendering() and vim.api.nvim_buf_line_count(list_buffer) >= 1 then
@@ -2093,7 +2064,7 @@ function Select:open()
 
         self.list_buffer = list_buffer
         self.list_window = list_window
-        self:_render_list(false)
+        self:_render_list()
     end
 
     if opts.prompt_list and opts.preview then
@@ -2137,6 +2108,46 @@ function Select:open()
     else
         vim.api.nvim_set_current_win(self.source_window)
     end
+end
+
+--- Default converter, which converts an entry into a table with col, lnum, bufnr and filename fields. The entry can be a table, number or string. If the entry is a table, it should have col, lnum, bufnr and filename fields. If the entry is a number, it is treated as a buffer number. If the entry is a string, it is treated as a filename. The converter returns a table with col, lnum, bufnr and filename fields. If the entry is invalid, it raises an assertion error.
+--- @param entry any The entry to convert, can be a table, number or string.
+--- @return table A table with col, lnum, bufnr and filename fields.
+function Select.default_converter(entry)
+    local col = 1
+    local lnum = 1
+    local fname = nil
+    local bufnr = nil
+    assert(entry ~= nil)
+
+    if type(entry) == "table" then
+        col = entry.col or 1
+        lnum = entry.lnum or 1
+        bufnr = entry.bufnr or nil
+        fname = entry.filename or nil
+        if bufnr and not fname and assert(vim.api.nvim_buf_is_valid(bufnr)) then
+            fname = utils.get_bufname(bufnr, utils.get_bufinfo(bufnr))
+        end
+    elseif type(entry) == "number" then
+        assert(entry > 0 and vim.api.nvim_buf_is_valid(entry))
+        bufnr = entry
+        fname = vim.api.nvim_buf_get_name(bufnr)
+    elseif type(entry) == "string" then
+        assert(#entry > 0)
+        fname = entry
+        bufnr = vim.fn.bufnr(fname, false)
+        bufnr = bufnr > 0 and bufnr or nil
+    end
+
+    assert(fname ~= nil or bufnr ~= nil)
+    assert(#fname > 0 or bufnr > 0)
+
+    return {
+        col = col,
+        lnum = lnum,
+        bufnr = bufnr,
+        filename = fname,
+    }
 end
 
 --- Creates an action function that safely calls the provided action with the Select instance as the first argument, and the callback as the
@@ -2203,7 +2214,7 @@ end
 --- @field toggle_prefix? string Prefix to display for toggled entries in the list, when multi select is enabled
 --- @field window_ratio? number Ratio of the window height to the total editor height.
 --- @field window_options? table Options to configure the prompt, list and preview windows. The table should have keys `prompt`, `list` and `preview`, each containing a table of window local options
---- @field list_step? integer|nil Number of entries to render at a time when populating the list.
+--- @field list_offset? integer|nil Number scroll offset lines to leave at the top and bottom of the list when moving between entries, it works just like see :h 'scrolloffset', but is internally not using the native vim property.
 --- @field quickfix_open? fun() Function to open the quickfix list.
 --- @field loclist_open? fun() Function to open the location list.
 --- @field mappings? table<string, fun(self: Select, callback: fun(selection: any, cursor: integer[]|boolean|nil): any)> Key mappings for the selection interface. The keys are the key sequences and the values are functions that take the Select instance and an optional callback as arguments. If `false` is provided for the value of the key-value pair the mapping for that key is disabled
@@ -2225,7 +2236,7 @@ function Select.new(opts)
         toggle_prefix = { opts.toggle_prefix, "string", true },
         window_ratio = { opts.window_ratio, "number", true },
         window_options = { opts.window_options, "table", true },
-        list_step = { opts.list_step, { "number", "nil" }, true },
+        list_offset = { opts.list_offset, "number", true },
         quickfix_open = { opts.quickfix_open, "function", true },
         loclist_open = { opts.loclist_open, "function", true },
         display = { opts.display, { "function", "string", "nil" }, true },
@@ -2263,7 +2274,7 @@ function Select.new(opts)
                 winfixbuf = true,
             },
         },
-        list_step = nil,
+        list_offset = 2,
         decorators = {},
         preview = nil,
         display = nil,
@@ -2310,6 +2321,7 @@ function Select.new(opts)
                 all = false,
                 entries = {}
             },
+            cursor = { 1, 0 },
             entries = nil,
             positions = nil,
             streaming = false

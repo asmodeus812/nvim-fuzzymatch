@@ -5,6 +5,7 @@
 ## Features
 
 - **Fast**: Utilizes the built-in `fuzzymatch` function family for quick fuzzy matching.
+- **Viewport**: Only renders the visible items around the cursor to optimize performance.
 - **Non-blocking**: Designed to minimize UI blocking with batching and debouncing.
 - **Asynchronous**: Handles large datasets without freezing the UI, ensuring a smooth user experience.
 - **Customizable**: Flexible configuration options for various use cases.
@@ -39,6 +40,14 @@ The main goal of this plugin is to provide a fast and performant solution for fu
 any type, regardless of the source, user defined stream or executable command, and to do so in a way that is non-blocking and does not
 interfere with the user experience and usability of the editor. Another goal of this plugin is to minimize spawning external processes and
 leverage only built-in solutions to filter and match list items (With the exception of course when the executable is a provider of content).
+
+`One of the key features of this plugin is the fact that it is not rendering the entire list of items ever, rather it is only rendering the
+items that are visible around the current cursor position, this is important as it allows the picker to handle very large lists of items
+without overwhelming the UI rendering process, and it also allows the picker to be more responsive and snappy. The same is true for the
+application of the line decoration, the decoration is only applied to the visible items in the list, and not to the entire list of items.
+This means that no more than height number of items are ever decorated and rendered at any given time. The height is the height of the
+picker list window, usually around 10-20 lines, depending on the user configuration. Meaning that multi-million item lists can be handled
+with ease, as the picker will only ever render and decorate a small subset of the items at any given time.`
 
 ## Installation
 
@@ -177,7 +186,6 @@ local Picker = require("fuzzy.picker")
 local picker = Picker.new({
     strem_step = 25000,
     match_step = 25000,
-    display_step = 50000,
     content = "grep",
     context = {
         args = {
@@ -405,11 +413,11 @@ picker = Picker.new({
     },
     preview = Select.BufferPreview.new(cb),
     actions = {
-        ["<cr>"] = Select.action(Select.select_entry, cb),
-        ["<c-q>"] = Select.action(Select.send_quickfix, cb),
-        ["<c-t>"] = Select.action(Select.select_tab, cb),
-        ["<c-v>"] = Select.action(Select.select_vertical, cb),
-        ["<c-s>"] = Select.action(Select.select_horizontal, cb),
+        ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
+        ["<c-q>"] = Select.action(Select.send_quickfix, Select.all(cb)),
+        ["<c-t>"] = Select.action(Select.select_tab, Select.all(cb)),
+        ["<c-v>"] = Select.action(Select.select_vertical, Select.all(cb)),
+        ["<c-s>"] = Select.action(Select.select_horizontal, Select.all(cb)),
     },
 })
 converter:bind(picker)
@@ -594,7 +602,6 @@ optimizing performance when dealing with large datasets or slow content stream p
 | `match_limit`     | `number?`         | Maximum number of matches. `nil` means no limit. If a valid non nil number value is provided the fuzzy matching will stop the moment this number is reached.                                                                                                                                                       |
 | `match_timer`     | `number`          | Time in milliseconds between processing matching result batches (useful for large result sets).                                                                                                                                                                                                                    |
 | `match_step`      | `number`          | Number of entries to process in each matching step or batch (useful for large result sets).                                                                                                                                                                                                                        |
-| `display_step`    | `number`          | Number of entries rendered in a single batch during display rendering. Useful in combination with `display` for complex or slow `display` functions.                                                                                                                                                               |
 | `stream_type`     | `"lines","bytes"` | Type of the stream content (`lines` splits on newlines, `bytes` splits on byte chunks).                                                                                                                                                                                                                            |
 | `stream_step`     | `number`          | Number of lines, or byte count to read per streaming step determining when to flush the stream items batch, based on the stream content type - lines or bytes.                                                                                                                                                     |
 | `stream_debounce` | `number`          | The time in milliseconds to debounce the flush calls of the stream, this is useful to avoid stream batch flushes in quick succession, when the results accumulate fast enough that we can combine into a single flush call instead, caused by the executable being too fast, or the `stream_step` being too small. |
@@ -673,10 +680,6 @@ usage of each option, along with any relevant details or examples.
   executable is too fast and can accumulate `stream_step` entries into the stream fast enough that can cause the `matcher` to be overwhelmed,
   by default it is set to 0, as for most use cases it is never really required
 
-- **display_step**: The number of entries to render in a single batch during list rendering. This is useful in combination with a complex or
-  slow `display` function to avoid blocking the UI for too long. Otherwise all entries passed for rendering are rendered in a single call to
-  `nvim_buf_set_lines` once.
-
 - **window_size**: The ratio (0-1) specifying the picker window size relative to the screen. A value of 0.5 means the picker will take up
   half the screen. If the preview is enabled the picker will take up half that height, the rest will be used for the preview window.
 
@@ -698,7 +701,9 @@ The content stream result or in other words the entries which are fed into the p
 certain default and built-in components such as `actions`, `previewers` and `decorators` require a precise entry structure to make use of
 them An entry which is to be used within the default `actions`, `previewers` and `decorators` be of only 3 valid distinct types - strings,
 tables or a number. The structure of these entries is important as they determine how the picker will handle them specifically in the
-default Select.actions and Select.previewers. These entries can be of the following types:
+default `Select.actions` and `Select.previewers`. By default if no converter is provided to the action or the previewer or the decorator, a
+default converter is used which attempts to convert the entry to a valid structure to its best ability - that is the actually the provided
+`Select.default_converter`. Entries can be of the following types:
 
 - `Numbers` are interpreted and are required to be valid loaded or unloaded buffer number handles in the current neovim instance
 
@@ -729,8 +734,8 @@ local entry = {                 -- a valid entry table, must contain at least on
 }
 ```
 
-`All entries are normalized to the above table structure before being processed by actions, previewers, this means that if the entry is a
-string or a number it will be converted to a table with the appropriate keys, first.`
+`All entries are normalized to the above table structure by default through the use of the Select.default_converter, unless another is
+provided, before being processed by the built-in actions, previewers and decorators.`
 
 #### Actions
 
@@ -984,7 +989,7 @@ picker = Picker.new({
     },
     preview = Select.BufferPreview.new(cb),
     actions = {
-        ["<cr>"] = Select.action(Select.select_entry, cb),
+        ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
     },
 })
 
@@ -1002,7 +1007,8 @@ problem. The built-in components simply provide a convenient way to handle the m
 and visitors that can be used out of the box, these are:
 
 ```lua
-Picker.noop_converter -- A no-op converter that simply returns the entry as is
+Picker.default_converter -- A default converter that attempts to convert an entry into a valid structure
+Picker.noop_converter -- A converter that does nothing and returns the entry as is without any conversion
 Picker.ls_converter -- A converter that converts `ls` command output into valid entry structure
 Picker.grep_converter -- A converter that converts `grep` command output into valid entry structure
 Picker.err_converter -- A converter that converts common `err` formats into valid entry structure
@@ -1015,8 +1021,12 @@ Picker.env_visitor -- A visitor that enriches entries based on the picker's env
 Create your own converter or visitor functions as needed, and use the `Picker.Converter` class to combine them into a single stateful, the
 Converter class takes variable number of arguments for the visitors, so you can combine as many visitors as you need, which would be
 executed in order for each entry. The converter argument passed in to the Converter class must be a single stateless converter function, of
-the signature that has already been described above. It is mandatory, if no converter is needed, use the `Picker.noop_converter` instead, to
-pass the results as is without conversion to the entry visitors.
+the signature that has already been described above. It is mandatory, by default if you are using the built-in components converter will be
+needed if combined with a visitor, use the `Picker.default_converter` instead, to use the default conversion logic, if the entries in the
+stream can be handled by the default converter - i.e they are either simple strings, table with the required keys or valid buffer number or
+filename or the entry is a valid buffer number. If you are not using any of the default components, and you are providing your own custom
+actions, previewers or decorators, you can use the `Picker.noop_converter` which simply returns the entry as is, without any conversion, but
+you have to handle the entry structure in your custom components.
 
 Your custom converters or visitors of course can take great care of ensuring that no extra work is done when not needed, for example if the
 entry is already absolute, the visitor can simply return it as is, without any extra processing. Similarly if the entry is already a valid
@@ -1168,7 +1178,7 @@ return picker
 
 ```lua
 local converter = Picker.Converter.new(
-    Picker.noop_converter,
+    Picker.default_converter,
     Picker.cwd_visitor
 )
 local cb = converter:get()
@@ -1204,11 +1214,11 @@ local picker = Picker.new({
     -- attach some actions, in this case sending the selected entries to the quickfix list, and opening them in various ways, using the same custom instance
     -- to ensure that the entry is absolute relative to the cwd of the picker so we can act on the entries correctly
     actions = {
-        ["<cr>"] = Select.action(Select.select_entry, cb),
-        ["<c-q>"] = Select.action(Select.send_quickfix, cb),
-        ["<c-t>"] = Select.action(Select.select_tab, cb),
-        ["<c-v>"] = Select.action(Select.select_vertical, cb),
-        ["<c-s>"] = Select.action(Select.select_horizontal, cb),
+        ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
+        ["<c-q>"] = Select.action(Select.send_quickfix, Select.all(cb)),
+        ["<c-t>"] = Select.action(Select.select_tab, Select.all(cb)),
+        ["<c-v>"] = Select.action(Select.select_vertical, Select.all(cb)),
+        ["<c-s>"] = Select.action(Select.select_horizontal, Select.all(cb)),
     },
 })
 converter:bind(picker)

@@ -274,13 +274,62 @@ function M.safe_call(callback, ...)
     return nil, nil
 end
 
--- Generate a UUID based on a template, from a random seeded set of alpha-numeric symbols and
--- @return string the generated UUID string.
+--- Generate a UUID based on a template, from a random seeded set of alpha-numeric symbols and
+--- @return string the generated UUID string.
 function M.generate_uuid()
     return random and string.gsub(TEMPLATE, '[xy]', function(c)
         local v = (c == 'x') and random(0, 0xf) or random(8, 0xb)
         return string.format('%x', v)
     end)
+end
+
+--- Check if a given window ID corresponds to a quickfix or location list window. The function returns true for quickfix windows, false otherwise
+--- @param bufnr integer The buffer number to check
+--- @param bufinfo table Optional buffer info table to use instead of fetching it
+function M.is_quickfix(bufnr, bufinfo)
+    bufinfo = bufinfo or (vim.api.nvim_buf_is_valid(bufnr) and M.get_bufinfo(bufnr))
+    if bufinfo and bufinfo.variables
+        and bufinfo.variables.current_syntax == "qf"
+        and not vim.tbl_isempty(bufinfo.windows)
+    then
+        return M.win_is_qf(bufinfo.windows[1])
+    end
+    return false
+end
+
+--- Get the buffer info for a given buffer number using the 'fuzzymatch#getbufinfo' Vim function. The function returns a table containing the buffer number and its associated info.
+--- @param buf integer The buffer number to get info for
+--- @return table A table containing the buffer number and its associated info
+function M.get_bufinfo(buf)
+    return {
+        bufnr = buf,
+        info = vim.fn["fuzzymatch#getbufinfo"](buf)
+    }
+end
+
+--- Get the buffer name for a given buffer number, handling special cases for quickfix and location list buffers. If the buffer is invalid, nil is returned.
+--- If the buffer has no name, a placeholder name is returned based on whether it is a quickfix/location list or an unnamed buffer.
+--- @param bufnr integer The buffer number to get the name for
+--- @param bufinfo table Optional buffer info table to use instead of fetching it
+--- @return string|nil The buffer name, or nil if the buffer is invalid
+function M.get_bufname(bufnr, bufinfo)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        return
+    end
+    if bufinfo and bufinfo.name and #bufinfo.name > 0 then
+        return bufinfo.name
+    end
+    local bufname = vim.api.nvim_buf_get_name(bufnr)
+    if #bufname == 0 then
+        local is_qf = M.is_quickfix(bufnr, bufinfo)
+        if is_qf then
+            bufname = is_qf == 1 and "[Quickfix List]" or "[Location List]"
+        else
+            bufname = "[No Name]"
+        end
+    end
+    assert(#bufname > 0)
+    return bufname
 end
 
 return M

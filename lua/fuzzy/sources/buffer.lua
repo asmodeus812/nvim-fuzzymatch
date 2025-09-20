@@ -2,18 +2,9 @@ local FUTURE = os.time({ year = 2038, month = 1, day = 1, hour = 0, minute = 00 
 
 local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
+local utils = require("fuzzy.utils")
 
 local M = {}
-
-function M.buf_is_qf(bufnr, bufinfo)
-    bufinfo = bufinfo or (vim.api.nvim_buf_is_valid(bufnr) and M.getbufinfo(bufnr))
-    if bufinfo and bufinfo.variables and
-        bufinfo.variables.current_syntax == "qf" and
-        not M.tbl_isempty(bufinfo.windows) then
-        return M.win_is_qf(bufinfo.windows[1])
-    end
-    return false
-end
 
 local function get_lastused(buf)
     if buf.flag == "%" then
@@ -25,39 +16,13 @@ local function get_lastused(buf)
     end
 end
 
-local function get_bufinfo(buf)
-    return {
-        bufnr = buf,
-        info = vim.fn["fuzzymatch#getbufinfo"](buf)
-    }
-end
-
-local function get_bufname(bufnr, bufinfo)
-    assert(not vim.in_fast_event())
-    if not vim.api.nvim_buf_is_valid(bufnr) then return end
-    if bufinfo and bufinfo.name and #bufinfo.name > 0 then
-        return bufinfo.name
-    end
-    local bufname = vim.api.nvim_buf_get_name(bufnr)
-    if #bufname == 0 then
-        local is_qf = M.buf_is_qf(bufnr, bufinfo)
-        if is_qf then
-            bufname = is_qf == 1 and "[Quickfix List]" or "[Location List]"
-        else
-            bufname = "[No Name]"
-        end
-    end
-    assert(#bufname > 0)
-    return bufname
-end
-
 local function enrich_buffers(opts, buffers, winid)
     local result = {}
     for _, bufnr in ipairs(buffers) do
-        local buf = get_bufinfo(bufnr)
+        local buf = utils.get_bufinfo(bufnr)
 
         if not buf.info.name or #buf.info.name == 0 then
-            buf.info.name = get_bufname(buf.bufnr, buf.info)
+            buf.info.name = utils.get_bufname(buf.bufnr, buf.info)
         end
 
         if winid then
@@ -127,8 +92,7 @@ function M.buffers(opts)
         headers = {
             { "Buffers" }
         },
-        preview = Select.BufferPreview.new(
-        ),
+        preview = Select.BufferPreview.new(),
         actions = {
             ["<cr>"] = Select.select_entry,
             ["<c-q>"] = { Select.send_quickfix, "qflist" },
