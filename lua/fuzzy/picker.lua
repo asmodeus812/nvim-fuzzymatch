@@ -101,17 +101,18 @@ function Picker.cwd_visitor(entry, context)
     if type(entry) == "number" then
         return entry
     end
-    assert(type(entry) == "table" or type(entry) == "string")
 
+    assert(type(entry) == "table"
+        or type(entry) == "string")
     local filename = type(entry) == "table"
         and entry.filename or entry
+    assert(type(filename) == "string")
+
     filename = vim.fn.expand(filename)
     filename = path.normalize_base_path(filename)
-
-    if path.check_absolute_path(filename) then
-        return entry
+    if not path.check_absolute_path(filename) then
+        filename = vim.fs.joinpath(context.cwd, filename)
     end
-    filename = vim.fs.joinpath(context.cwd, filename)
 
     if type(entry) == "table" then
         entry.filename = filename
@@ -122,11 +123,11 @@ function Picker.cwd_visitor(entry, context)
 end
 
 function Picker.env_visitor(entry, context)
-    -- TODO: finish default implementation if needed
+    -- Note: finish default implementation if needed
 end
 
 function Picker.args_visitor(entry, context)
-    -- TODO: finish default implementation if needed
+    -- Note: finish default implementation if needed
 end
 
 --- Create a new converter instance, that can be used to convert entries from the picker by enriching the entry from the base converter with the picker context, mostly to ensure that the filename is absolute, based on the current working directory of the picker. This is done through the visitor functions that will be called in sequence after the base converter, each visitor function takes the converted entry and the picker context as arguments, and must return a table representing the converted entry, or false to skip the entry.

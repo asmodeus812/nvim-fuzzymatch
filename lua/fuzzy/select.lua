@@ -1043,16 +1043,17 @@ function Select:_decorate_list()
 end
 
 function Select:_display_preview()
+    local window = self.preview_window
     local entries = self._state.entries
     local previewer = self._options.preview
-    if entries and previewer ~= nil and previewer ~= false then
+    if entries and previewer ~= nil and previewer ~= false
+        and window and vim.api.nvim_win_is_valid(window)
+    then
         if #entries == 0 then
-            local window = assert(self.preview_window)
             local buffer = assert(self.preview_buffer)
-            assert(vim.api.nvim_win_is_valid(window))
             vim.api.nvim_win_set_buf(window, buffer)
             vim.api.nvim_win_set_cursor(window, { 1, 0 })
-            populate_buffer(buffer, {})
+            populate_buffer(buffer, utils.EMPTY_TABLE)
         else
             local cursor = assert(self._state.cursor)
             local entry = assert(entries[cursor[1]])
@@ -1173,10 +1174,10 @@ function Select:_clear_view(force)
         if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
             vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_DECORATED_NAMESPACE, 0, -1)
             vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_HIGHLIGHT_NAMESPACE, 0, -1)
-            populate_buffer(self.list_buffer, {})
+            populate_buffer(self.list_buffer, utils.EMPTY_TABLE)
         end
         if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
-            populate_buffer(self.preview_buffer, {})
+            populate_buffer(self.preview_buffer, utils.EMPTY_TABLE)
         end
 
         if self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window) then
@@ -1438,23 +1439,35 @@ function Select:toggle_preview(callback)
     end
 
     if not self.preview_window or not vim.api.nvim_win_is_valid(self.preview_window) then
-        local preview_height = compute_height(self._options.window_ratio, 2.0)
+        local selection_height = compute_height(self._options.window_ratio, 2.0)
+        local position = vim.api.nvim_win_get_cursor(self.list_window)
         self.preview_window = vim.api.nvim_open_win(self.preview_buffer, false, {
             split = self.list_window and "above" or "below",
-            height = preview_height,
+            height = selection_height,
             noautocmd = false,
             win = self.list_window or -1,
         })
         vim.api.nvim_win_set_height(
             self.preview_window,
-            preview_height
+            selection_height
+        )
+        vim.api.nvim_win_set_height(
+            self.list_window,
+            selection_height
         )
         self.preview_window = initialize_window(
             self.preview_window,
             self._options.window_options.preview
         )
+        position[2], position[1] = 0, math.min(position[1], selection_height)
+        vim.api.nvim_win_set_cursor(self.list_window, position)
+        vim.api.nvim_win_call(self.list_window, function()
+            vim.cmd.normal({ args = { "gg" }, bang = true })
+        end)
         self:_display_preview()
     else
+        local selection_height = compute_height(self._options.window_ratio, 1.0)
+        vim.api.nvim_win_set_height(self.list_window, selection_height)
         vim.api.nvim_win_close(self.preview_window, true)
     end
 
@@ -1665,7 +1678,7 @@ end
 --- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:select_next(callback)
     self:move_cursor(1, function(_)
-        self:exec_command("edit", {}, callback)
+        self:exec_command("edit", utils.EMPTY_TABLE, callback)
     end)
 end
 
@@ -1673,14 +1686,14 @@ end
 --- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:select_prev(callback)
     self:move_cursor(-1, function(_)
-        self:exec_command("edit", {}, callback)
+        self:exec_command("edit", utils.EMPTY_TABLE, callback)
     end)
 end
 
 --- Opens the selected entry in the origin/source window.
 --- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:select_entry(callback)
-    self:exec_command("edit", {}, callback)
+    self:exec_command("edit", utils.EMPTY_TABLE, callback)
 end
 
 --- Opens the selected entry in a horizontal split.
@@ -1698,7 +1711,7 @@ end
 --- Opens the selected entry in a new tab.
 --- @param callback? function A function that transforms the selection and returns a table of entries to open, if the callback returns false, no action is performed.
 function Select:select_tab(callback)
-    self:exec_command("tabedit", {}, callback)
+    self:exec_command("tabedit", utils.EMPTY_TABLE, callback)
 end
 
 --- Sends the selected entries to the quickfix list and opens it.
@@ -1769,9 +1782,7 @@ function Select:list(entries, positions)
         self._state.entries = entries
         self._state.streaming = true
         utils.time_execution(
-            Select._render_list,
-            self, false
-        )
+            Select._render_list, self)
     elseif positions == nil then
         self._state.streaming = false
     end
@@ -1875,6 +1886,7 @@ function Select:open()
     self.source_window = vim.api.nvim_get_current_win()
     local factor = (opts.prompt_list and opts.preview) and 2.0 or 1.0
     local size = compute_height(opts.window_ratio, factor)
+    assert(size >= 2, "selection window size too small")
 
     if opts.prompt_input then
         local prompt_buffer = self.prompt_buffer
@@ -2037,15 +2049,19 @@ function Select:open()
                 height = list_height,
                 win = self.prompt_window or -1,
                 split = self.prompt_window and "above" or "below",
-            });
+            })
             vim.api.nvim_win_set_height(list_window, list_height)
             initialize_window(list_window, opts.window_options.list)
-            vim.wo[list_window].scrolloff = 0
 
-            local highlight_matches = vim.api.nvim_create_autocmd("WinResized", {
-                pattern = tostring(list_window),
+            vim.wo[list_window].scrolloff = 0
+            assert(opts.list_offset <= list_height)
+
+            local resize_list = vim.api.nvim_create_autocmd("WinResized", {
+                pattern = "*",
                 callback = function()
-                    if not self:_is_rendering() and vim.api.nvim_buf_line_count(list_buffer) >= 1 then
+                    if vim.tbl_contains(vim.v.event.windows, self.list_window) and
+                        not self:_is_rendering() and vim.api.nvim_buf_line_count(list_buffer) >= 1
+                    then
                         utils.time_execution(Select._render_list, self, false)
                     end
                 end
@@ -2054,7 +2070,7 @@ function Select:open()
             vim.api.nvim_create_autocmd("WinClosed", {
                 pattern = tostring(list_window),
                 callback = function()
-                    pcall(vim.api.nvim_del_autocmd, highlight_matches)
+                    pcall(vim.api.nvim_del_autocmd, resize_list)
                     self:_close_view(false)
                     return true
                 end,
@@ -2131,7 +2147,7 @@ function Select.default_converter(entry)
     elseif type(entry) == "number" then
         assert(entry > 0 and vim.api.nvim_buf_is_valid(entry))
         bufnr = entry
-        fname = vim.api.nvim_buf_get_name(bufnr)
+        fname = utils.get_bufname(bufnr, utils.get_bufinfo(bufnr))
     elseif type(entry) == "string" then
         assert(#entry > 0)
         fname = entry

@@ -292,6 +292,7 @@ function M.is_quickfix(bufnr, bufinfo)
         and bufinfo.variables.current_syntax == "qf"
         and not vim.tbl_isempty(bufinfo.windows)
     then
+        -- TODO: finish this implementation !!
         return M.win_is_qf(bufinfo.windows[1])
     end
     return false
