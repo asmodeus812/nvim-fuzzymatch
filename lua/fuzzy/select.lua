@@ -570,10 +570,16 @@ function Select.BufferPreview.new(ignored, converter)
     return obj
 end
 
+--- Clean up any buffers that were created by the buffer previewer, this should be called when the previewer is no longer needed
 function Select.BufferPreview:clean()
     self.buffers = buffer_delete(self.buffers)
 end
 
+--- Preview the entry by opening it in a buffer, if the entry has a valid bufnr or filename it is used to open the buffer, otherwise
+--- an empty buffer is created. If the filename has an ignored extension the entry is not previewed.
+--- @param entry any The entry to preview, this is passed to the converter function to extract the bufnr, filename, lnum and col fields.
+--- @param window integer The window ID of the preview window where the output should be displayed.
+--- @return boolean Returns false if the entry could not be previewed
 function Select.BufferPreview:preview(entry, window)
     entry = self.converter(entry)
     if entry == false then
@@ -650,10 +656,16 @@ function Select.CustomPreview.new(callback)
     return obj
 end
 
+--- Clean up any buffers that were created by the custom previewer, this should be called when the previewer is no longer needed
 function Select.CustomPreview:clean()
     self.buffers = buffer_delete(self.buffers)
 end
 
+--- Preview the entry by invoking the user-defined callback, the callback is passed the entry, buffer and window as arguments and can return
+--- optionally the lines, filetype, buftype and cursor position.
+--- @param entry any The entry to preview, this is passed as-is to the user-defined callback.
+--- @param window integer The window ID of the preview window where the output should be displayed.
+--- @return boolean Returns false if the entry could not be previewed
 function Select.CustomPreview:preview(entry, window)
     if entry == false then
         return false
@@ -712,12 +724,17 @@ function Select.CommandPreview.new(command, converter)
     return obj
 end
 
+--- Clean up any buffers and jobs that were created by the command previewer, this should be called when the previewer is no longer needed
 function Select.CommandPreview:clean()
     buffer_delete(self.buffers)
     vim.tbl_map(vim.fn.jobstop, self.jobs)
     self.buffers, self.jobs = {}, {}
 end
 
+--- Preview the entry by running the command in a terminal job and streaming the output to the preview window, the command is run with the filename from the entry as the last argument, the entry is converted using the converter function
+--- @param entry any The entry to preview, this is converted using the converter function to a table with bufnr, filename, lnum and col fields.
+--- @param window integer The window ID of the preview window where the output should be displayed.
+--- @return boolean|nil Returns false if the entry could not be previewed, nil otherwise.
 function Select.CommandPreview:preview(entry, window)
     entry = self.converter(entry)
     if entry == false then
@@ -834,6 +851,11 @@ function Select.IconDecorator.new(converter)
     return obj
 end
 
+--- Decorate the entry with an icon based on the filename and its extension, uses nvim-web-devicons if available
+--- @param entry any The entry to decorate, this is converted using the converter function to a table with bufnr, filename, lnum and col fields.
+--- @param line? string|nil The line to decorate, if nil the decoration is skipped
+--- @return string|nil The icon string if available, nil otherwise
+--- @return string|nil The highlight group for the icon, "SelectDecoratorDefault" if no specific highlight is found
 function Select.IconDecorator:decorate(entry, line)
     entry = self.converter(entry)
     if not line or entry == false or #line == 0 then
@@ -862,6 +884,10 @@ function Select.CombineDecorator.new(decorators, highlight, delimiter)
     return obj
 end
 
+--- Decorate the entry by combining the results of all configured decorators using the delimiter, the configured highlight or "SelectDecoratorDefault" is used for the entire combined result
+--- @param entry any The entry to decorate
+--- @return string|nil The combined decoration string if any decorator returned a non-nil result, nil otherwise
+--- @return string The highlight group for the combined decoration, the configured highlight or "SelectDecoratorDefault" if none was configured
 function Select.CombineDecorator:decorate(entry)
     local text = {}
     for _, decor in ipairs(self.decorators) do
@@ -884,6 +910,10 @@ function Select.ChainDecorator.new(decorators)
     return obj
 end
 
+--- Decorate the entry by running the configured decorators in order and returning the first non-nil result, the highlight group returned by the decorator or "SelectDecoratorDefault" if none was returned
+--- @param entry any The entry to decorate
+--- @return string|nil The decoration string if any decorator returned a non-nil result, nil otherwise
+--- @return string|nil The highlight group for the decoration, "SelectDecoratorDefault" if none was returned by the decorator
 function Select.ChainDecorator:decorate(entry)
     for _, decor in ipairs(self.decorators) do
         local str, hl = decor:decorate(entry)

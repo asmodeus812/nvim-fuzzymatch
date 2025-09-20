@@ -3,53 +3,16 @@ local Picker = require("fuzzy.picker")
 
 local M = {}
 
-local function err_converter(entry)
-    assert(type(entry) == "string" and #entry > 0)
-    local pat = "^([^:]+):(%d+):(%d+):%s*[^:]+:%s*(.+)$"
-    local filename, line_num, col_num = entry:match(pat)
-    if filename and #filename > 0 then
-        return {
-            filename = filename,
-            col = col_num and tonumber(col_num),
-            lnum = line_num and tonumber(line_num),
-        }
-    end
-    return false
-end
-
-local function ls_converter(entry)
-    assert(type(entry) == "string" and #entry > 0)
-    local trimmed = entry:gsub("^%s*(.-)%s*$", "%1")
-    local filename = trimmed:match("([^%s]+)$")
-    if filename and #filename > 0 then
-        return {
-            col = 1,
-            lnum = 1,
-            filename = filename,
-        }
-    end
-    return false
-end
-
-local function grep_converter(entry)
-    local pat = "^([^:]+):(%d+):(%d+):(.+)$"
-    assert(type(entry) == "string" and #entry >= 0)
-    local filename, line_num, col_num = entry:match(pat)
-    if filename and #filename > 0 then
-        return {
-            filename = filename,
-            col = col_num and tonumber(col_num),
-            lnum = line_num and tonumber(line_num),
-        }
-    end
-    return false
-end
-
 function M.files(opts)
     opts = opts or {
         cwd = vim.loop.cwd
     }
 
+    local converter = Picker.Converter.new(
+        Picker.noop_converter,
+        Picker.cwd_visitor
+    )
+    local cb = converter:get()
     local picker = Picker.new({
         content = "rg",
         headers = {
@@ -66,16 +29,17 @@ function M.files(opts)
         preview = Select.BufferPreview.new(
         ),
         actions = {
-            ["<cr>"] = Select.select_entry,
-            ["<c-q>"] = Select.send_quickfix,
-            ["<c-t>"] = Select.select_tab,
-            ["<c-v>"] = Select.select_vertical,
-            ["<c-s>"] = Select.select_horizontal,
+            ["<cr>"] = Select.action(Select.select_entry, cb),
+            ["<c-q>"] = Select.action(Select.send_quickfix, cb),
+            ["<c-t>"] = Select.action(Select.select_tab, cb),
+            ["<c-v>"] = Select.action(Select.select_vertical, cb),
+            ["<c-s>"] = Select.action(Select.select_horizontal, cb),
         },
         decorators = {
-            Select.IconDecorator.new(),
+            Select.IconDecorator.new(cb),
         },
     })
+    converter:bind(picker)
     picker:open()
     return picker
 end
@@ -85,6 +49,11 @@ function M.grep(opts)
         cwd = vim.loop.cwd
     }
 
+    local converter = Picker.Converter.new(
+        Picker.grep_converter,
+        Picker.cwd_visitor
+    )
+    local cb = converter:get()
     local picker = Picker.new({
         content = "rg",
         headers = {
@@ -109,19 +78,20 @@ function M.grep(opts)
                 "--plain",
                 "--paging=never",
             },
-            grep_converter
+            cb
         ),
         actions = {
-            ["<cr>"] = Select.action(Select.select_entry, Select.all(grep_converter)),
-            ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "qflist" },
-            ["<c-t>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "tabe" },
-            ["<c-v>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "vert" },
-            ["<c-s>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "split" },
+            ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
+            ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(cb)), "qflist" },
+            ["<c-t>"] = { Select.action(Select.send_quickfix, Select.all(cb)), "tabe" },
+            ["<c-v>"] = { Select.action(Select.send_quickfix, Select.all(cb)), "vert" },
+            ["<c-s>"] = { Select.action(Select.send_quickfix, Select.all(cb)), "split" },
         },
         decorators = {
-            Select.IconDecorator.new(grep_converter)
+            Select.IconDecorator.new(cb)
         },
     })
+    converter:bind(picker)
     picker:open()
     return picker
 end
@@ -131,6 +101,11 @@ function M.dirs(opts)
         cwd = vim.loop.cwd
     }
 
+    local converter = Picker.Converter.new(
+        Picker.noop_converter,
+        Picker.cwd_visitor
+    )
+    local cb = converter:get()
     local picker = Picker.new({
         content = "find",
         headers = {
@@ -152,17 +127,18 @@ function M.dirs(opts)
         },
         preview = Select.CommandPreview.new({
             "ls", "-lah"
-        }),
+        }, cb),
         actions = {
-            ["<cr>"] = Select.select_entry,
-            ["<c-q>"] = Select.send_quickfix,
-            ["<c-t>"] = Select.select_tab,
-            ["<c-v>"] = Select.select_vertical,
-            ["<c-s>"] = Select.select_horizontal,
+            ["<cr>"] = Select.action(Select.select_entry, cb),
+            ["<c-q>"] = Select.action(Select.send_quickfix, cb),
+            ["<c-t>"] = Select.action(Select.select_tab, cb),
+            ["<c-v>"] = Select.action(Select.select_vertical, cb),
+            ["<c-s>"] = Select.action(Select.select_horizontal, cb),
         },
         -- find`s a bit slow
         stream_step = 50000,
     })
+    converter:bind(picker)
     picker:open()
     return picker
 end
@@ -172,6 +148,11 @@ function M.ls(opts)
         cwd = vim.loop.cwd
     }
 
+    local converter = Picker.Converter.new(
+        Picker.ls_converter,
+        Picker.cwd_visitor
+    )
+    local cb = converter:get()
     local picker = Picker.new({
         content = "ls",
         headers = {
@@ -192,13 +173,14 @@ function M.ls(opts)
             end
         },
         actions = {
-            ["<cr>"] = Select.action(Select.select_entry, Select.all(ls_converter)),
-            ["<c-q>"] = Select.action(Select.send_quickfix, Select.all(ls_converter)),
-            ["<c-t>"] = Select.action(Select.select_tab, Select.all(ls_converter)),
-            ["<c-v>"] = Select.action(Select.select_vertical, Select.all(ls_converter)),
-            ["<c-s>"] = Select.action(Select.select_horizontal, Select.all(ls_converter)),
+            ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
+            ["<c-q>"] = Select.action(Select.send_quickfix, Select.all(cb)),
+            ["<c-t>"] = Select.action(Select.select_tab, Select.all(cb)),
+            ["<c-v>"] = Select.action(Select.select_vertical, Select.all(cb)),
+            ["<c-s>"] = Select.action(Select.select_horizontal, Select.all(cb)),
         }
     })
+    converter:bind(picker)
     picker:open()
     return picker
 end

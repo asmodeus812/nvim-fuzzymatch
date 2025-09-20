@@ -3,6 +3,7 @@ local Select = require("fuzzy.select")
 local Match = require("fuzzy.match")
 
 local utils = require("fuzzy.utils")
+local path = require("fuzzy.path")
 
 --- @class Picker
 --- @field private select Select
@@ -21,6 +22,138 @@ local utils = require("fuzzy.utils")
 --- @field private _state.stage.match Match
 local Picker = {}
 Picker.__index = Picker
+
+--- @class Picker.Converter
+--- This class is used to enhance the default callback converter functions, by allowing to bind a picker instance to the converter, and also allowing to add visitor functions that can further process the converted entry, using the picker context, to for example enrich the entry, transform it from context relative to context absolute form and so on.
+--- @field private converter fun(entry: any): table|false|nil - a function that takes an entry string and returns a table with at least the following keys - `filename` - string, `lnum` - number, `col` - number, or false if the entry could not be converted
+--- @field private picker? Picker - the picker instance that this converter is bound to, can be nil if the converter is not bound to any picker instance in particular
+--- @field private visitors? table<fun(entry: any, picker: Picker): table|boolean> - a list of functions that take an entry table and the picker context, and return a table or false to skip the entry
+Picker.Converter = {}
+Picker.Converter.__index = Picker.Converter
+
+--- Simple conveter that is a no-op, it returns the entry as is, without any conversion. This can be useful when the entries are already in the desired format, or when no conversion is needed. No extra validation or checks are performed on the entry, it is simply returned as is.
+function Picker.noop_converter(entry)
+    return entry
+end
+
+--- A simple converter that can be used to convert error-like entries, the expected format is `filename:line:col: type: message`, where filename is the path to the file, line is the line number, col is the column number, type is the type of error (e.g. error, warning, info), and message is the rest of the line. The converter returns a table with the following keys - `filename` - string, `lnum` - number, `col` - number, or false if the entry could not be converted.
+function Picker.err_converter(entry)
+    assert(type(entry) == "string" and #entry > 0)
+    local pat = "^([^:]+):(%d+):(%d+):%s*[^:]+:%s*(.+)$"
+    local filename, line_num, col_num = entry:match(pat)
+    if filename and #filename > 0 then
+        return {
+            filename = filename,
+            col = col_num and tonumber(col_num),
+            lnum = line_num and tonumber(line_num),
+        }
+    end
+    return false
+end
+
+--- A simple converter function that can be used to convert ls-like entries, the expected format is `filename`, where filename is the path to the file. The converter returns a table with the following keys - `filename` - string, `lnum` - number, `col` - number, or false if the entry could not be converted. The line and column numbers are always set to 1, as ls does not provide any information about line or column numbers.
+function Picker.ls_converter(entry)
+    assert(type(entry) == "string" and #entry > 0)
+    local trimmed = entry:gsub("^%s*(.-)%s*$", "%1")
+    local filename = trimmed:match("([^%s]+)$")
+    if filename and #filename > 0 then
+        return {
+            col = 1,
+            lnum = 1,
+            filename = filename,
+        }
+    end
+    return false
+end
+
+--- A simple converter function that can be used to convert grep-like entries, the expected format is `filename:line:col:message`, where filename is the path to the file, line is the line number, col is the column number, and message is the rest of the line. The message part is ignored by this converter. The converter returns a table with the following keys - `filename` - string, `lnum` - number, `col` - number, or false if the entry could not be converted.
+function Picker.grep_converter(entry)
+    local pat = "^([^:]+):(%d+):(%d+):(.+)$"
+    assert(type(entry) == "string" and #entry >= 0)
+    local filename, line_num, col_num = entry:match(pat)
+    if filename and #filename > 0 then
+        return {
+            filename = filename,
+            col = col_num and tonumber(col_num),
+            lnum = line_num and tonumber(line_num),
+        }
+    end
+    return false
+end
+
+--- A visitor function that can be used to ensure that the filename in the entry is absolute, based on the current working directory of the picker. If the filename is already absolute, it is returned as is. If the filename is relative, it is joined with the cwd from the picker context to produce an absolute path
+function Picker.cwd_visitor(entry, context)
+    if entry == false or entry == nil then
+        return false
+    end
+    if type(entry) == "number" then
+        return entry
+    end
+    assert(type(entry) == "table" or type(entry) == "string")
+
+    local filename = type(entry) == "table"
+        and entry.filename or entry
+    filename = vim.fn.expand(filename)
+    filename = path.normalize_base_path(filename)
+
+    if path.check_absolute_path(filename) then
+        return entry
+    end
+    filename = vim.fs.joinpath(context.cwd, filename)
+
+    if type(entry) == "table" then
+        entry.filename = filename
+    else
+        entry = filename
+    end
+    return entry
+end
+
+function Picker.env_visitor(entry, context)
+    -- TODO: finish default implementation if needed
+end
+
+function Picker.args_visitor(entry, context)
+    -- TODO: finish default implementation if needed
+end
+
+--- Create a new converter instance, that can be used to convert entries from the picker by enriching the entry from the base converter with the picker context, mostly to ensure that the filename is absolute, based on the current working directory of the picker. This is done through the visitor functions that will be called in sequence after the base converter, each visitor function takes the converted entry and the picker context as arguments, and must return a table representing the converted entry, or false to skip the entry.
+--- @param converter fun(entry: any): table|false|nil - a function that takes an entry string and returns a table with at least the following keys - `filename` - string, `lnum` - number, `col` - number, or false if the entry could not be converted
+--- @param ... fun(entry: table, picker: Picker): table|boolean - a list of visitor functions that take an entry table and the picker context, and return a table or false to skip the entry
+function Picker.Converter.new(converter, ...)
+    local obj = {}
+    setmetatable(obj, Picker.Converter)
+    assert(type(converter) == "function")
+    obj.converter = assert(converter)
+    obj.visitors = assert({ ... })
+    return obj
+end
+
+--- Get a function that can be used to convert entries using the base converter and the visitor functions, the returned function takes an entry as argument and returns a table representing the converted entry, or false to skip the entry.
+function Picker.Converter:get()
+    if not self.visitors or #self.visitors == 0 then
+        return self.converter
+    else
+        return function(...)
+            local result = self.converter(...)
+            local ctx = self.picker and self.picker:context()
+            for _, visitor in ipairs(self.visitors or {}) do
+                result = visitor(result, ctx)
+            end
+            return result
+        end
+    end
+end
+
+--- Bind the converter to a picker instance, this allows the converter to access the picker context when converting entries, through the visitor functions.
+function Picker.Converter:bind(picker)
+    self.picker = assert(picker)
+end
+
+--- Unbind the converter from the picker instance, this will remove the reference to the picker instance, and the converter will no longer be able to access the picker context.
+function Picker.Converter:unbind()
+    self.picker = nil
+end
 
 function Picker:_clear_picker()
     self.match:stop()
@@ -474,6 +607,12 @@ end
 function Picker:_is_interactive()
     local interactive = self._state.context.interactive
     return interactive ~= nil and interactive ~= false
+end
+
+--- Extract the context of the picker, the context is a table that contains the evaluated values of the context keys provided to the picker at construction time. The context can contain the following keys - `cwd` - string, `env` - table of environment variables, `args` a table of arguments to start the command with - table, and `map`, a function that transforms each entry before it is added to the stream. This is the context after it has been evaluated, meaning that any function values have been called and their return values have been extracted. The context is re-evaluated each time the picker is opened, if the context has changed since the last time it was opened
+--- @return table the evaluated context of the current picker instance
+function Picker:context()
+    return assert(self._state._evaluated_context)
 end
 
 --- Check whether the primary picker or a running stage is open. The picker is considered open when any of the primary components of the selection interface are within view.
