@@ -155,11 +155,27 @@ function Stream:_flush_results()
     self._state.size = 0
 end
 
+function Stream:_is_canceled()
+    return self._state.streamer and (
+        not self._state.streamer:is_running()
+        and self._state.streamer:stop_reason() == "cancel"
+    )
+end
+
+function Stream:_is_streaming()
+    return self._state.streamer and self._state.streamer:is_running()
+end
+
+function Stream:_stop_streaming()
+    return self._state.streamer and self._state.streamer:cancel()
+end
+
 function Stream:_handle_data(data, size)
     if size == self._options.step then
         -- when the size has reached the maximum allowed, flush the buffer, and send it over for processing to
         -- the user provided callback
         self:_flush_results()
+        Async.yield()
     end
 
     data = self:_transform_data(data)
@@ -171,29 +187,48 @@ function Stream:_handle_data(data, size)
     end
 end
 
-function Stream:_handle_stdout(err, chunk)
-    if err or not chunk then return end
-    assert(type(chunk) == "string")
-    if self._options.lines == true then
-        -- when the type of stream is defined as lines, split the output based on new lines, this might produce some empty lines
-        -- which are filtered afterwards.
-        local content = vim.split(chunk, "\n")
-        for _, line in ipairs(content) do
-            if line and #line > 0 then
-                local size = self._state.size
-                self:_handle_data(line, size)
+function Stream:_handle_stdout(e, c)
+    local executor = Async.wrap(function(err, chunk)
+        if err or not chunk then return end
+        assert(type(chunk) == "string")
+
+        if self:_is_canceled() then
+            Async.abort()
+            return
+        end
+
+        if self._options.lines == true then
+            -- when the type of stream is defined as lines, split the output based on new lines, this might produce some empty lines
+            -- which are filtered afterwards.
+            local content = vim.split(chunk, "\n")
+            for _, line in ipairs(content) do
+                if line and #line > 0 then
+                    local size = self._state.size
+                    self:_handle_data(line, size)
+                end
             end
+        elseif self._options.bytes == true then
+            -- when the type of the stream is defined as bytes, simply append the string chunks to the buffer, once the buffer
+            -- contains N number of chunks, where the total length of all chunks in the buffer, is greater than the allowed size,
+            -- flush the buffer
+            local length = 0
+            local buffer = self._state.buffer
+            for i = 1, self._state.size, 1 do
+                length = length + #buffer[i]
+            end
+            self:_handle_data(chunk, length)
         end
-    elseif self._options.bytes == true then
-        -- when the type of the stream is defined as bytes, simply append the string chunks to the buffer, once the buffer
-        -- contains N number of chunks, where the total length of all chunks in the buffer, is greater than the allowed size,
-        -- flush the buffer
-        local length = 0
-        local buffer = self._state.buffer
-        for i = 1, self._state.size, 1 do
-            length = length + #buffer[i]
-        end
-        self:_handle_data(chunk, length)
+    end)
+
+    local streamer = function()
+        self._state.streamer = executor(e, c)
+        Scheduler.add(self._state.streamer)
+    end
+
+    if self:_is_streaming() then
+        self._state.streamer:await(streamer)
+    else
+        streamer()
     end
 end
 
@@ -202,24 +237,42 @@ function Stream:_handle_stderr(err, chunk)
     self:_handle_stdout(err, chunk)
 end
 
-function Stream:_handle_exit(code, chunk)
-    local onexit = self._options.onexit
-    if code and code == 1 then
-        -- ensure that the error is reported to the user in some capacity, that can be useful to debug the state of the command
-        -- that was being run and what went wrong.
-        self:destroy()
-        utils.safe_call(onexit, code, chunk)
-    else
-        -- on exit make sure that there is nothing more to flush, if there is any size accumulated over the very last call toThe handle
-        -- of stdout or stderr, then we need to finally flush it as well, this is to ensure that there is no left over unprocessed data
-        -- after the stream has closed
-        local callback = self.callback
-        if self._state.size > 0 then
-            self:_flush_results()
+function Stream:_handle_exit(e, c)
+    local executor = Async.wrap(function(code, chunk)
+        if self:_is_canceled() then
+            Async.abort()
+            return
         end
-        self:stop()
-        utils.safe_call(callback)
-        utils.safe_call(onexit, code, chunk)
+
+        local onexit = self._options.onexit
+        if code and code == 1 then
+            -- ensure that the error is reported to the user in some capacity, that can be useful to debug the state of the command
+            -- that was being run and what went wrong.
+            self:destroy()
+            utils.safe_call(onexit, code, chunk)
+        else
+            -- on exit make sure that there is nothing more to flush, if there is any size accumulated over the very last call toThe handle
+            -- of stdout or stderr, then we need to finally flush it as well, this is to ensure that there is no left over unprocessed data
+            -- after the stream has closed
+            local callback = self.callback
+            if self._state.size > 0 then
+                self:_flush_results()
+            end
+            self:stop()
+            utils.safe_call(callback)
+            utils.safe_call(onexit, code, chunk)
+        end
+    end)
+
+    local streamer = function()
+        self._state.streamer = executor(e, c)
+        Scheduler.add(self._state.streamer)
+    end
+
+    if self:_is_streaming() then
+        self._state.streamer:await(streamer)
+    else
+        streamer()
     end
 end
 
@@ -233,11 +286,13 @@ end
 -- ephemeral streams when a new stream is started the resources for the previous ones are invalidated
 function Stream:destroy()
     self:_destroy_stream()
+    self:_stop_streaming()
 end
 
 --- Stops the stream if it is running, if the stream is ephemeral, also destroys the context and results, if ephemeral is true
 function Stream:stop()
     self:_close_stream()
+    self:_stop_streaming()
 end
 
 --- Waits for the stream to finish, or until the timeout is reached
@@ -344,21 +399,22 @@ function Stream:start(cmd, opts)
             env = opts.env,
             stdio = stdio,
             hide = true,
-        }, vim.schedule_wrap(self:_bind_method(
-            Stream._handle_exit
-        ))))
+        }, self:_bind_method(
+            Stream._handle_exit)
+        ))
 
         vim.loop.read_start(
             self._state.stdout,
-            vim.schedule_wrap(self:_bind_method(
+            self:_bind_method(
                 Stream._handle_stdout
-            ))
+            )
         )
+
         vim.loop.read_start(
             self._state.stderr,
-            vim.schedule_wrap(self:_bind_method(
+            self:_bind_method(
                 Stream._handle_stderr
-            ))
+            )
         )
     end
 
@@ -420,11 +476,12 @@ function Stream.new(opts)
         _state = {
             size = 0,
             total = 0,
+            accum = nil,
+            buffer = nil,
             stdout = nil,
             stderr = nil,
             handle = nil,
-            buffer = nil,
-            accum = nil,
+            streamer = nil,
         },
     }, Stream)
 

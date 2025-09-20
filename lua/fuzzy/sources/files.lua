@@ -63,7 +63,6 @@ function M.grep(opts)
             args = {
                 "--column",
                 "--hidden",
-                "--no-ignore",
                 "--line-number",
                 "--no-heading",
                 "{prompt}",
@@ -71,7 +70,7 @@ function M.grep(opts)
             cwd = opts.cwd,
             interactive = "{prompt}",
         },
-        -- preview = Select.CommandPreview.new("cat", cb),
+        preview = Select.CommandPreview.new("cat", cb),
         actions = {
             ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
             ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(cb)), "qflist" },

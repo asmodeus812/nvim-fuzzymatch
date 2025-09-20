@@ -65,6 +65,10 @@ function Async:is_running()
     return self.running ~= false
 end
 
+function Async:stop_reason()
+    return self.reason
+end
+
 function Async:cancel()
     self:_done(nil, "cancel")
 end
