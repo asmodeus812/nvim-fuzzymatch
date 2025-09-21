@@ -169,16 +169,12 @@ function Picker.Converter:unbind()
 end
 
 function Picker:_clear_picker()
-    self.match:stop()
-    self.stream:stop()
     self.select:clear()
     self.match:destroy()
     self.stream:destroy()
 end
 
 function Picker:_close_picker()
-    self.match:stop()
-    self.stream:stop()
     self.select:close()
     self.match:destroy()
     self.stream:destroy()
@@ -191,7 +187,6 @@ end
 function Picker:_clear_stage()
     local stage = self._state.stage
     if stage and next(stage) then
-        stage.match:stop()
         stage.select:clear()
         stage.match:destroy()
     end
@@ -200,7 +195,6 @@ end
 function Picker:_close_stage()
     local stage = self._state.stage
     if stage and next(stage) then
-        stage.match:stop()
         stage.select:close()
         stage.match:destroy()
     end

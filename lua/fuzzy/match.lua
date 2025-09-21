@@ -198,8 +198,8 @@ function Match:_match_worker()
     -- the current items will be either the tail (last chunk) or the regular chunks, this is done for efficiency, all chunks are of
     -- equal size, only the tail can be smaller and usually it is.
     local items = self._state.tail or self._state.chunks
-    local args = { items, self.pattern, self.transform }
-    local results = utils.time_execution(vim.fn.matchfuzzypos, unpack(args))
+    local args = utils.table_pack({ items, self.pattern, self.transform })
+    local results = utils.time_execution(vim.fn.matchfuzzypos, utils.table_unpack(args))
 
     local strings = results[1]
     local positions = results[2]
@@ -262,6 +262,8 @@ end
 -- Destroys the matcher and any pending state that is currently being allocated into the matcher, note that this is done automatically
 -- for ephemeral matcher when a new matching is started the resources for the previous ones are invalidated
 function Match:destroy()
+    self:_clean_context()
+    self:_stop_processing()
     self:_destroy_context()
 end
 
@@ -281,15 +283,16 @@ function Match:match(list, pattern, callback, transform)
     vim.validate({
         list = { list, "table" },
         pattern = { pattern, "string" },
-        callback = { callback, {  "function" }, true },
+        callback = { callback, { "function" }, true },
         transform = { transform, { "table", "nil" }, true },
     })
     -- each time we start a new match we make sure to stop any ongoing processing and clean up the context, any old state will be lost,
     -- depending on the ephemeral option more aggressive clean up might be done
     if self:running() then
-        self:stop()
         if self._options.ephemeral == true then
             self:destroy()
+        else
+            self:stop()
         end
     end
 

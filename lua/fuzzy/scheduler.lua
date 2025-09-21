@@ -20,8 +20,9 @@ function Scheduler.step()
 
     while #Scheduler._queue > 0 and vim.uv.hrtime() - start < budget do
         local async = table.remove(Scheduler._queue, 1)
+        async:_step()
         if async:is_running() then
-            table.insert(Scheduler._queue, async:_step())
+            table.insert(Scheduler._queue, async)
         end
     end
 

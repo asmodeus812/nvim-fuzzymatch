@@ -1201,6 +1201,7 @@ function Select:_clear_view(force)
     if self:_is_rendering() then
         self._state.renderer:await(clearer)
         self:_stop_rendering()
+        self._state.renderer = nil
     else
         clearer()
     end
@@ -1235,6 +1236,7 @@ function Select:_close_view(force)
     if self:_is_rendering() then
         self._state.renderer:await(closer)
         self:_stop_rendering()
+        self._state.renderer = nil
     else
         closer()
     end

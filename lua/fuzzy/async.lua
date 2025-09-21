@@ -13,9 +13,9 @@ end
 
 function Async.wrap(fn)
     return function(...)
-        local args = { ... }
+        local args = utils.table_pack(...)
         return Async.new(function()
-            local ok, res = pcall(fn, unpack(args))
+            local ok, res = pcall(fn, utils.table_unpack(args))
             if not ok and res and #res > 0 then
                 vim.api.nvim_err_writeln(res)
             end
@@ -32,7 +32,7 @@ function Async.yield(...)
     return coroutine.yield(...)
 end
 
-function Async.abort()
+function Async.kill()
     return Async.yield('abort')
 end
 
@@ -42,8 +42,10 @@ function Async:_done(result, reason)
         self.result = result
         self.reason = reason
     end
-    for _, callback in ipairs(self.callbacks) do
-        utils.safe_call(callback, result, reason)
+    if not self.reason or self.reason ~= "abort" then
+        for _, callback in ipairs(self.callbacks) do
+            utils.safe_call(callback, result, reason)
+        end
     end
     self.callbacks = {}
     return self
@@ -71,6 +73,10 @@ end
 
 function Async:cancel()
     self:_done(nil, "cancel")
+end
+
+function Async:abort()
+    self:_done(nil, "abort")
 end
 
 function Async:await(callback)

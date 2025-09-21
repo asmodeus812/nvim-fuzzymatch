@@ -189,6 +189,21 @@ function M.table_remove(tbl, o)
     return removed
 end
 
+
+--- Pack variable arguments into a table, including the count of arguments as the 'n' field. This is useful for preserving nil values. To use this
+--- @param ... any Variable arguments to pack
+--- @return table A table containing the packed arguments and the count in the 'n' field
+function M.table_pack(...)
+    return { n = select("#", ...), ... }
+end
+
+--- Unpack a table that was packed using the table_pack function, returning the original variable arguments. The function uses the 'n' field to determine the number of elements to unpack, ensuring that nil values are preserved.
+--- @param tbl table The table to unpack
+--- @return ... The unpacked variable arguments
+function M.table_unpack(tbl)
+    return unpack(assert(tbl), 1, assert(tbl.n))
+end
+
 --- Measure and log the execution time of a function, including its name and definition location. The function is called with the provided arguments, and any errors during execution are propagated.
 --- @param func function The function to measure
 --- @param ... any Arguments to pass to the function
@@ -251,9 +266,9 @@ function M.debounce_callback(wait, callback)
             debounce_timer:close()
             debounce_timer = nil
         end
-        local args = { ... }
+        local args = M.table_pack(...)
         debounce_timer = vim.defer_fn(function()
-            callback(unpack(args))
+            callback(M.table_unpack(args))
         end, wait)
     end
 end

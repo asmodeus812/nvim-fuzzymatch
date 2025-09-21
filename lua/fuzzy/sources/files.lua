@@ -23,6 +23,7 @@ function M.files(opts)
             args = {
                 "--files",
                 "--hidden",
+                "--color=never",
             },
             cwd = opts.cwd
         },
@@ -63,6 +64,7 @@ function M.grep(opts)
             args = {
                 "--column",
                 "--hidden",
+                "--color=never",
                 "--line-number",
                 "--no-heading",
                 "{prompt}",
