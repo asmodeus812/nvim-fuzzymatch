@@ -210,6 +210,7 @@ local function toggled_count(entries, toggled)
 end
 
 local function send_input(input, window, callback, mode)
+    assert(window and vim.api.nvim_win_is_valid(window))
     local term_codes = vim.api.nvim_replace_termcodes(
         assert(input), false, false, true
     )
@@ -291,7 +292,6 @@ local function populate_buffer(buffer, items, display, step)
     if step ~= nil and step > 0 then
         local size = math.min(#items, step)
         local lines = utils.obtain_table(size)
-        utils.resize_table(lines, size, utils.EMPTY_STRING)
 
         local start, _end = 1, size
         repeat
@@ -306,9 +306,12 @@ local function populate_buffer(buffer, items, display, step)
             _end = math.min(#items, _end + step)
         until start == #items or start > _end
 
+        utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
+        assert(#lines == size)
+        Async.yield()
+
         vim.api.nvim_buf_set_lines(buffer, _end, -1, false, {})
         assert(vim.api.nvim_buf_line_count(buffer) == #items)
-        utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
     else
         if display ~= nil then
             local mapper = function(entry)
@@ -323,27 +326,28 @@ local function populate_buffer(buffer, items, display, step)
 end
 
 local function populate_range(buffer, start, _end, entries, display)
-    local oldma = vim.bo[buffer].modifiable
-    vim.bo[buffer].modifiable = true
-
+    local lines = utils.EMPTY_TABLE
     if _end > 0 then
         assert(start <= _end and start > 0)
         local diff = math.abs(_end - start) + 1
-        local lines = utils.obtain_table(diff)
-        utils.resize_table(lines, diff, utils.EMPTY_STRING)
+        lines = utils.obtain_table(diff)
 
         for target = start, _end, 1 do
             lines[(target - start) + 1] = line_mapper(entries[target], display)
         end
+
+        utils.resize_table(lines, diff)
         assert(#lines == diff)
         Async.yield()
-
-        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
-        utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
-    else
-        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, utils.EMPTY_TABLE)
     end
 
+    local oldma = vim.bo[buffer].modifiable
+    vim.bo[buffer].modifiable = true
+    vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
+    if lines ~= utils.EMPTY_TABLE then
+        utils.fill_table(lines)
+        utils.return_table(lines)
+    end
     vim.bo[buffer].modifiable = oldma
     vim.bo[buffer].modified = false
 end
@@ -554,7 +558,7 @@ end
 --- @return boolean, any? Returns false if the entry could not be previewed
 function Select.BufferPreview:preview(entry, window)
     entry = self.converter(entry)
-    if entry == false then
+    if entry == false or not vim.api.nvim_win_is_valid(window) then
         return false
     end
     assert(entry ~= nil)
@@ -640,7 +644,7 @@ end
 --- @param window integer The window ID of the preview window where the output should be displayed.
 --- @return boolean Returns false if the entry could not be previewed
 function Select.CustomPreview:preview(entry, window)
-    if entry == false then
+    if entry == false or not vim.api.nvim_win_is_valid(window) then
         return false
     end
     assert(type(entry) == "string" or type(entry) == "table")
@@ -711,7 +715,7 @@ end
 --- @return boolean|nil Returns false if the entry could not be previewed, nil otherwise.
 function Select.CommandPreview:preview(entry, window)
     entry = self.converter(entry)
-    if entry == false then
+    if entry == false or not vim.api.nvim_win_is_valid(window) then
         return false
     end
     assert(entry ~= nil)
@@ -949,8 +953,8 @@ function Select:_list_selection()
             end
             index = index + 1
         end
-        assert(current > 0 and current == size)
         utils.resize_table(selection, size, nil)
+        assert(#selection == size and current == size)
         return selection
     end
 end
@@ -1243,11 +1247,17 @@ function Select:_close_view(force)
 end
 
 function Select:_is_rendering()
-    return self._state.renderer and self._state.renderer:is_running()
+    if self._state.renderer then
+        return self._state.renderer:is_running()
+    end
+    return false
 end
 
 function Select:_stop_rendering()
-    return self._state.renderer and self._state.renderer:cancel()
+    if self._state.renderer then
+        self._state.renderer:cancel()
+        self._state.renderer = nil
+    end
 end
 
 --- Closes all open windows associated with the selection interface and returns focus to the source window. This action however does not
@@ -1783,8 +1793,7 @@ function Select:list(entries, positions)
         self._state.positions = positions
         self._state.entries = entries
         self._state.streaming = true
-        utils.time_execution(
-            Select._render_list, self)
+        self:_render_list()
     elseif positions == nil then
         self._state.streaming = false
     end

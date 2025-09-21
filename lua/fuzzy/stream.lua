@@ -75,11 +75,6 @@ function Stream:_close_stream()
         -- resized to ensure the total number of elements, this is useful if the stream did not find any results, in which case
         -- _flush_results would never be called, in all other cases this is a no op.
         utils.detach_table(self._state.accum)
-        utils.resize_table(
-            self._state.accum,
-            self._state.total,
-            utils.EMPTY_STRING
-        )
         self.results = self._state.accum
         self._state.accum = nil
         self._state.total = 0
@@ -130,8 +125,7 @@ function Stream:_flush_results()
     -- be noops
     self._state.buffer = utils.resize_table(
         self._state.buffer,
-        self._state.size,
-        utils.EMPTY_STRING
+        self._state.size
     )
 
     -- ensure that the size of the accumulation buffer is also the current total accumulated size, again this is done to ensure that
@@ -139,8 +133,7 @@ function Stream:_flush_results()
     -- buffer grows.
     self._state.accum = utils.resize_table(
         self._state.accum,
-        self._state.total,
-        utils.EMPTY_STRING
+        self._state.total
     )
 
     -- invoke the user supplied callback which is supposed to process the results, this callback must not modify the input arguments
@@ -205,35 +198,41 @@ function Stream:_handle_in(err, chunk)
         local count = 0
         local separator = "\n"
 
+        -- manually split the chunk into lines, this is done to avoid creating intermediate tables and strings, which would
+        -- then need to be garbage collected, instead we simply iterate over the chunk and extract substrings as needed, this
+        -- should be more efficient and avoid unnecessary allocations.
         while true do
+            local size = self._state.size
             local pos, next = chunk:find(
                 separator, start, false
             )
 
+            -- yield every N accumulated lines, even though handle_data will yield when the buffer is full, this ensures that we yield more
+            -- often, while still collecting items, allowing other async tasks to run in between, also to avoid blocking the event loop for
+            -- too long. Current line is not stored anywhere might allow the garbage collector to reclaim it faster/sooner.
+            if size % 256 == 0 then
+                Async.yield()
+            end
+
             if not pos then
                 if start <= #chunk then
                     local line = chunk:sub(start)
-                    local size = self._state.size
                     self:_handle_data(line, size)
                 end
                 break
             end
 
             local line = chunk:sub(start, pos - 1)
-            local size = self._state.size
             self:_handle_data(line, size)
 
             start = next + 1
             count = count + 1
-
-            if count % 256 == 0 then
-                Async.yield()
-            end
         end
     elseif self._options.bytes == true then
-        -- when the type of the stream is defined as bytes, simply append the string chunks to the buffer, once the buffer
-        -- contains N number of chunks, where the total length of all chunks in the buffer, is greater than the allowed size,
-        -- flush the buffer
+        -- when the type of the stream is defined as bytes, simply append the string chunks to the buffer, once the buffer contains N number
+        -- of chunks, whose total summed string length, is greater than the allowed size (interpreted as byte length), flush the buffer.
+        -- Keep in mind that this is not exact, it will likely exceed the step size, but it is much more efficient to take the entire buffer
+        -- instead of hard splitting it exactly on the step size, which would require more string manipulation and allocations
         local length = 0
         local buffer = self._state.buffer
         for i = 1, self._state.size, 1 do
@@ -283,17 +282,23 @@ function Stream:_handle_exit(e, c)
 end
 
 function Stream:_is_streaming()
-    return self._state.streamer and self._state.streamer:is_running()
+    if self._state.streamer then
+        return self._state.streamer:is_running()
+    end
+    return false
 end
 
 function Stream:_stop_streaming()
-    return self._state.streamer and self._state.streamer:abort()
+    if self._state.streamer then
+        self._state.streamer:abort()
+        self._state.streamer = nil
+    end
 end
 
---- Returns true if the stream is currently running, i.e. has been started and not yet stopped or exited, false otherwise
+--- Returns true if the stream is currently running, i.e. has been started and not yet stopped, exited or aborted, false otherwise
 --- @return boolean True if the stream is running, false otherwise
 function Stream:running()
-    return self._state.handle ~= nil
+    return self:_is_streaming()
 end
 
 -- Destroys the stream and any pending state that is currently being allocated into the stream, note that this is done automatically for
@@ -361,20 +366,12 @@ function Stream:start(cmd, opts)
     -- for future use
     if not self._state.buffer then
         self._state.buffer = utils.obtain_table(size)
-        self._state.buffer = utils.resize_table(
-            self._state.buffer, size,
-            utils.EMPTY_STRING
-        )
     end
 
     -- the accumulator has to also be pulled form the pool, similarly to the buffer, the accumulator starts with a given size, at
     -- least enough to fit in the first batch of buffer entries, it will however grow further, unlike the buffer
     if not self._state.accum then
         self._state.accum = utils.obtain_table(size)
-        self._state.accum = utils.resize_table(
-            self._state.accum, size,
-            utils.EMPTY_STRING
-        )
     end
 
     if type(cmd) == "function" then

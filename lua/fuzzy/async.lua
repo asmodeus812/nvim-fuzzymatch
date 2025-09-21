@@ -81,9 +81,9 @@ end
 
 function Async:await(callback)
     assert(type(callback) == "function")
-    if self.running then
+    if self.running ~= false then
         table.insert(self.callbacks, callback)
-    else
+    elseif self.reason ~= "abort" then
         utils.safe_call(callback, self.result, self.reason)
     end
 end

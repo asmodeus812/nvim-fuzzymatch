@@ -81,11 +81,8 @@ end
 --- Fill a table with a specified value. If the value is nil or the table is empty, the table is returned unchanged. The function
 --- asserts that the first and last elements of the table are equal after filling.
 --- @param tbl table The table to fill
---- @param value any The value to fill the table with
+--- @param value any|nil The value to fill the table with
 function M.fill_table(tbl, value)
-    if value == nil or #tbl == 0 then
-        return tbl
-    end
     for i = 1, #tbl, 1 do
         tbl[i] = value
     end
@@ -96,6 +93,8 @@ end
 --- Resize a table to a specified size, filling new elements with a default value if the table is expanded, or removing elements if the
 --- table is shrunk. If the size is nil, the table is returned unchanged.
 --- @param tbl table The table to resize
+--- @param size integer|nil The desired size of the table, or nil to leave unchanged
+--- @param default any|nil The default value to fill new elements with when expanding the table
 function M.resize_table(tbl, size, default)
     assert(not size or size >= 0)
     if not size then

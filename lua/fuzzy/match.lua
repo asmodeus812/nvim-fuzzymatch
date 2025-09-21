@@ -58,7 +58,6 @@ function Match:_populate_chunks()
             -- quickly pull a table from the pool, we are going to use for the tail eleements, to avoid nuking the size of
             -- the main chunk table re-used for the bulk of the results and matches
             self._state.tail = utils.obtain_table(new_size)
-            utils.resize_table(self._state.tail, new_size)
             destination = self._state.tail
         end
         -- ensure that the iteration range is within the iteration range for each step, the range has to be valid and only
@@ -71,6 +70,8 @@ function Match:_populate_chunks()
             destination[size + 1] = self.list[i]
             size = size + 1
         end
+        utils.resize_table(destination, size)
+        assert(#destination == size)
 
         -- update the offset to pick the next chunk of items from the source list, each match step processes a given amount of
         -- items from the list as defined by the step option
@@ -198,22 +199,26 @@ function Match:_match_worker()
     -- the current items will be either the tail (last chunk) or the regular chunks, this is done for efficiency, all chunks are of
     -- equal size, only the tail can be smaller and usually it is.
     local items = self._state.tail or self._state.chunks
-    local args = utils.table_pack({ items, self.pattern, self.transform })
-    local results = utils.time_execution(vim.fn.matchfuzzypos, utils.table_unpack(args))
+    local args = { items, self.pattern, self.transform }
+    local results = utils.time_execution(vim.fn.matchfuzzypos, unpack(args))
 
     local strings = results[1]
     local positions = results[2]
     local scores = results[3]
 
     -- there should never be more results than items processed
-    assert(#self._state.chunks >= #strings)
+    assert(items and #items >= #strings)
     if strings and #strings > 0 then
-        -- when there are results convert positions to offset continuous pairs
+        -- when there are results convert positions to offset continuous pairs, reuse the positions table to avoid new table allocations,
+        -- these positions are normalized to a continuous numbers represented as start, length pairs
         for idx, pos in ipairs(positions) do
             positions[idx] = convert_positions(pos)
         end
         if #self._state.accum == 0 then
-            -- the very first time we just move the results into the accumulator, no need to merge
+            -- the very first time we just move the results into the accumulator, and also attach them to the pool to make them tracked by
+            -- the pool, eventually either this will be returned to the user as results, or the buffer. Either one will be detached from the
+            -- pool, when returned to the user, the other one will be returned to the pool. If ephemeral the next time a match is started the
+            -- results will be returned to the pool as well making them invalid.
             self._state.accum[1] = utils.attach_table(strings)
             self._state.accum[2] = utils.attach_table(positions)
             self._state.accum[3] = utils.attach_table(scores)
@@ -223,9 +228,10 @@ function Match:_match_worker()
                 self._state.buffer, self._state.accum,
                 { strings, positions, scores }
             )
-            -- here is where we swap buffers, the buffer now becomes the accumulator and the accumulator becomes the buffer, accum always holds the latest accumulated results however
+            -- here is where we swap buffers, the buffer now becomes the accumulator and the accumulator becomes the buffer, accum always
+            -- holds the latest accumulated results however
             self._state.buffer = self._state.accum
-            self._state.accum = result
+            self._state.accum = assert(result)
             assert(#result[1] == #result[2])
             assert(#result[2] == #result[3])
         end
@@ -316,11 +322,6 @@ function Match:match(list, pattern, callback, transform)
         -- for matches
         local size = self._options.step
         self._state.chunks = utils.obtain_table(size)
-        utils.resize_table(
-            self._state.chunks,
-            self._options.step,
-            utils.EMPTY_STRING
-        )
     end
 
     if not self._state.buffer then
@@ -354,19 +355,12 @@ function Match.merge(source, left, right)
         left = { left, "table" },
         right = { right, "table" },
     })
-    -- ensure source has enough capacity to hold all items from left and right
-    local final_size = #left[1] + #right[1]
-    for sub_index = 1, 3 do
-        utils.resize_table(
-            source[sub_index],
-            final_size
-        )
-    end
 
     -- keep pointers to left, right, and results lists
     local left_pointer = 1
     local right_pointer = 1
     local results_pointer = 1
+    local final_size = #left[1] + #right[1]
 
     -- merge until we reach the end of either left or right
     while results_pointer <= final_size do
@@ -385,6 +379,14 @@ function Match.merge(source, left, right)
             right_pointer = right_pointer + 1
         end
         results_pointer = results_pointer + 1
+    end
+
+    -- ensure source has exact capacity to hold all items from left and right
+    for sub_index = 1, 3 do
+        utils.resize_table(
+            source[sub_index],
+            final_size, nil
+        )
     end
 
     return source
