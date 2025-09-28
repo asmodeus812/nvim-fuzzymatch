@@ -122,11 +122,16 @@ Select.CustomPreview = {}
 Select.CustomPreview.__index = Select.CustomPreview
 setmetatable(Select.CustomPreview, { __index = Select.Preview })
 
+--- Loads the nvim-web-devicons if available, returns an empty table if not.
+--- @return table the nvim-web-devicons module or an empty table
 local function icon_set()
     local ok, module = pcall(require, 'nvim-web-devicons')
     return ok and module or {}
 end
 
+--- Deletes listed buffers if valid; used for previewer buffer cleanup.
+--- @param buffers table List of buffer numbers to delete
+--- @return table Empty table or passed table (if empty)
 local function buffer_delete(buffers)
     if #buffers > 0 then
         buffers = vim.tbl_filter(
@@ -143,6 +148,10 @@ local function buffer_delete(buffers)
     return buffers
 end
 
+--- Gets a specific line as a string from a buffer (0-based).
+--- @param buf integer Buffer handle
+--- @param lnum integer? 1-based line number
+--- @return string|nil The line as a string, or nil if unavailable.
 local function buffer_getline(buf, lnum)
     local row = lnum ~= nil and (lnum - 1) or 0
     local text = vim.api.nvim_buf_get_text(
@@ -151,6 +160,10 @@ local function buffer_getline(buf, lnum)
     return (text and #text == 1) and text[1] or nil
 end
 
+--- Utility for rendering an entry using a display function or field name.
+--- @param entry any Entry table
+--- @param display function|string|nil Formatter or property
+--- @return string|any Rendered string or entry field
 local function line_mapper(entry, display)
     if type(display) == "function" then
         return display(assert(entry))
@@ -162,11 +175,20 @@ local function line_mapper(entry, display)
     end
 end
 
+--- Computes window height based on ratio of Neovim lines.
+--- @param multiplier number
+--- @param factor number
+--- @return integer Window height
 local function compute_height(multiplier, factor)
     local ratio = math.abs(multiplier / factor)
     return math.ceil(vim.o.lines * ratio)
 end
 
+--- Get byte offsets for character positions in a string.
+--- @param str string
+--- @param start_char integer Character start index (0-based)
+--- @param char_len integer Length in characters
+--- @return integer?, integer? Byte offsets (start, end)
 local function compute_offsets(str, start_char, char_len)
     local start_byte = vim.str_byteindex(str, start_char)
     local end_char = start_char + char_len
@@ -174,6 +196,11 @@ local function compute_offsets(str, start_char, char_len)
     return start_byte, end_byte
 end
 
+--- Aggregates the result of multiple decorators for an entry.
+--- @param entry any Entry to decorate
+--- @param str string Line for decoration
+--- @param decorators table List of decorators
+--- @return table, table Table of text pieces and their highlights
 local function compute_decoration(entry, str, decorators)
     local text, highlights = {}, {}
     for _, decor in ipairs(decorators) do
@@ -197,6 +224,10 @@ local function compute_decoration(entry, str, decorators)
     return text, highlights
 end
 
+--- Counts the number of selected/toggled entries.
+--- @param entries table List entries
+--- @param toggled table Toggled state
+--- @return integer Number of toggled entries
 local function toggled_count(entries, toggled)
     local count = toggled.all == true and #entries or 0
     for _, value in pairs(toggled.entries or {}) do
@@ -209,6 +240,11 @@ local function toggled_count(entries, toggled)
     return count
 end
 
+--- Sends keys to the input buffer/window.
+--- @param input string The input string (vim keycodes allowed)
+--- @param window integer Window ID
+--- @param callback function|nil Callback to invoke after
+--- @param mode string Insert (i) or normal (n)
 local function send_input(input, window, callback, mode)
     assert(window and vim.api.nvim_win_is_valid(window))
     local term_codes = vim.api.nvim_replace_termcodes(
@@ -229,6 +265,10 @@ local function send_input(input, window, callback, mode)
     end)
 end
 
+--- Applies default and custom window-local options.
+--- @param window integer Window handle
+--- @param opts table Option table
+--- @return integer Window handle
 local function initialize_window(window, opts)
     vim.wo[window].relativenumber = false
     vim.wo[window].number = false
@@ -248,6 +288,11 @@ local function initialize_window(window, opts)
     return window
 end
 
+--- Applies buffer-local options for selection interface.
+--- @param buffer integer Buffer handle
+--- @param ft string|nil Filetype
+--- @param bt string|nil Buftype
+--- @return integer Buffer handle
 local function initialize_buffer(buffer, ft, bt)
     vim.bo[buffer].buftype = bt or "nofile"
     vim.bo[buffer].filetype = ft or ""
@@ -260,6 +305,8 @@ local function initialize_buffer(buffer, ft, bt)
     return buffer
 end
 
+--- Restores buffer options to global values (after temp changes).
+--- @param buffer integer Buffer handle
 local function restore_buffer(buffer)
     vim.bo[buffer].bufhidden = vim.o.bufhidden
     vim.bo[buffer].buflisted = vim.o.buflisted
@@ -268,6 +315,13 @@ local function restore_buffer(buffer)
     vim.bo[buffer].undofile = vim.o.undofile
 end
 
+--- Sets virtual text or lines in buffer using extmarks.
+--- @param buffer integer Buffer handle
+--- @param ns integer Namespace
+--- @param line integer Line (0-based)
+--- @param col integer Column (0-based)
+--- @param text table|nil Virtual text chunk
+--- @param lines table|nil Virtual line chunks
 local function virtual_content(buffer, ns, line, col, text, lines)
     vim.api.nvim_buf_clear_namespace(buffer, ns, 0, 1)
     vim.api.nvim_buf_set_extmark(buffer, ns, line, col, {
@@ -286,6 +340,11 @@ local function virtual_content(buffer, ns, line, col, text, lines)
     })
 end
 
+--- Populates a buffer with given lines/items (optional mapping/display).
+--- @param buffer integer Buffer handle
+--- @param items table List items
+--- @param display function|string|nil Display function or property
+--- @param step integer|nil Number of lines to populate per step (for large lists)
 local function populate_buffer(buffer, items, display, step)
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
@@ -325,6 +384,12 @@ local function populate_buffer(buffer, items, display, step)
     vim.bo[buffer].modified = false
 end
 
+--- Replaces a range of lines in the buffer with formatted list lines.
+--- @param buffer integer Buffer handle
+--- @param start integer First (1-based)
+--- @param _end integer Last (1-based)
+--- @param entries table Data
+--- @param display function|string|nil Display/formatter
 local function populate_range(buffer, start, _end, entries, display)
     local lines = utils.EMPTY_TABLE
     if _end > 0 then
@@ -352,6 +417,13 @@ local function populate_range(buffer, start, _end, entries, display)
     vim.bo[buffer].modified = false
 end
 
+--- Applies highlights to positions in the lines based on matches array.
+--- @param buffer integer Buffer handle
+--- @param start integer First (1-based)
+--- @param _end integer Last (1-based)
+--- @param entries table Entry data
+--- @param positions table Positions to highlight (list of [start,len,...])
+--- @param display function|string|nil Display/formatter
 local function highlight_range(buffer, start, _end, entries, positions, display)
     vim.api.nvim_buf_clear_namespace(buffer,
         LIST_HIGHLIGHT_NAMESPACE, 0, -1
@@ -405,6 +477,13 @@ local function highlight_range(buffer, start, _end, entries, positions, display)
     Async.yield()
 end
 
+--- Applies decorators as extmarks to the visible portion of the buffer.
+--- @param buffer integer Buffer handle
+--- @param start integer First displayed
+--- @param _end integer Last displayed
+--- @param entries table The entry data
+--- @param decorators table List of decorators
+--- @param display function|string|nil Display/formatter
 local function decorate_range(buffer, start, _end, entries, decorators, display)
     vim.api.nvim_buf_clear_namespace(buffer,
         LIST_DECORATED_NAMESPACE, 0, -1
@@ -466,6 +545,12 @@ local function decorate_range(buffer, start, _end, entries, decorators, display)
     Async.yield()
 end
 
+--- Sets/unsets signs for toggled (selected) items in the list.
+--- @param buffer integer Buffer handle
+--- @param start integer First displayed
+--- @param _end integer Last displayed
+--- @param name string Sign name
+--- @param toggled table Toggle state
 local function toggle_range(buffer, start, _end, name, toggled)
     vim.fn.sign_unplace(
         "list_toggle_entry_group",
@@ -491,6 +576,11 @@ local function toggle_range(buffer, start, _end, name, toggled)
     end
 end
 
+--- Asynchronously displays the results of the previewer to the preview window.
+--- @param previewer boolean|Select.Preview subclass
+--- @param entry any Entry to preview
+--- @param window integer Preview window
+--- @param buffer integer Preview buffer (fallback)
 local function display_entry(previewer, entry, window, buffer)
     vim.schedule(function()
         local old_ignore = vim.o.eventignore
@@ -902,6 +992,9 @@ function Select.ChainDecorator:decorate(entry)
     return nil, nil
 end
 
+--- Handles prompt input and invokes the selection list update callback.
+--- @param input string? The current prompt query or nil
+--- @param callback function|boolean? Input callback function (query: string|nil)
 function Select:_prompt_input(input, callback)
     if type(callback) == "function" then
         local ok, status, entries, positions = pcall(callback, input)
@@ -914,6 +1007,9 @@ function Select:_prompt_input(input, callback)
     end
 end
 
+--- Retrieves the current query string from the prompt buffer.
+--- @param lnum integer? The 1-based line number to retrieve (default: 1)
+--- @return string|nil Current prompt line value
 function Select:_prompt_getquery(lnum)
     if not self.prompt_buffer or not vim.api.nvim_buf_is_valid(self.prompt_buffer) then
         return nil
@@ -921,6 +1017,8 @@ function Select:_prompt_getquery(lnum)
     return buffer_getline(self.prompt_buffer, lnum)
 end
 
+--- Computes and returns the currently selected entries.
+--- @return table List of selected entry tables
 function Select:_list_selection()
     if not self.list_buffer or not vim.api.nvim_buf_is_valid(self.list_buffer) then
         return {}
@@ -959,6 +1057,9 @@ function Select:_list_selection()
     end
 end
 
+--- Wraps a callback to run safely with Select as the first argument
+--- @param callback function Callback taking select instance as argument
+--- @return function
 function Select:_make_callback(callback)
     return function()
         return utils.safe_call(
@@ -967,6 +1068,10 @@ function Select:_make_callback(callback)
     end
 end
 
+--- Sets up buffer-local key mappings for the component buffer.
+--- @param buffer integer Buffer handle
+--- @param mode string Mode ("i", "n", etc)
+--- @param mappings table Key map { lhs = fn }
 function Select:_create_mappings(buffer, mode, mappings)
     for key, action in pairs(mappings or {}) do
         vim.api.nvim_buf_set_keymap(buffer, mode, key, "", {
@@ -979,6 +1084,7 @@ function Select:_create_mappings(buffer, mode, mappings)
     end
 end
 
+--- Internal: populates the visible portion of the list display buffer.
 function Select:_populate_list()
     local entries = self._state.entries
     if entries and #entries >= 0 then
@@ -993,6 +1099,7 @@ function Select:_populate_list()
     end
 end
 
+--- Internal: displays toggle signs for current toggled state.
 function Select:_display_toggle()
     local toggled = self._state.toggled
     local entries = self._state.entries
@@ -1013,6 +1120,7 @@ function Select:_display_toggle()
     end
 end
 
+--- Internal: applies search highlights to list entries.
 function Select:_highlight_list()
     local entries = self._state.entries
     local positions = self._state.positions
@@ -1030,6 +1138,7 @@ function Select:_highlight_list()
     end
 end
 
+--- Internal: applies decorators to visible list display.
 function Select:_decorate_list()
     local entries = self._state.entries
     local decorators = self._options.decorators
@@ -1046,6 +1155,7 @@ function Select:_decorate_list()
     end
 end
 
+--- Internal: renders preview for selected entry or clears if no entries.
 function Select:_display_preview()
     local window = self.preview_window
     local entries = self._state.entries
@@ -1070,6 +1180,7 @@ function Select:_display_preview()
     end
 end
 
+--- Internal: schedules a UI render of list+related features.
 function Select:_render_list()
     local executor = Async.wrap(function()
         if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
@@ -1101,6 +1212,7 @@ function Select:_render_list()
     end
 end
 
+--- Resets the state variables for a Select instance.
 function Select:_reset_state()
     self._state.streaming = false
     self._state.positions = nil
@@ -1112,6 +1224,7 @@ function Select:_reset_state()
     }
 end
 
+--- Calls preview:init() if preview instance provided (initialization).
 function Select:_init_preview()
     local preview = self._options.preview or nil
     if type(preview) == "table" and preview.init then
@@ -1119,6 +1232,7 @@ function Select:_init_preview()
     end
 end
 
+--- Calls preview:clean() if preview instance provided (cleanup).
 function Select:_clean_preview()
     local preview = self._options.preview or nil
     if type(preview) == "table" and preview.clean then
@@ -1126,6 +1240,7 @@ function Select:_clean_preview()
     end
 end
 
+--- Calls :init() on all decorator tables (if present).
 function Select:_init_decorators()
     for _, decor in ipairs(self._options.decorators or {}) do
         if type(decor) == "table" and decor.init then
@@ -1134,6 +1249,7 @@ function Select:_init_decorators()
     end
 end
 
+--- Calls :clean() on all decorator tables (if present).
 function Select:_clean_decorators()
     for _, decor in ipairs(self._options.decorators or {}) do
         if type(decor) == "table" and decor.clean then
@@ -1142,6 +1258,7 @@ function Select:_clean_decorators()
     end
 end
 
+--- Destroys and deletes all buffers and internal state.
 function Select:_destroy_view()
     if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
         vim.api.nvim_buf_delete(self.list_buffer, { force = true })
@@ -1161,6 +1278,8 @@ function Select:_destroy_view()
     self:_reset_state()
 end
 
+--- Clears content/state but does not close UI/buffers.
+--- @param force boolean Cleanup decorators and preview if true
 function Select:_clear_view(force)
     local clearer = function()
         if self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer) then
@@ -1211,6 +1330,8 @@ function Select:_clear_view(force)
     end
 end
 
+--- Fully closes the UI: destroys windows, optionally cleans up state.
+--- @param force boolean Cleanup decorators and preview if true
 function Select:_close_view(force)
     local closer = function()
         if self.source_window and vim.api.nvim_win_is_valid(self.source_window) then
@@ -1246,6 +1367,8 @@ function Select:_close_view(force)
     end
 end
 
+--- Returns true if there is a running renderer coroutine.
+--- @return boolean
 function Select:_is_rendering()
     if self._state.renderer then
         return self._state.renderer:is_running()
@@ -1253,6 +1376,7 @@ function Select:_is_rendering()
     return false
 end
 
+--- Cancels and clears the running renderer coroutine.
 function Select:_stop_rendering()
     if self._state.renderer then
         self._state.renderer:cancel()
@@ -1369,13 +1493,15 @@ function Select:exec_command(command, mods, callback)
             goto continue
         end
 
-        local cmd
+        local cmd, bang = nil, nil
         local arg = entry.filename
         if entry.bufnr ~= nil then
             if command == "edit" then
                 command = "buffer"
+                bang = true
             elseif command == "split" then
                 command = "sbuffer"
+                bang = true
             elseif command == "tabedit" then
                 command = "tab"
                 cmd = "sbuffer"
@@ -1387,7 +1513,7 @@ function Select:exec_command(command, mods, callback)
         vim.cmd[command]({
             args = { arg },
             mods = mods,
-            bang = true,
+            bang = bang,
             cmd = cmd,
         })
 

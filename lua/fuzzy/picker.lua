@@ -168,28 +168,20 @@ function Picker.Converter:unbind()
     self.picker = nil
 end
 
-function Picker:_clear_picker()
-    self.select:clear()
-    self.match:destroy()
-    self.stream:destroy()
-end
-
 function Picker:_close_picker()
     self.select:close()
     self.match:destroy()
     self.stream:destroy()
 end
 
-function Picker:_hide_picker()
-    self.select:hide()
+function Picker:_clear_picker()
+    self.select:clear()
+    self.match:destroy()
+    self.stream:destroy()
 end
 
-function Picker:_clear_stage()
-    local stage = self._state.stage
-    if stage and next(stage) then
-        stage.select:clear()
-        stage.match:destroy()
-    end
+function Picker:_hide_picker()
+    self.select:hide()
 end
 
 function Picker:_close_stage()
@@ -200,14 +192,18 @@ function Picker:_close_stage()
     end
 end
 
-function Picker:_hide_stage(clear)
+function Picker:_clear_stage()
+    local stage = self._state.stage
+    if stage and next(stage) then
+        stage.select:clear()
+        stage.match:destroy()
+    end
+end
+
+function Picker:_hide_stage()
     local stage = self._state.stage
     if stage and next(stage) then
         stage.select:hide()
-        if clear == true then
-            stage.match:stop()
-            stage.select:clear()
-        end
     end
 end
 
@@ -300,7 +296,6 @@ function Picker:_input_prompt()
                     ),
                     callback = function(_, all)
                         if all == nil then
-                            -- notify that the streaming is done, so the renderer can update the status,
                             if not self.stream.results or #self.stream.results == 0 then
                                 self.select:list(
                                     utils.EMPTY_TABLE,
@@ -333,7 +328,8 @@ function Picker:_input_prompt()
             -- hide & clear the interactive second stage each time a new query arrives the old matches in the second stages would be
             -- invalid, the query would re-start the command with new interactive args which would invalidate the previous results inside
             -- the interactive stage, that might have been matched
-            self:_hide_stage(true)
+            self:_hide_stage()
+            self:_clear_stage()
         elseif not self.stream:running() then
             -- when there is a query we need to match against it, in this scenario the picker is non-interactive, there are
             -- two options, either it was configured to use a stream or a user provided table of entries - strings, or other
@@ -342,9 +338,6 @@ function Picker:_input_prompt()
             if #data > 0 and type(query) == "string" and #query > 0 then
                 self.match:match(data, query, function(matching)
                     if matching == nil then
-                        -- notify that there matching has finished, so the renderer can update the status, also
-                        -- check if there was actually nothing matched once the matching has signaled it has
-                        -- finished if that is the case clear the selection list
                         if not self.match.results or #self.match.results == 0 or #self.match.results[1] == 0 then
                             self.select:list(
                                 utils.EMPTY_TABLE,
@@ -397,9 +390,6 @@ function Picker:_flush_results()
                 -- when there is a query we need to match against it
                 self.match:match(all, query, function(matching)
                     if matching == nil then
-                        -- notify that there matching has finished, so the renderer can update the status, also
-                        -- check if there was actually nothing matched once the matching has signaled it has
-                        -- finished if that is the case clear the selection list from previous matches
                         if not self.match.results or #self.match.results == 0 or #self.match.results[1] == 0 then
                             self.select:list(
                                 utils.EMPTY_TABLE,
@@ -445,9 +435,6 @@ function Picker:_create_stage()
                 if #self.stream.results > 0 and type(query) == "string" and #query > 0 then
                     stage.match:match(self.stream.results, query, function(matching)
                         if matching == nil then
-                            -- notify that there matching has finished, so the renderer can update the status, also
-                            -- check if there was actually nothing matched once the matching has signaled it has
-                            -- finished if that is the case clear the selection list from previous matches
                             if not stage.match.results or #stage.match.results == 0 or #stage.match.results[1] == 0 then
                                 stage.select:list(
                                     utils.EMPTY_TABLE,
@@ -505,7 +492,7 @@ function Picker:_create_stage()
 
     stage_actions = vim.tbl_deep_extend("force", stage_actions, {
         ["<esc>"] = _cancel_prompt(),
-        ["<c-c>"] = _hide_prompt(),
+        ["<m-esc>"] = _hide_prompt(),
     })
 
     local picker_options = self._options
@@ -783,7 +770,7 @@ function Picker.new(opts)
         stream_step = 150000,
         stream_type = "lines",
         stream_debounce = 0,
-        window_size = 0.15,
+        window_size = 0.20,
         prompt_debounce = 250,
         prompt_query = "",
         prompt_decor = {
@@ -845,7 +832,7 @@ function Picker.new(opts)
     self._options.actions = vim.tbl_deep_extend("keep", self._options.actions, {
         ["<cr>"]  = self:_confirm_prompt(),
         ["<esc>"] = self:_cancel_prompt(),
-        ["<c-c>"] = self:_hide_prompt(),
+        ["<m-esc>"] = self:_hide_prompt(),
     })
 
     self.select = Select.new({

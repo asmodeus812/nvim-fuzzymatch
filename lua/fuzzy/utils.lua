@@ -17,6 +17,32 @@ local M = {
     EMPTY_TABLE = {},
 }
 
+--- Prime the table pool by pre-allocating tables of specified sizes. Ensures the pool contains at least one table for each size in the input. Useful when you expect match operations to allocate multiple tables of known sizes, reducing GC pressure.
+--- Existing tables with the same size are left untouched.
+--- @param sizes integer[] List of sizes to prime the pool with
+function M.prime_pool(sizes)
+    assert(type(sizes) == "table")
+    for _, size in ipairs(sizes) do
+        assert(type(size) == "number" and size > 0)
+        local found = false
+        for _, tbl in ipairs(table_pool.tables) do
+            if #tbl == size then
+                found = true
+                break
+            end
+        end
+        if not found then
+            local t = {}
+            for i = 1, size do t[i] = false end
+            table.insert(table_pool.tables, t)
+        end
+    end
+    table.sort(table_pool.tables, function(a, b)
+        return #a < #b
+    end)
+    return M
+end
+
 --- Obtain a table from the pool, optionally specifying a minimum size, to look for a table of at least that size If no such table is
 --- found, a new table is created
 --- @param size integer|nil Minimum size of the table to obtain
@@ -188,7 +214,6 @@ function M.table_remove(tbl, o)
     return removed
 end
 
-
 --- Pack variable arguments into a table, including the count of arguments as the 'n' field. This is useful for preserving nil values. To use this
 --- @param ... any Variable arguments to pack
 --- @return table A table containing the packed arguments and the count in the 'n' field
@@ -224,9 +249,7 @@ function M.time_execution(func, ...)
     return result
 end
 
---- Print the current stack trace to the Neovim message area, starting from the caller of this function. Each stack frame includes the
---- function name, source file, and line number. Anonymous functions are labeled as "anonymous", and missing information is indicated as
---- "unknown".
+--- Print the current stack trace to the Neovim message area, starting from the caller of this function. Each stack frame includes the function name, source file, and line number. Anonymous functions are labeled as "anonymous", and missing information is indicated as "unknown".
 function M.print_stacktrace()
     local level = 2 -- Start from caller of this function
     vim.print("Stacktrace:")
@@ -250,8 +273,7 @@ function M.print_stacktrace()
     end
 end
 
---- Create a debounced version of a callback function, which delays its execution until after a specified wait time has elapsed since
---- the last time it was invoked. If the wait time is 0, the original callback is returned.
+--- Create a debounced version of a callback function, which delays its execution until after a specified wait time has elapsed since the last time it was invoked. If the wait time is 0, the original callback is returned.
 --- @param wait integer The wait time in milliseconds
 --- @param callback function The callback function to debounce
 --- @return function The debounced callback function
@@ -322,8 +344,7 @@ function M.get_bufinfo(buf)
     }
 end
 
---- Get the buffer name for a given buffer number, handling special cases for quickfix and location list buffers. If the buffer is invalid, nil is returned.
---- If the buffer has no name, a placeholder name is returned based on whether it is a quickfix/location list or an unnamed buffer.
+--- Get the buffer name for a given buffer number, handling special cases for quickfix and location list buffers. If the buffer is invalid, nil is returned. If the buffer has no name, a placeholder name is returned based on whether it is a quickfix/location list or an unnamed buffer.
 --- @param bufnr integer The buffer number to get the name for
 --- @param bufinfo table Optional buffer info table to use instead of fetching it
 --- @return string|nil The buffer name, or nil if the buffer is invalid
@@ -347,4 +368,4 @@ function M.get_bufname(bufnr, bufinfo)
     return bufname
 end
 
-return M
+return M.prime_pool({ 1024, 2048, 4096, 8192, 16384 })

@@ -1,6 +1,84 @@
 # Fuzzymatch
 
-![picker]()
+## Contents
+
+- [Fuzzymatch](#fuzzymatch)
+  - [Contents](#contents)
+  - [Showcase](#showcase)
+    - [Default](#default)
+    - [Interactive](#interactive)
+      - [Primary stage](#primary-stage)
+      - [Matching stage](#matching-stage)
+  - [Features](#features)
+  - [Description](#description)
+  - [Installation](#installation)
+    - [Using packer.nvim](#using-packernvimhttpsgithubcomwbthomasonpackernvim)
+    - [Using lazy.nvim](#using-lazynvimhttpsgithubcomfolkelazynvim)
+    - [Using vim-plug](#using-vim-plughttpsgithubcomjunegunnvim-plug)
+  - [Configuration](#configuration)
+  - [Quickstart](#quickstart)
+    - [Static table](#static-table)
+    - [Callback function](#callback-function)
+    - [Executable stream](#executable-stream)
+    - [Stream buffering](#stream-buffering)
+    - [Stream mapping](#stream-mapping)
+    - [Interactive query](#interactive-query)
+    - [Preview & icons](#preview--icons)
+    - [Actions and context](#actions-and-context)
+    - [Dynamic context](#dynamic-context)
+    - [Labels & headers](#labels--headers)
+    - [Dynamic streams](#dynamic-streams)
+    - [Contextual awareness](#contextual-awareness)
+  - [Interaction](#interaction)
+    - [Interactive and Fuzzy stages](#interactive-and-fuzzy-stages)
+    - [Closing and hiding pickers](#closing-and-hiding-pickers)
+    - [Dynamic context evaluation](#dynamic-context-evaluation)
+    - [Picker actions & interaction](#picker-actions--interaction)
+    - [Picker Options](#picker-options)
+    - [Core options](#core-options)
+    - [Advanced options](#advanced-options)
+    - [Option details](#option-details)
+      - [Core options](#core-options-1)
+      - [Advanced options](#advanced-options-1)
+    - [In-depth look](#in-depth-look)
+      - [Actions](#actions)
+      - [Previewers](#previewers)
+      - [Decorators](#decorators)
+      - [Converters](#converters)
+  - [Examples](#examples)
+    - [Interactive grep](#interactive-grep)
+    - [Static grep](#static-grep)
+    - [Interactive callbacks](#interactive-callbacks)
+    - [Context aware](#context-aware)
+    - [Static tables](#static-tables)
+    - [Basic ui.select](#basic-uiselect)
+    - [Advanced ui.select](#advanced-uiselect)
+  - [Sources](#sources)
+    - [Builtin Buffers module](#builtin-buffers-module)
+    - [Builtin Files module](#builtin-files-module)
+  - [Requirements](#requirements)
+    - [Mandatory](#mandatory)
+    - [Optional](#optional)
+  - [Contributing](#contributing)
+  - [License](#license)
+  - [Acknowledgments](#acknowledgments)
+  - [Changelog](#changelog)
+
+## Showcase
+
+### Default
+
+![basic](https://github.com/user-attachments/assets/11af3491-3d4d-4f50-8c53-3b8f70da2f84)
+
+### Interactive
+
+#### Primary stage
+
+![primary](https://github.com/user-attachments/assets/d7961b08-e541-4cc8-bd84-0f9621782ec0)
+
+#### Matching stage
+
+![matching](https://github.com/user-attachments/assets/21da9f22-f890-4a3e-8ae8-a238bbf02bef)
 
 ## Features
 
@@ -92,11 +170,13 @@ require("fuzzy").setup({
 
 ## Quickstart
 
-Start using this picker instance, `it is recommended that you remember and use the instance you have created`, if you wish to
-open/close/hide the picker just re-use the instance methods, instead of making - calling Picker.new every time you wish to create the same
-type of picker with the same context value. `Creating a new picker should be reserved for creating unique pickers`.
+The examples below create unique instance of a Picker, it is important for users to take note of the fact `it is recommended that you
+remember and use the instance you have created`, if you wish to open/close/hide the picker just re-use the instance methods, instead of
+making - calling Picker.new every time you wish to create the same type of picker with the same context value. `Creating a new picker should
+be reserved for creating unique pickers, unique pickers are such that the picker context, content stream or actions are never the same or
+overlapping`.
 
-Reusing the same picker instance is important as it allows the picker to retain its state, and if the context has changed since the last
+`Reusing the same picker instance is important as it allows the picker to retain its state`, and if the context has changed since the last
 time it was opened, the content stream will be re-run with the new context values. Regardless of whether the picker was closed or hidden,
 when the picker is re-opened the context will be re-evaluated and if it has changed the content stream will be re-run.
 
@@ -106,8 +186,7 @@ type of picker you can imagine. Lets see a few examples
 ### Static table
 
 ```lua
--- here is a very basic example that simply provides a list of static string items and prints out the current user selection on confirm, use
--- <tab> to multi select one than more items and press <cr>
+-- here is a very basic example that simply provides a list of static string items and prints out the current user selection on confirm
 local Picker = require("fuzzy.picker")
 local picker = Picker.new({
     content = {
@@ -116,13 +195,6 @@ local picker = Picker.new({
         "3 README.md",
         "4 CHANGELOG.md",
         "5 LICENSE",
-    },
-    actions = {
-        ["<cr>"] = Select.action(Select.default_select, Select.all(function(e)
-            -- does nothing special, just prints out the current selection
-            vim.print(e)
-            return e
-        end))
     }
 })
 picker:open()
@@ -132,7 +204,6 @@ picker:open()
 
 ```lua
 -- here is a very basic example that simply provides a list of dynamic string items from a user provided callback and prints out the current
--- user selection on confirm, use <cr> to confirm your selection
 local Picker = require("fuzzy.picker")
 local picker = Picker.new({
     content = function()
@@ -140,13 +211,6 @@ local picker = Picker.new({
             cb({ name = string.format("%d-name-entry", i) })
         end
     end,
-    actions = {
-        ["<cr>"] = Select.action(Select.default_select, Select.all(function(e)
-            -- does nothing special, just prints out the current selection
-            vim.print(e)
-            return e
-        end))
-    },
     -- the display field is required when the stream provides tables as entries, it tells the picker how to extract the display string which
     -- is also used for the fuzzy matching process as well
     display = "name",
@@ -170,6 +234,57 @@ local picker = Picker.new({
             "-maxdepth",
             "1"
         }
+    }
+})
+picker:open()
+```
+
+### Stream buffering
+
+```lua
+-- here is an example of using `stdbuf` to make grep stdout line buffered, this is useful when the executable does not support line buffering,
+-- even though grep does have --line-buffered flag, this is just for demonstration purposes, you can apply this to any executable that does
+-- not support line buffering, or you can use it to make any executable output byte buffered instead of line buffered, by using `-o0` flag
+-- instead of `-oL`. This can greatly improve the responsiveness of the picker when dealing with executables that produce a lot of output
+-- quickly.
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = "stdbuf",
+    context = {
+        args = {
+            "-oL",
+            "grep",
+            "-i",
+            "-r",
+            "pattern",
+            "."
+        }
+    }
+})
+picker:open()
+```
+
+### Stream mapping
+
+```lua
+--- here is an example of a picker that transforms, actually changes the output of the stream while the content is being delivered, in
+-- our case what we do is we remove all - `total, .., .` lines form the output of `ls`. This mutates the stream in flight and here
+-- we skip the target lines by returning nil, the rest of the lines are unmodified.
+local Picker = require("fuzzy.picker")
+local picker = Picker.new({
+    content = "ls",
+    context = {
+        args = {
+            "-lah",
+            ".",
+        },
+        map = function(e)
+            if e:match("%.$") or e:match("%.%.$") or e:match("^total") then
+                    return nil
+                end
+                return e
+            end
+        },
     }
 })
 picker:open()
@@ -231,7 +346,10 @@ picker:open()
 
 ```lua
 -- opening the picker with a new directory different from the current one, which is the default behavior, we can also pass new
--- environment variables to the executable process'.
+-- environment variables to the executable process, and attach a few basic actions, that at the moment would use the default
+-- converter logic to edit and send to qf list. In this case that is easy to resolve since find returns only one string which is the
+-- actual file name, further down you will learn how to interpret the output of a content stream, such that it can be understood by
+-- the internally provided actions, decorators and previewers, when the content stream represents complex data structures or entries
 local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
 local picker = Picker.new({
@@ -245,7 +363,7 @@ local picker = Picker.new({
         env = {
             MY_NEW_CUSTOM_VARIABLE = "value"
         },
-        cwd = vim.fn.expand("~/.config/nvim")
+        cwd = vim.loop.cwd()
     },
     preview = Select.BufferPreview.new(),
     decorators = {
@@ -266,18 +384,20 @@ picker:open()
 -- this is allows the same picker instance to be used in this case with any current working directory, every time the picker is opened the
 -- context will be evaluated, and if the context is different, in this case it is only the working directory that is dynamic, than what the
 -- picker was opened with before, the internal stream will be re-run for the new context, in other words for the new working directory
+-- this implies that you can create ONE SINGLETON instance of this picker, call it find_files and be done, now just call open/hide/close on
+-- this instance every time you wish to find files in the current working directory.
 local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
 local picker = Picker.new({
     content = "find",
     context = {
-        -- simple static value
+        -- statically evaluated
         args = {
             ".",
             "-type",
             "f",
         },
-        -- dynamic callback value
+        -- dynamically evaluated
         cwd = vim.loop.cwd
     },
     actions = {
@@ -293,7 +413,8 @@ picker:open()
 ```lua
 -- take a note of the headers section, where the current working directory in the header is similarly to the context, set to be evaluated on
 -- demand, and not a static value like the rest of the header elements. On top of that the actions have also been enhanced with a label,
--- which will become part of the header line in the prompt
+-- which will become part of the header line in the prompt. To customize how they look you can override the default highlight groups or
+-- simply provide your own when configuring the header in the picker
 local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
 local picker = Picker.new({
@@ -326,7 +447,10 @@ picker:open()
 ```lua
 -- user provided stream, with a custom preview for the picker along with a default selection action that simply prints out the currently
 -- selected items, use <tab> to trigger and use multi-selection, use <c-g> to enter the fuzzy matching stage, and again <c-g> to toggle
--- back to the interactive stage.
+-- back to the interactive stage. The dynamic interactive stage can only be entered when the primary content stream has finished delivering
+-- its entries, meaning that if your stream ends up with tens of millions of entries, it will take some time for it to complete, but the
+-- UI will not be blocking, you can still scroll through the currently delivered entries, change the query, to interrupt the stream, or you
+-- can hide the picker away while the stream is working.
 local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
 local picker = Picker.new({
@@ -357,40 +481,16 @@ local picker = Picker.new({
 picker:open()
 ```
 
-### Stream buffering
-
-```lua
--- here is an example of using `stdbuf` to make grep stdout line buffered, this is useful when the executable does not support line buffering,
--- even though grep does have --line-buffered flag, this is just for demonstration purposes, you can apply this to any executable that does
--- not support line buffering, or you can use it to make any executable output byte buffered instead of line buffered, by using `-o0` flag
--- instead of `-oL`. This can greatly improve the responsiveness of the picker when dealing with executables that produce a lot of output
--- quickly.
-local Picker = require("fuzzy.picker")
-local picker = Picker.new({
-    content = "stdbuf",
-    context = {
-        args = {
-            "-oL",
-            "grep",
-            "-i",
-            "-r",
-            "pattern",
-            "."
-        }
-    }
-})
-picker:open()
-```
-
 ### Contextual awareness
 
 ```lua
--- here is an example of a more complex picker, that uses a converter to enhance the entries provided by the stream, in this case we are using
--- the grep converter along with the cwd visitor, this will ensure that the entries provided by grep are enhanced with the full path to the file
--- based on the context of the picker and more precisely the current working directory of the picker itself, this is required since grep
--- would only return the relative file path based on the cwd it was invoked with. If in the meantime you have changed your editor working
--- directory and re-open the picker, or simply the picker was never configured with the current working directory, in the first place, the
--- converter will ensure that the full path is always correctly constructed
+-- here is an example of a more complex picker, that uses a converter to enhance the entries provided by the stream, in this case suppose we
+-- are NOT currently located in the .config/nvim directory, but we wish to list all files in there, we are using the grep converter along with
+-- the `cwd` visitor, and a very special value for the `cwd` where ripgrep will be run, this will ensure that the entries provided by grep
+-- are enhanced with the full path to the file based on the context of the picker and more precisely the target working directory
+-- (.config/nvim) of the picker itself, this is required since grep would only return the relative file path based on the `cwd` it was
+-- invoked with. Meaning that if in the meantime you change your editor working directory the list will still correctly convert and parse
+-- the entries. The visitors and converters are NOT modifying the content stream, they ensure that selections ONLY are decorated/visited
 local converter = Picker.Converter.new(
     Picker.grep_converter,
     Picker.cwd_visitor
@@ -405,13 +505,18 @@ picker = Picker.new({
             "--no-heading",
             "{prompt}",
         },
-        cwd = vim.loop.cwd(),
+        -- using the `cwd` visitor, will ensure that the entries provided by the content stream - `ripgrep`, will be decorated with the full
+        -- path to where the results are actually coming from, in this case that would be .config/nvim. This ensures that the built in
+        -- modules can work correctly, that includes actions, previewers and decorators. If you have your own solution to these built-in
+        -- modules the provided Picker.Converter, would not be required to be used, and you can roll out your own custom solution to resolve
+        -- this particular use-case.
+        cwd = vim.fn.expand("~/.config/nvim"),
         interactive = "{prompt}",
     },
     decorators = {
         Select.IconDecorator.new(cb),
     },
-    preview = Select.BufferPreview.new(cb),
+    preview = Select.BufferPreview.new(nil, cb),
     actions = {
         ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
         ["<c-q>"] = Select.action(Select.send_quickfix, Select.all(cb)),
@@ -432,9 +537,9 @@ bindings which are provided out of the box, to perform actions with the picker, 
 
 ```text
 ["<cr>"]    = confirm current selection
+["<c-g>"]   = fuzzy/interactive stage
 ["<esc>"]   = close the picker interface
-["<m-c>"]   = hide the picker interface
-["<c-g>"]   = toggle fuzzy/interactive stage
+["<m-esc>"] = hide the picker interface
 
 ["<c-l>"]   = toggle the preview window,
 ["<c-d>"]   = preview page half down
@@ -460,6 +565,26 @@ bindings which are provided out of the box, to perform actions with the picker, 
 
 ["<m-bs>"]  = delete prev word to the left (back) of the cursor in the query prompt
 ["<m-d>"]   = delete next word to the right (forward) of the cursor in the query prompt
+```
+
+The list of available highlight groups listed below can be used to customize the appearance of items in the picker interface. Each of the
+primary element is associated with a different highlight group to enhance ease of use and simplicity. Several of them are simply the default
+ones that will be used when no user provided is supplied for `status, headers or decorations`.
+
+```text
+SelectToggleSign - default highlight for the toggle icon in the selection interface
+SelectPrefixText - default highlight for text prefix in the query prompt
+SelectStatusText - default highlight for the status text in the query prompt
+SelectToggleCount - default highlight for the toggle count in the query prompt
+
+SelectHeaderDefault - default highlight for the actual raw header text
+SelectHeaderPadding - default highlight for the header elements padding
+SelectHeaderDelimiter - default highlight for the header block delimiter
+SelectDecoratorDefault - default highlight for the decorated text in the list
+
+PickerHeaderActionKey - default highlight for the picker action key in selection interface header
+PickerHeaderActionLabel - default highlight for the picker action label in selection interface header
+PickerHeaderActionSeparator - default highlight for the picker action separator selection interface in the header
 ```
 
 ### Interactive and Fuzzy stages
@@ -586,7 +711,7 @@ preview is available or not.
 | `content`    | `string,function,table`  | The content for the picker. Can be a string (command), function (generates entries dynamically), or table (static entries). Tables make the picker non-interactive by default. Functions/tables can contain strings or tables (requires a `display` function for extracting). |
 | `context`    | `table?`                 | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), `map` (function to transform entries from the content stream), and `interactive` (boolean, string, or number to configure interactivity).                                    |
 | `display`    | `function,string,nil`    | Custom function for displaying entries. If `nil`, the entry itself is displayed. If a string, it’s treated as a key to extract from the entry table. If a function, it is used as a callback which receives the entry as its only input and must return a string              |
-| `actions`    | `table?`                 | Key mappings for actions in the picker interface. Specify as `["key"] = callback` OR `["key"] = { callback, label }` OR `["key"] = false` to disable the action for that key. Labels (optional) can be `string` or `function`.                                                |
+| `actions`    | `table?`                 | Key mappings for actions in the picker interface. Specify as `[key] = callback` OR `["key"] = { callback, label }` OR `["key"] = false` to disable the action for that key. Labels (optional) can be `string` or `function`.                                                  |
 | `preview`    | `Select.Preview,boolean` | Configures whether entries generate a preview. Set `false` for none, Or provide an instance of a class sub-classing off of `Select.Preview` such as - `Select.BufferPreview`.                                                                                                 |
 | `decorators` | `Select.Decorator[]`     | Table of decorators for the entries. The decoration providers are instances of `Select.Decorators` and by default the Select module provides several built in ones like Select.IconDecorator.                                                                                 |
 
@@ -812,7 +937,7 @@ display or preview lua tables and strings called `EchoPreviewer`
 ```lua
 -- Example of using a built-in previewer with a converter that matches grep entries and parses them into the required table structure. This
 -- structure is required by the built-in `SelectBufferPreview` to correctly be able to preview the entry.
-preview = Select.BufferPreview.new(function()
+preview = Select.BufferPreview.new({}, function()
     local pat = "^([^:]+):(%d+):(%d+):(.+)$"
     local filename, line_num, col_num = entry:match(pat)
     return {
@@ -866,7 +991,10 @@ argument, which is used to convert the raw entry into a valid entry structure be
 already discussed above for built-in actions, this is useful when the stream entries are not in a valid format for the previewer to
 handle directly. These previewers require the same structure as specified for the picker `actions` in the entries section. Otherwise a
 default internal converter is used which is the same default converter used for `actions` as well, which attempts to convert an entry
-into a valid structure, when no converter is passed to them.
+into a valid structure, when no converter is passed to them. The `BufferPreview` built in previewer also accepts as first argument a list
+of file extensions which are to be ignored, these would often be executables or otherwise files that can not be previewed by neovim
+by default, set this parameter to `nil` to use the default ignore list that is provided internally, otherwise provide a valid table of
+values which are the file extensions such as - `{"exe", "dll", "so", "dylib", "bin", "app", "msi"}`
 
 `The preview function can return false to signal that the preview did not complete successfully, this will result in no-op for the
 preview for this entry, an optional message can also be returned describing the reason for the failure`
@@ -947,11 +1075,11 @@ no-op for the decorator for this entry`
 #### Converters
 
 As we have already seen the default converter function is a plain stateless callback that ensures the built-in elements that the Select
-module exposes such as `actions`, `previewers` or `decorators` can receive a well formed entry, however there are cases where that is simply not
-enough, this is when the picker has been configured with a more complex context, including a static working directory, or maybe some complex
-set of arguments or environment variables, in such cases we would like to be able to `visit` each entry after the base conversion is
-performed and further enrich it based on the picker context, the visitors are stateful callback that use the picker context to ensure the
-entry is not relative to the picker context, but has an absolute form.
+module exposes such as `actions`, `previewers` or `decorators` can receive a well formed entry, however there are cases where that is
+simply not enough, this is when the picker has been configured with a more complex context, including a static working directory, or
+maybe some complex set of arguments or environment variables, in such cases we would like to be able to `visit` each entry after the
+base conversion is performed and further enrich it based on the picker context, the visitors are stateful callback that use the picker
+context to ensure the entry is not relative to the picker context, but has an absolute form.
 
 Visitors are just like the converters a plain callbacks, that however receive two arguments instead of one, the entry and an optional 2-nd
 argument that is the context of the picker, it is optional because it is not always needed to use the context to enrich a visited entry.
@@ -987,7 +1115,7 @@ picker = Picker.new({
     decorators = {
         Select.IconDecorator.new(cb),
     },
-    preview = Select.BufferPreview.new(cb),
+    preview = Select.BufferPreview.new(nil, cb),
     actions = {
         ["<cr>"] = Select.action(Select.select_entry, Select.all(cb)),
     },
@@ -1204,7 +1332,7 @@ local picker = Picker.new({
     },
     -- tells the picker what preview provider to use, in this case a simple buffer preview that will open the selected file in a buffer, using the same custom
     -- converter instance to ensure that the entry is absolute relative to the cwd of the picker so we can preview it correctly
-    preview = Select.BufferPreview.new(cb),
+    preview = Select.BufferPreview.new(nil, cb),
     -- adds a default icon decorator to the picker, using the same custom converter instance to ensure that the entry is absolute relative
     -- to the cwd of the picker so we can decorate it correctly. Realistically the decorator does not need the full entry, it is only using the extension of the
     -- filename to determine the icon to use, however for consistency we are using the same converter instance for all built-in components
@@ -1326,7 +1454,7 @@ vim.ui.select = function(items, opts, on_choice)
         display = opts and opts.format_item,
         -- add a default entry preview, we pass our own converter to the `BufferPreview` which would ensure that the entry is correctly
         -- converted and prepared to be handled by the built-in previewer
-        preview = BufferPreview.new(converter),
+        preview = Select.BufferPreview.new({}, converter),
         -- adds decoration providers to enhance the selection interface visually, here we are using a simple status provider, that was
         -- demonstrated already above
         decorators = {
@@ -1398,15 +1526,16 @@ local picker = require("fuzzy.sources.files").grep()
 
 ### Mandatory
 
-- Neovim 0.11.0 or higher with support for `fuzzymatch` and `fuzzymatchpos`
+- Neovim 0.11.0 or higher with support for `matchfuzzy` and `matchfuzzypos`
 
 ### Optional
 
-- `tree-sitter`- parsers required for the `Select.BufferPreview` previewer
-
-- `ripgrep` - required for the `Files.grep` source and other executable based pickers
-- `bat` - required for the `Select.CommandPreview` previewer used in various sources
-- `fd` - required for the `Files.files` and `Files.dirs` picker sources
+- `tree-sitter`
+- `ripgrep`
+- `find`
+- `ls`
+- `ls`
+- `cat`
 
 ## Contributing
 
