@@ -1,0 +1,85 @@
+local Picker = require("fuzzy.picker")
+local Select = require("fuzzy.select")
+local util = require("fuzzy.pickers.util")
+
+local M = {}
+
+local function collect_mark_list()
+    local mark_entry_list = {}
+    local buffer_mark_list = vim.fn.getmarklist(0) or {}
+    local global_mark_list = vim.fn.getmarklist() or {}
+    for _, mark_entry in ipairs(buffer_mark_list) do
+        table.insert(mark_entry_list, mark_entry)
+    end
+    for _, mark_entry in ipairs(global_mark_list) do
+        table.insert(mark_entry_list, mark_entry)
+    end
+    return mark_entry_list
+end
+
+local function mark_to_location(mark_entry)
+    local mark_position = mark_entry.pos or {}
+    local buf = mark_position[1]
+    local line_number = mark_position[2]
+    local column_number = mark_position[3]
+    local file_path = mark_entry.file
+    if not file_path or #file_path == 0 then
+        if buf and buf > 0 then
+            file_path = vim.api.nvim_buf_get_name(buf)
+        end
+    end
+    return {
+        bufnr = buf,
+        filename = file_path,
+        lnum = line_number or 1,
+        col = column_number or 1,
+    }
+end
+
+function M.open_marks_picker(opts)
+    opts = util.merge_picker_options({
+        reuse = true,
+        filename_only = false,
+        path_shorten = nil,
+        home_to_tilde = true,
+        preview = true,
+        icons = true,
+        match_step = 50000,
+    }, opts)
+
+    local mark_entry_list = collect_mark_list()
+
+    local conv = function(entry_value)
+        return mark_to_location(entry_value)
+    end
+
+    local decorators = {}
+    if opts.icons ~= false then
+        decorators = { Select.IconDecorator.new(conv) }
+    end
+
+    local picker = Picker.new(vim.tbl_deep_extend("force", {
+        content = mark_entry_list,
+        headers = util.build_picker_headers("Marks", opts),
+        preview = opts.preview ~= false
+            and Select.BufferPreview.new(nil, conv) or false,
+        actions = util.build_default_actions(conv, opts),
+        decorators = decorators,
+        display = function(entry_value)
+            local location_entry = mark_to_location(entry_value)
+            local file_path = util.format_display_path(location_entry.filename, opts)
+            return util.format_location_entry(
+                file_path,
+                location_entry.lnum or 1,
+                location_entry.col or 1,
+                nil,
+                table.concat({ "[", entry_value.mark or "?", "]" })
+            )
+        end,
+    }, util.build_picker_options(opts)))
+
+    picker:open()
+    return picker
+end
+
+return M

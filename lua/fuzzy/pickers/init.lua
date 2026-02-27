@@ -1,0 +1,79 @@
+local M = {}
+
+local buffers_picker_module = require("fuzzy.pickers.buffers")
+local files_picker_module = require("fuzzy.pickers.files")
+local grep_picker_module = require("fuzzy.pickers.grep")
+local oldfiles_picker_module = require("fuzzy.pickers.oldfiles")
+local quickfix_picker_module = require("fuzzy.pickers.quickfix")
+local colorscheme_picker_module = require("fuzzy.pickers.colorscheme")
+local git_picker_module = require("fuzzy.pickers.git")
+local registry_picker_module = require("fuzzy.pickers.registry")
+local jumps_picker_module = require("fuzzy.pickers.jumps")
+local changes_picker_module = require("fuzzy.pickers.changes")
+local registers_picker_module = require("fuzzy.pickers.registers")
+local marks_picker_module = require("fuzzy.pickers.marks")
+local tabs_picker_module = require("fuzzy.pickers.tabs")
+local lines_picker_module = require("fuzzy.pickers.lines")
+local blines_picker_module = require("fuzzy.pickers.blines")
+local keymaps_picker_module = require("fuzzy.pickers.keymaps")
+local commands_picker_module = require("fuzzy.pickers.commands")
+local command_history_module = require("fuzzy.pickers.command_history")
+local search_history_module = require("fuzzy.pickers.search_history")
+local loclist_picker_module = require("fuzzy.pickers.loclist")
+local quickfix_stack_module = require("fuzzy.pickers.quickfix_stack")
+local loclist_stack_module = require("fuzzy.pickers.loclist_stack")
+local helptags_picker_module = require("fuzzy.pickers.helptags")
+local manpages_picker_module = require("fuzzy.pickers.manpages")
+local tags_picker_module = require("fuzzy.pickers.tags")
+local btags_picker_module = require("fuzzy.pickers.btags")
+local spell_suggest_module = require("fuzzy.pickers.spell_suggest")
+
+M.open_buffers_picker = buffers_picker_module.open_buffers_picker
+M.open_files_picker = files_picker_module.open_files_picker
+M.open_grep_picker = grep_picker_module.open_grep_picker
+M.open_oldfiles_picker = oldfiles_picker_module.open_oldfiles_picker
+M.open_quickfix_picker = quickfix_picker_module.open_quickfix_picker
+M.open_colorscheme_picker = colorscheme_picker_module.open_colorscheme_picker
+
+M.open_git_files = git_picker_module.open_git_files
+M.open_git_status = git_picker_module.open_git_status
+M.open_git_branches = git_picker_module.open_git_branches
+M.open_git_commits = git_picker_module.open_git_commits
+M.open_git_bcommits = git_picker_module.open_git_bcommits
+M.open_git_stash = git_picker_module.open_git_stash
+
+M.open_jumps_picker = jumps_picker_module.open_jumps_picker
+M.open_changes_picker = changes_picker_module.open_changes_picker
+M.open_registers_picker = registers_picker_module.open_registers_picker
+M.open_marks_picker = marks_picker_module.open_marks_picker
+M.open_tabs_picker = tabs_picker_module.open_tabs_picker
+M.open_lines_picker = lines_picker_module.open_lines_picker
+M.open_blines_picker = blines_picker_module.open_blines_picker
+M.open_lines_word = lines_picker_module.open_lines_word
+M.open_lines_visual = lines_picker_module.open_lines_visual
+M.open_buffer_lines_word = blines_picker_module.open_buffer_lines_word
+M.open_buffer_lines_visual = blines_picker_module.open_buffer_lines_visual
+M.open_grep_word = grep_picker_module.open_grep_word
+M.open_grep_visual = grep_picker_module.open_grep_visual
+M.open_keymaps_picker = keymaps_picker_module.open_keymaps_picker
+M.open_commands_picker = commands_picker_module.open_commands_picker
+M.open_command_history = command_history_module.open_command_history
+M.open_search_history = search_history_module.open_search_history
+M.open_loclist_picker = loclist_picker_module.open_loclist_picker
+M.open_quickfix_stack = quickfix_stack_module.open_quickfix_stack
+M.open_loclist_stack = loclist_stack_module.open_loclist_stack
+M.open_quickfix_visual = quickfix_picker_module.open_quickfix_visual
+M.open_loclist_visual = loclist_picker_module.open_loclist_visual
+M.open_helptags_picker = helptags_picker_module.open_helptags_picker
+M.open_manpages_picker = manpages_picker_module.open_manpages_picker
+M.open_tags_picker = tags_picker_module.open_tags_picker
+M.open_btags_picker = btags_picker_module.open_btags_picker
+M.open_spell_suggest = spell_suggest_module.open_spell_suggest
+
+M.register_picker_instance = registry_picker_module.register_picker_instance
+M.get_picker_instance = registry_picker_module.get_picker_instance
+M.remove_picker_instance = registry_picker_module.remove_picker_instance
+M.clear_picker_registry = registry_picker_module.clear_picker_registry
+M.open_picker_instance = registry_picker_module.open_picker_instance
+
+return M

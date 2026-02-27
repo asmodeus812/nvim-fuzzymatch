@@ -1,0 +1,39 @@
+local Picker = require("fuzzy.picker")
+local Select = require("fuzzy.select")
+local util = require("fuzzy.pickers.util")
+
+local M = {}
+
+function M.open_loclist_stack(opts)
+    opts = util.merge_picker_options({
+        reuse = true,
+        preview = false,
+        match_step = 50000,
+    }, opts)
+
+    local history_text = vim.fn.execute("lhistory")
+    local history_entry_list = util.parse_stack_entries(history_text)
+
+    local picker = Picker.new(vim.tbl_deep_extend("force", {
+        content = history_entry_list,
+        headers = util.build_picker_headers("Loclist Stack", opts),
+        preview = false,
+        actions = {
+            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
+                if entry_value and entry_value.number then
+                    vim.cmd({ cmd = "lhistory", args = { tostring(entry_value.number) } })
+                    vim.cmd("lopen")
+                end
+                return false
+            end)),
+        },
+        display = function(entry_value)
+            return entry_value.text or ""
+        end,
+    }, util.build_picker_options(opts)))
+
+    picker:open()
+    return picker
+end
+
+return M

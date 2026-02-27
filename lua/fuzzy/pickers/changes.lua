@@ -1,0 +1,60 @@
+local Picker = require("fuzzy.picker")
+local Select = require("fuzzy.select")
+local util = require("fuzzy.pickers.util")
+
+local M = {}
+
+function M.open_changes_picker(opts)
+    opts = util.merge_picker_options({
+        reuse = true,
+        filename_only = false,
+        path_shorten = nil,
+        home_to_tilde = true,
+        preview = true,
+        icons = true,
+        match_step = 50000,
+    }, opts)
+
+    local change_list_data = vim.fn.getchangelist(0)
+    local change_entry_list = change_list_data[1] or {}
+    local current_buf = vim.api.nvim_get_current_buf()
+
+    local conv = function(entry_value)
+        return {
+            bufnr = current_buf,
+            filename = vim.api.nvim_buf_get_name(current_buf),
+            lnum = entry_value.lnum or 1,
+            col = entry_value.col or 1,
+        }
+    end
+
+    local decorators = {}
+    if opts.icons ~= false then
+        decorators = { Select.IconDecorator.new(conv) }
+    end
+
+    local picker = Picker.new(vim.tbl_deep_extend("force", {
+        content = change_entry_list,
+        headers = util.build_picker_headers("Changes", opts),
+        preview = opts.preview ~= false
+            and Select.BufferPreview.new(nil, conv) or false,
+        actions = util.build_default_actions(conv, opts),
+        decorators = decorators,
+        display = function(entry_value)
+            local file_path = vim.api.nvim_buf_get_name(current_buf)
+            file_path = util.format_display_path(file_path, opts)
+            return util.format_location_entry(
+                file_path,
+                entry_value.lnum or 1,
+                entry_value.col or 1,
+                nil,
+                nil
+            )
+        end,
+    }, util.build_picker_options(opts)))
+
+    picker:open()
+    return picker
+end
+
+return M

@@ -228,6 +228,12 @@ function Picker:_context_evaluate(key, ...)
 end
 
 function Picker:_interactive_args(context, query)
+    if type(context.interactive) == "function" then
+        local args = context.interactive(query, context)
+        assert(type(args) == "table")
+        return args
+    end
+
     local command_args = context.args and vim.fn.copy(context.args)
     if type(context.interactive) == "string" then
         for indx, argument in ipairs(command_args or {}) do

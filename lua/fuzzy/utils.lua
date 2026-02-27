@@ -228,6 +228,46 @@ function M.table_unpack(tbl)
     return unpack(assert(tbl), 1, assert(tbl.n))
 end
 
+--- Get the current or last visual selection as plain text.
+--- Returns nil when no selection is available.
+--- @return string|nil
+function M.get_visual_text()
+    local start_mark_position = vim.fn.getpos("'<")
+    local end_mark_position = vim.fn.getpos("'>")
+    if not start_mark_position or not end_mark_position then
+        return nil
+    end
+    local start_row_number = start_mark_position[2]
+    local start_col_number = start_mark_position[3]
+    local end_row_number = end_mark_position[2]
+    local end_col_number = end_mark_position[3]
+    if start_row_number == 0 or end_row_number == 0 then
+        return nil
+    end
+    if start_row_number > end_row_number
+        or (start_row_number == end_row_number
+            and start_col_number > end_col_number) then
+        start_row_number, end_row_number = end_row_number, start_row_number
+        start_col_number, end_col_number = end_col_number, start_col_number
+    end
+    local line_text_list = vim.api.nvim_buf_get_lines(
+        0,
+        start_row_number - 1,
+        end_row_number,
+        false
+    )
+    if not line_text_list or #line_text_list == 0 then
+        return nil
+    end
+    local visual_mode_value = vim.fn.visualmode()
+    if visual_mode_value ~= "V" then
+        line_text_list[1] = line_text_list[1]:sub(start_col_number)
+        line_text_list[#line_text_list] = line_text_list[#line_text_list]
+            :sub(1, end_col_number)
+    end
+    return table.concat(line_text_list, "\n")
+end
+
 --- Measure and log the execution time of a function, including its name and definition location. The function is called with the provided arguments, and any errors during execution are propagated.
 --- @param func function The function to measure
 --- @param ... any Arguments to pass to the function
