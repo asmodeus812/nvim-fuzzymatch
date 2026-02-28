@@ -3,7 +3,6 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class CommandsPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field include_builtin? boolean Include built-in commands
 --- @field sort_lastused? boolean Sort by last used
 --- @field preview? boolean Enable preview window
@@ -43,9 +42,7 @@ end
 --- @param opts CommandsPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_commands_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        include_builtin = true,
+    opts = util.merge_picker_options({        include_builtin = true,
         include_user = true,
         preview = false,
         match_step = 50000,

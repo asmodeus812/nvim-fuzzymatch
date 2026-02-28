@@ -4,7 +4,6 @@ local utils = require("fuzzy.utils")
 local util = require("fuzzy.pickers.util")
 
 --- @class BuffersPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field current_tab? boolean Restrict to buffers in the current tabpage
 --- @field show_unlisted? boolean Include unlisted buffers
 --- @field show_unloaded? boolean Include unloaded buffers
@@ -97,9 +96,7 @@ end
 --- @param opts BuffersPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_buffers_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        current_tab = false,
+    opts = util.merge_picker_options({        current_tab = false,
         show_unlisted = false,
         show_unloaded = false,
         no_term_buffers = false,

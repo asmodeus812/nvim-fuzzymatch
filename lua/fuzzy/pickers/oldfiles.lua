@@ -3,7 +3,6 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class OldfilesPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field stat_file? boolean Stat entries to filter missing files
 --- @field preview? boolean Enable preview window
 --- @field icons? boolean Enable file icons
@@ -30,9 +29,7 @@ end
 --- @param opts OldfilesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_oldfiles_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
         cwd_only = false,
         stat_file = false,
         max = nil,

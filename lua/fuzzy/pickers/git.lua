@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class GitPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field cwd? string|fun(): string Working directory for git commands
 --- @field preview? boolean Enable preview window
 --- @field icons? boolean Enable file icons
@@ -72,9 +71,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_files(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
         untracked = true,
         preview = true,
         icons = true,
@@ -126,9 +123,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_status(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
         preview = true,
         icons = true,
         stream_step = 50000,
@@ -179,9 +174,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_branches(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
         preview = false,
         stream_step = 50000,
         match_step = 50000,
@@ -209,9 +202,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_commits(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
         preview = false,
         stream_step = 50000,
         match_step = 50000,
@@ -238,9 +229,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_bcommits(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        cwd = nil,
+    opts = util.merge_picker_options({        cwd = nil,
         preview = false,
         stream_step = 50000,
         match_step = 50000,
@@ -282,9 +271,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_stash(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
         preview = false,
         stream_step = 50000,
         match_step = 50000,

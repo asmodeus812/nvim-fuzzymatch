@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class BufferLinesPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field line_chunk_size? integer Number of line entries per chunk
 --- @field preview? boolean Enable preview window
 --- @field match_step? integer Batch size for matching
@@ -16,9 +15,7 @@ local M = {}
 --- @param opts BufferLinesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_blines_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        line_chunk_size = 1000,
+    opts = util.merge_picker_options({        line_chunk_size = 1000,
         preview = false,
         match_step = 50000,
     }, opts)

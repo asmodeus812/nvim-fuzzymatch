@@ -3,7 +3,6 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class ColorschemePickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field preview? boolean Enable preview window
 --- @field match_step? integer Match batch size
 
@@ -20,9 +19,7 @@ end
 --- @param opts ColorschemePickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_colorscheme_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        live_preview = false,
+    opts = util.merge_picker_options({        live_preview = false,
         preview = true,
         prompt_query = "",
         match_step = 50000,

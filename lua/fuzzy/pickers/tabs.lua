@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class TabsPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field tab_marker? string Marker for current tab display
 --- @field preview? boolean Enable preview window
 --- @field match_step? integer Batch size for matching
@@ -15,9 +14,7 @@ local M = {}
 --- @param opts TabsPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_tabs_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        filename_only = false,
+    opts = util.merge_picker_options({        filename_only = false,
         path_shorten = nil,
         home_to_tilde = true,
         preview = false,

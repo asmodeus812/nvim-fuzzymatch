@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class FilesPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field cwd? string|fun(): string Working directory for the scan
 --- @field cwd_prompt? boolean Show cwd in the header
 --- @field cwd_prompt_shorten_val? integer Pathshorten value
@@ -78,9 +77,7 @@ end
 --- @param opts FilesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_files_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
         cwd_prompt = false,
         cwd_prompt_shorten_val = 1,
         cwd_prompt_shorten_len = 32,

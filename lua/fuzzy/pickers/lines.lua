@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class LinesPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field line_chunk_size? integer Number of line entries per chunk
 --- @field show_unlisted? boolean Include unlisted buffers
 --- @field show_unloaded? boolean Include unloaded buffers
@@ -19,9 +18,7 @@ local M = {}
 --- @param opts LinesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_lines_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        line_chunk_size = 1000,
+    opts = util.merge_picker_options({        line_chunk_size = 1000,
         show_unlisted = false,
         show_unloaded = false,
         ignore_current_buffer = false,

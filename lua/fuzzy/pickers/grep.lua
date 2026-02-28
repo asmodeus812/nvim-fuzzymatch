@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class GrepPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field cwd? string|fun(): string Working directory for the search
 --- @field hidden? boolean Include hidden files
 --- @field follow? boolean Follow symlinks
@@ -84,9 +83,7 @@ end
 --- @param opts GrepPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_grep_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
         hidden = false,
         follow = false,
         no_ignore = false,

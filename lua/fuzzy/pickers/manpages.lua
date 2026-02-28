@@ -3,7 +3,6 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class ManpagesPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field preview? boolean Enable preview window
 --- @field match_step? integer Match batch size
 
@@ -13,9 +12,7 @@ local M = {}
 --- @param opts ManpagesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_manpages_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        preview = false,
+    opts = util.merge_picker_options({        preview = false,
         match_step = 50000,
     }, opts)
 

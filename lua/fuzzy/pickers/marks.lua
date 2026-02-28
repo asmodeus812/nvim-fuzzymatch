@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class MarksPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field marks? string Pattern of marks to include
 --- @field filename_only? boolean Display only the filename
 --- @field path_shorten? number|nil Path shorten value for display
@@ -32,9 +31,7 @@ end
 --- @param opts MarksPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_marks_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        filename_only = false,
+    opts = util.merge_picker_options({        filename_only = false,
         path_shorten = nil,
         home_to_tilde = true,
         preview = true,

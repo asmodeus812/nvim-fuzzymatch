@@ -3,7 +3,6 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class SpellSuggestPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field target_word_text? string|nil Override the word under cursor
 --- @field suggest_limit_count? integer Maximum number of suggestions
 --- @field preview? boolean Enable preview window
@@ -66,9 +65,7 @@ end
 --- @param opts SpellSuggestPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_spell_suggest(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        target_word_text = nil,
+    opts = util.merge_picker_options({        target_word_text = nil,
         suggest_limit_count = 25,
         preview = false,
     }, opts)

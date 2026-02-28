@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class ChangesPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field filename_only? boolean Display only the filename
 --- @field path_shorten? number|nil Path shorten value for display
 --- @field home_to_tilde? boolean Replace home prefix with ~ in display
@@ -18,9 +17,7 @@ local M = {}
 --- @param opts ChangesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_changes_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        filename_only = false,
+    opts = util.merge_picker_options({        filename_only = false,
         path_shorten = nil,
         home_to_tilde = true,
         preview = true,

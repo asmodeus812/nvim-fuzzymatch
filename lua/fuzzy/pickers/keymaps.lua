@@ -3,7 +3,6 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class KeymapsPickerOptions
---- @field reuse? boolean Reuse the picker instance between opens
 --- @field show_desc? boolean Include descriptions in display
 --- @field show_details? boolean Include verbose details in display
 --- @field preview? boolean Enable preview window
@@ -40,9 +39,7 @@ end
 --- @param opts KeymapsPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_keymaps_picker(opts)
-    opts = util.merge_picker_options({
-        reuse = true,
-        include_buffer = true,
+    opts = util.merge_picker_options({        include_buffer = true,
         modes = { "n" },
         max_text = 120,
         preview = false,
