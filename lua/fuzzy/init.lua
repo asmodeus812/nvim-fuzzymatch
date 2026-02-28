@@ -1,6 +1,7 @@
 Picker = require("fuzzy.picker")
 Select = require("fuzzy.select")
 Scheduler = require("fuzzy.scheduler")
+Pool = require("fuzzy.pool")
 
 local M = {
     config = {},
@@ -11,6 +12,11 @@ function M.setup(opts)
         override_select = true,
     })
     Scheduler.new({})
+    Pool.new({
+        max_idle = 5 * 60 * 1000,
+        prune_interval = 30 * 1000,
+    })
+    Pool.prime({ 1024, 2048, 4096, 8192, 16384 })
 
     if M.config.override_select then
         ---@diagnostic disable-next-line: duplicate-set-field

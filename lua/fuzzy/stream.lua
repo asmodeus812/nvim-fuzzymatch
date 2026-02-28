@@ -1,5 +1,6 @@
 local Scheduler = require("fuzzy.scheduler")
 local Async = require("fuzzy.async")
+local Pool = require("fuzzy.pool")
 local utils = require("fuzzy.utils")
 local BASEMSG = "Stream failed with"
 
@@ -27,8 +28,8 @@ function Stream:_destroy_stream()
             self.results,
             utils.EMPTY_STRING
         )
-        utils.attach_table(self.results)
-        utils.return_table(self.results)
+        Pool.attach(self.results)
+        Pool._return(self.results)
         self.results = nil
     end
 end
@@ -64,7 +65,7 @@ function Stream:_close_stream()
         )
         -- make sure that the buffer itself is also returned back to the pool, this will ensure that future stream instances, or this
         -- one can pick it from the pool and use it.
-        utils.return_table(self._state.buffer)
+        Pool._return(self._state.buffer)
         self._state.buffer = nil
         self._state.size = 0
     end
@@ -74,7 +75,7 @@ function Stream:_close_stream()
         -- the accumulator from the pool, allowing users to use the results as they see fit, through stream.results. The accumulator is also
         -- resized to ensure the total number of elements, this is useful if the stream did not find any results, in which case
         -- _flush_results would never be called, in all other cases this is a no op.
-        utils.detach_table(self._state.accum)
+        Pool.detach(self._state.accum)
         self.results = self._state.accum
         self._state.accum = nil
         self._state.total = 0
@@ -366,13 +367,13 @@ function Stream:start(cmd, opts)
     -- ensure that a buffer is claimed from the pool, a buffer with the required size, or close to it will be pulled from the pool
     -- for future use
     if not self._state.buffer then
-        self._state.buffer = utils.obtain_table(size)
+        self._state.buffer = Pool.obtain(size)
     end
 
     -- the accumulator has to also be pulled form the pool, similarly to the buffer, the accumulator starts with a given size, at
     -- least enough to fit in the first batch of buffer entries, it will however grow further, unlike the buffer
     if not self._state.accum then
-        self._state.accum = utils.obtain_table(size)
+        self._state.accum = Pool.obtain(size)
     end
 
     if type(cmd) == "function" then

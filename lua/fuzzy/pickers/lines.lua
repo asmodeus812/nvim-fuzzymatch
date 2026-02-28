@@ -3,8 +3,21 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
+--- @class LinesPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field line_chunk_size? integer Number of line entries per chunk
+--- @field show_unlisted? boolean Include unlisted buffers
+--- @field show_unloaded? boolean Include unloaded buffers
+--- @field ignore_current_buffer? boolean Exclude current buffer
+--- @field preview? boolean Enable preview window
+--- @field match_step? integer Batch size for matching
+--- @field prompt_query? string|nil Initial prompt query
+
 local M = {}
 
+--- Open Lines picker.
+--- @param opts LinesPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_lines_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,
@@ -80,6 +93,10 @@ function M.open_lines_picker(opts)
     return picker
 end
 
+--- Open Lines word picker.
+--- Prefills the prompt with the word under cursor.
+--- @param opts LinesPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_lines_word(opts)
     local word = vim.fn.expand("<cword>")
     local query = util.normalize_query_text(word)
@@ -90,6 +107,10 @@ function M.open_lines_word(opts)
     return M.open_lines_picker(opts)
 end
 
+--- Open Lines visual picker.
+--- Prefills the prompt with the visual selection.
+--- @param opts LinesPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_lines_visual(opts)
     local visual = utils.get_visual_text()
     local query = util.normalize_query_text(visual)

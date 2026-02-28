@@ -3,8 +3,16 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
+--- @class BufferTagsPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field preview? boolean Enable preview window
+--- @field match_step? integer Match batch size
+
 local M = {}
 
+--- Open Btags picker.
+--- @param opts BufferTagsPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_btags_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,

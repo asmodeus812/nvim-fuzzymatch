@@ -1,3 +1,4 @@
+local Pool = require("fuzzy.pool")
 local utils = require("fuzzy.utils")
 
 --- @class Match
@@ -57,7 +58,7 @@ function Match:_populate_chunks()
 
             -- quickly pull a table from the pool, we are going to use for the tail eleements, to avoid nuking the size of
             -- the main chunk table re-used for the bulk of the results and matches
-            self._state.tail = utils.obtain_table(new_size)
+            self._state.tail = Pool.obtain(new_size)
             destination = self._state.tail
         end
         -- ensure that the iteration range is within the iteration range for each step, the range has to be valid and only
@@ -106,8 +107,8 @@ function Match:_destroy_context()
                 def = 0
             end
             utils.fill_table(assert(value), assert(def))
-            utils.attach_table(value)
-            utils.return_table(value)
+            Pool.attach(value)
+            Pool._return(value)
         end
         self.results = nil
     end
@@ -132,7 +133,7 @@ function Match:_clean_context()
                     value, 0
                 )
             end
-            utils.return_table(value)
+            Pool._return(value)
         end
         self._state.buffer = nil
     end
@@ -145,7 +146,7 @@ function Match:_clean_context()
         )
         -- destroy the chunks, returning them to the pool, the chunks will always point to a single list which was originally obtained from
         -- the pool
-        utils.return_table(self._state.chunks)
+        Pool._return(self._state.chunks)
         self._state.chunks = nil
     end
 
@@ -156,7 +157,7 @@ function Match:_clean_context()
             self._state.tail,
             utils.EMPTY_STRING
         )
-        utils.return_table(self._state.tail)
+        Pool._return(self._state.tail)
         self._state.tail = nil
     end
 
@@ -164,7 +165,7 @@ function Match:_clean_context()
         -- accumulated results are detached from the pool to avoid returning them, they will be returned back to the user, if ephemeral is set
         -- however the results will be returned back to the pool, on the next match:start
         for _, value in ipairs(self._state.accum) do
-            utils.detach_table(value)
+            Pool.detach(value)
         end
         -- move the accumulated results to the public results field, signaling that the matching is done and can be used by the user, user
         -- is responsible for not holding references to this field moer than needed since it might contain huge amounts of data
@@ -219,9 +220,9 @@ function Match:_match_worker()
             -- the pool, eventually either this will be returned to the user as results, or the buffer. Either one will be detached from the
             -- pool, when returned to the user, the other one will be returned to the pool. If ephemeral the next time a match is started the
             -- results will be returned to the pool as well making them invalid.
-            self._state.accum[1] = utils.attach_table(strings)
-            self._state.accum[2] = utils.attach_table(positions)
-            self._state.accum[3] = utils.attach_table(scores)
+            self._state.accum[1] = Pool.attach(strings)
+            self._state.accum[2] = Pool.attach(positions)
+            self._state.accum[3] = Pool.attach(scores)
         else
             -- merge the new results with the accumulated ones, using double buffering to avoid allocations
             local result = utils.time_execution(Match.merge,
@@ -302,6 +303,14 @@ function Match:match(list, pattern, callback, transform)
         end
     end
 
+    if self.results then
+        for _, value in ipairs(self.results) do
+            Pool.attach(value)
+            Pool._return(value)
+        end
+        self.results = nil
+    end
+
     -- initialize the core matching context
     self.list = assert(list)
     self.pattern = assert(pattern)
@@ -322,7 +331,7 @@ function Match:match(list, pattern, callback, transform)
         -- chunks are reused to avoid frequent allocations, they represent the part of the whole source list currently being processed
         -- for matches
         local size = self._options.step
-        self._state.chunks = utils.obtain_table(size)
+        self._state.chunks = Pool.obtain(size)
     end
 
     if not self._state.buffer then
@@ -330,9 +339,9 @@ function Match:match(list, pattern, callback, transform)
         -- most #list size tables from the pool, since in the worst case we might have to hold all items, if it turns out we do not need
         -- that much, the merge will resize the source table anyway
         self._state.buffer = {
-            utils.obtain_table(#list),
-            utils.obtain_table(#list),
-            utils.obtain_table(#list),
+            Pool.obtain(#list),
+            Pool.obtain(#list),
+            Pool.obtain(#list),
         }
     end
 

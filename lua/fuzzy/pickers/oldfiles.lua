@@ -2,6 +2,16 @@ local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
+--- @class OldfilesPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field stat_file? boolean Stat entries to filter missing files
+--- @field preview? boolean Enable preview window
+--- @field icons? boolean Enable file icons
+--- @field match_step? integer Match batch size
+--- @field filename_only? boolean Display only the filename
+--- @field path_shorten? number|nil Path shorten value for display
+--- @field home_to_tilde? boolean Replace home prefix with ~ in display
+
 local M = {}
 
 local function is_under_directory(root_directory, file_path)
@@ -16,6 +26,9 @@ local function is_under_directory(root_directory, file_path)
     return file_path:sub(1, #root_directory + 1) == root_directory .. "/"
 end
 
+--- Open Oldfiles picker.
+--- @param opts OldfilesPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_oldfiles_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,

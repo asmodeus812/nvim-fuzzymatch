@@ -9,6 +9,7 @@ local detailed_extmark_opts = { limit = 4, type = "highlight", details = true, h
 local padding = { " ", "SelectHeaderPadding" }
 local spacing = { ",", "SelectHeaderDelimiter" }
 
+local Pool = require("fuzzy.pool")
 local utils = require("fuzzy.utils")
 local Async = require("fuzzy.async")
 local Scheduler = require("fuzzy.scheduler")
@@ -361,7 +362,7 @@ local function populate_buffer(buffer, items, display, step)
     vim.bo[buffer].modifiable = true
     if step ~= nil and step > 0 then
         local size = math.min(#items, step)
-        local lines = utils.obtain_table(size)
+        local lines = Pool.obtain(size)
 
         local start, _end = 1, size
         repeat
@@ -376,7 +377,7 @@ local function populate_buffer(buffer, items, display, step)
             _end = math.min(#items, _end + step)
         until start == #items or start > _end
 
-        utils.return_table(utils.fill_table(lines, utils.EMPTY_STRING))
+        Pool._return(utils.fill_table(lines, utils.EMPTY_STRING))
         assert(#lines == size)
         Async.yield()
 
@@ -406,7 +407,7 @@ local function populate_range(buffer, start, _end, entries, display)
     if _end > 0 then
         assert(start <= _end and start > 0)
         local diff = math.abs(_end - start) + 1
-        lines = utils.obtain_table(diff)
+        lines = Pool.obtain(diff)
 
         for target = start, _end, 1 do
             lines[(target - start) + 1] = line_mapper(entries[target], display)
@@ -422,7 +423,7 @@ local function populate_range(buffer, start, _end, entries, display)
     vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
     if lines ~= utils.EMPTY_TABLE then
         utils.fill_table(lines)
-        utils.return_table(lines)
+        Pool._return(lines)
     end
     vim.bo[buffer].modifiable = oldma
     vim.bo[buffer].modified = false
@@ -1049,7 +1050,7 @@ function Select:_list_selection()
         return { entries[cursor[1]] }
     else
         local index, current = 1, 0
-        local selection = utils.obtain_table(size)
+        local selection = Pool.obtain(size)
         for line, status in pairs(toggled.entries) do
             if status == true then
                 local position = tonumber(line)

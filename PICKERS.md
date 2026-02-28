@@ -56,6 +56,7 @@ reference, but the primary focus here is descriptive guidance.
     - [Tags](#tags)
         - [Tags](#tags)
         - [Buffer Tags](#buffer-tags)
+    - [Registry](#registry)
 
 ## Git
 
@@ -83,17 +84,16 @@ git_picker.open_git_files({
 ```
 
 Options and behavior:
-
-- `cwd`: Controls where the git command is executed. If you work in nested repositories,
-  pass the root to avoid confusing output. If omitted, the picker detects the git root from the
-  current buffer when possible.
-- `untracked`: Includes untracked files in addition to tracked files. This is useful for
-  new files during development. It is less suitable when you want a clean list of tracked files only.
-- `preview`: If enabled, a file previewer is created. The preview is lazy and only
-  materializes for the selection, so it does not inflate memory usage.
+- `cwd`: Controls where the git command is executed. If you work in nested repositories, pass the
+  root to avoid confusing output. If omitted, the picker detects the git root from the current
+  buffer when possible.
+- `untracked`: Includes untracked files in addition to tracked files. This is useful for new files
+  during development. It is less suitable when you want a clean list of tracked files only.
+- `preview`: If enabled, a file previewer is created. The preview is lazy and only materializes for
+  the selection, so it does not inflate memory usage.
 - `icons`: Adds file icons. Display only.
-- `stream_step`, `match_step`: Higher values process more items per iteration. Use lower
-  values if you notice UI hitching on extremely large repos.
+- `stream_step`, `match_step`: Higher values process more items per iteration. Use lower values if
+  you notice UI hitching on extremely large repos.
 
 ### Git Status
 
@@ -114,13 +114,12 @@ git_picker.open_git_status({
 ```
 
 Options and behavior:
-
-- `cwd`: Must be inside a repository. The picker asserts if a repo root cannot be found.
-  This is intentional so failures are obvious.
+- `cwd`: Must be inside a repository. The picker asserts if a repo root cannot be found. This is
+  intentional so failures are obvious.
 - `preview`: Previews the selected file if the status entry can be mapped to a path.
 - `icons`: Adds file icons. Display only.
-- `stream_step`, `match_step`: Tune for very large status lists, usually unnecessary
-  unless you have a massive working tree with many untracked files.
+- `stream_step`, `match_step`: Tune for very large status lists, usually unnecessary unless you have
+  a massive working tree with many untracked files.
 
 ### Git Branches
 
@@ -138,10 +137,9 @@ git_picker.open_git_branches({
 ```
 
 Options and behavior:
-
 - `cwd`: Repository root or a path inside the repo.
-- `stream_step`, `match_step`: For very large repos with many branches, lowering these
-  values can smooth UI.
+- `stream_step`, `match_step`: For very large repos with many branches, lowering these values can
+  smooth UI.
 
 ### Git Commits
 
@@ -159,9 +157,8 @@ git_picker.open_git_commits({
 ```
 
 Options and behavior:
-
-- `cwd`: Repository root. If you are inside a submodule, pass its root explicitly to
-  avoid ambiguity.
+- `cwd`: Repository root. If you are inside a submodule, pass its root explicitly to avoid
+  ambiguity.
 - `stream_step`, `match_step`: Useful only for repos with very long histories.
 
 ### Git Buffer Commits
@@ -179,9 +176,8 @@ git_picker.open_git_bcommits({
 ```
 
 Options and behavior:
-
-- Uses the current buffer path as input. If the buffer has not been written to disk, the
-  picker will assert.
+- Uses the current buffer path as input. If the buffer has not been written to disk, the picker will
+  assert.
 - `stream_step`, `match_step` behave as above.
 
 ### Git Stash
@@ -200,10 +196,9 @@ git_picker.open_git_stash({
 ```
 
 Options and behavior:
-
 - `cwd` should be inside a repository.
-- Use this picker when you need fast stash inspection. It is not ideal for bulk stash
-  manipulation since actions are intentionally minimal.
+- Use this picker when you need fast stash inspection. It is not ideal for bulk stash manipulation
+  since actions are intentionally minimal.
 
 ## Files
 
@@ -236,18 +231,17 @@ files_picker.open_files_picker({
 ```
 
 Options and behavior:
-
 - `cwd`: Root for the file scan. Set this explicitly if you work in multiple projects.
-- `cwd_prompt`, `cwd_prompt_shorten_val`, `cwd_prompt_shorten_len`: Control the prompt
-  header that shows the current working directory. These are display-only and do not affect matching.
-  Use these if you often open the picker from different locations.
-- `hidden`: Include hidden files. Recommended when working with dotfiles or config
-  directories, not always ideal in large repos where hidden folders contain huge caches.
+- `cwd_prompt`, `cwd_prompt_shorten_val`, `cwd_prompt_shorten_len`: Control the prompt header that
+  shows the current working directory. These are display-only and do not affect matching. Use these
+  if you often open the picker from different locations.
+- `hidden`: Include hidden files. Recommended when working with dotfiles or config directories, not
+  always ideal in large repos where hidden folders contain huge caches.
 - `follow`: Follow symlinks. Use with caution if you have symlink loops.
-- `no_ignore`, `no_ignore_vcs`: Bypass ignore rules. This is helpful for debugging or
-  searching vendor trees, but it can drastically increase the number of results.
-- `ignore_current_file`: Excludes the active buffer’s file from the list. Useful when
-  you want only alternative files.
+- `no_ignore`, `no_ignore_vcs`: Bypass ignore rules. This is helpful for debugging or searching
+  vendor trees, but it can drastically increase the number of results.
+- `ignore_current_file`: Excludes the active buffer’s file from the list. Useful when you want only
+  alternative files.
 - `preview`, `icons`: Display only.
 - `stream_step`, `match_step`: Tune for large trees. Lower these if you see stutter.
 
@@ -267,10 +261,9 @@ oldfiles_picker.open_oldfiles_picker({
 ```
 
 Options and behavior:
-
-- `stat_file`: When true, performs a stat call to filter missing files and optionally
-  surface extra info. This is useful when your oldfiles list is noisy, but it does add I/O cost, so
-  consider disabling on slow filesystems.
+- `stat_file`: When true, performs a stat call to filter missing files and optionally surface extra
+  info. This is useful when your oldfiles list is noisy, but it does add I/O cost, so consider
+  disabling on slow filesystems.
 - `preview`, `icons`: Display only.
 
 ## Buffers
@@ -302,16 +295,14 @@ buffers_picker.open_buffers_picker({
 ```
 
 Options and behavior:
-
-- `current_tab`: Restrict results to buffers visible in the current tab. Useful for
-  focused workflows, less suitable when you want global navigation.
-- `show_unlisted`, `show_unloaded`: Include unlisted or unloaded buffers. Use these when
-  you need a full buffer inventory; otherwise keep them off for cleaner lists.
+- `current_tab`: Restrict results to buffers visible in the current tab. Useful for focused
+  workflows, less suitable when you want global navigation.
+- `show_unlisted`, `show_unloaded`: Include unlisted or unloaded buffers. Use these when you need a
+  full buffer inventory; otherwise keep them off for cleaner lists.
 - `no_term_buffers`: Exclude terminal buffers. This is recommended in most cases.
-- `ignore_current_buffer`: Exclude the active buffer. Useful when you are looking for a
-  jump target.
-- `sort_lastused`: Sort buffers by recent use with current and alternate buffers pinned
-  at the top. Disable if you want raw buffer order.
+- `ignore_current_buffer`: Exclude the active buffer. Useful when you are looking for a jump target.
+- `sort_lastused`: Sort buffers by recent use with current and alternate buffers pinned at the top.
+  Disable if you want raw buffer order.
 - `filename_only`: Display just the filename, not the full path.
 - `path_shorten`, `home_to_tilde`: Path display helpers. They do not affect matching.
 - `preview`, `icons`: Display only.
@@ -332,9 +323,8 @@ tabs_picker.open_tabs_picker({
 ```
 
 Options and behavior:
-
-- `tab_marker`: A display marker for the current tab. Use a small symbol; it does not
-  affect matching.
+- `tab_marker`: A display marker for the current tab. Use a small symbol; it does not affect
+  matching.
 - `preview`: Tabs are not preview-heavy; keep this off unless you add a custom previewer.
 
 ## Lines
@@ -362,14 +352,12 @@ lines_picker.open_lines_picker({
 ```
 
 Options and behavior:
-
-- `line_chunk_size`: Controls how many line references are loaded per chunk. Increase
-  for faster initial fill, decrease for smoother UI.
-- `show_unlisted`, `show_unloaded`: Include buffers that are not normally visible. This
-  is useful for global searches but increases the total item count.
+- `line_chunk_size`: Controls how many line references are loaded per chunk. Increase for faster
+  initial fill, decrease for smoother UI.
+- `show_unlisted`, `show_unloaded`: Include buffers that are not normally visible. This is useful
+  for global searches but increases the total item count.
 - `ignore_current_buffer`: Excludes the active buffer from the line list.
-- `preview`: Previewing full lines can be redundant; keep off unless you add a custom
-  previewer.
+- `preview`: Previewing full lines can be redundant; keep off unless you add a custom previewer.
 - `match_step`: Tune if you are working in a large codebase with very large buffers.
 
 Word and visual variants pre-fill the prompt with `<cword>` or the visual selection.
@@ -402,7 +390,6 @@ blines_picker.open_blines_picker({
 ```
 
 Options and behavior:
-
 - `line_chunk_size` and `match_step` behave like the all-buffers picker.
 - `preview`: Usually unnecessary for current-buffer lines.
 
@@ -456,29 +443,28 @@ grep_picker.open_grep_picker({
 ```
 
 Options and behavior:
-
 - `cwd`: Search root. This matters for performance and accuracy, especially in monorepos.
-- `hidden`, `follow`, `no_ignore`, `no_ignore_vcs`: Pass-through flags to the underlying
-  command. These can drastically change result volume, so use them deliberately.
-- `rg_glob`: Enables the `query -- args` form. When true, the picker splits the input
-  into two parts: the regex query and extra arguments that are passed back to the command. This is
-  ideal for ad hoc globbing and exclusions during interactive use. If you do not need dynamic args,
-  disable it for simpler input.
-- `rg_glob_fn`: Custom split logic. It receives the raw query and returns two values:
-  `(regex, args)`. Use this if you need a different separator, or if you want to parse custom flags.
-  The picker uses your returned `args` verbatim when re-running the grep.
+- `hidden`, `follow`, `no_ignore`, `no_ignore_vcs`: Pass-through flags to the underlying command.
+  These can drastically change result volume, so use them deliberately.
+- `rg_glob`: Enables the `query -- args` form. When true, the picker splits the input into two
+  parts: the regex query and extra arguments that are passed back to the command. This is ideal for
+  ad hoc globbing and exclusions during interactive use. If you do not need dynamic args, disable it
+  for simpler input.
+- `rg_glob_fn`: Custom split logic. It receives the raw query and returns two values: `(regex,
+  args)`. Use this if you need a different separator, or if you want to parse custom flags. The
+  picker uses your returned `args` verbatim when re-running the grep.
 - `glob_flag`, `glob_separator`: Convenience helpers for the default `rg_glob` parser.
-  `glob_separator` defines the split point (default matches `" --"`), and `glob_flag` is used when you
-  convert glob fragments into arguments.
-- `rg_opts`, `grep_opts`: Startup arguments for the command. Keep these aligned with
-  your expectations for case sensitivity and regex engine.
-- `RIPGREP_CONFIG_PATH`: Allows the picker to respect your ripgrep config even when the
-  shell environment is not sourced.
+  `glob_separator` defines the split point (default matches `" --"`), and `glob_flag` is used when
+  you convert glob fragments into arguments.
+- `rg_opts`, `grep_opts`: Startup arguments for the command. Keep these aligned with your
+  expectations for case sensitivity and regex engine.
+- `RIPGREP_CONFIG_PATH`: Allows the picker to respect your ripgrep config even when the shell
+  environment is not sourced.
 - `preview`, `icons`: Display only.
-- `stream_step`, `match_step`: Lower these to keep UI responsive while typing with
-  extremely large result sets.
-- `prompt_debounce`: Controls how quickly the grep is re-run as you type. Lower values
-  are more responsive but may re-run too often.
+- `stream_step`, `match_step`: Lower these to keep UI responsive while typing with extremely large
+  result sets.
+- `prompt_debounce`: Controls how quickly the grep is re-run as you type. Lower values are more
+  responsive but may re-run too often.
 
 ### Grep Word
 
@@ -528,11 +514,9 @@ quickfix_picker.open_quickfix_picker({
 ```
 
 Options and behavior:
-
-- `filename_only`: Display just the filename rather than full path. Matching still uses
-  the content from the list entry.
-- `path_shorten`, `home_to_tilde`: Display helpers. These are not part of the match
-  content.
+- `filename_only`: Display just the filename rather than full path. Matching still uses the content
+  from the list entry.
+- `path_shorten`, `home_to_tilde`: Display helpers. These are not part of the match content.
 - `preview`, `icons`: Display only.
 - `match_step`: For very large lists.
 
@@ -620,11 +604,10 @@ commands_picker.open_commands_picker({
 ```
 
 Options and behavior:
-
-- `include_builtin`: Include built-in commands. Turn this on if you want a global
-  command palette; leave it off for a smaller list focused on your config.
-- `sort_lastused`: When true, recently used commands bubble up. Disable if you prefer
-  alphabetical order.
+- `include_builtin`: Include built-in commands. Turn this on if you want a global command palette;
+  leave it off for a smaller list focused on your config.
+- `sort_lastused`: When true, recently used commands bubble up. Disable if you prefer alphabetical
+  order.
 
 ### Keymaps
 
@@ -641,11 +624,9 @@ keymaps_picker.open_keymaps_picker({
 ```
 
 Options and behavior:
-
-- `show_desc`: Adds keymap descriptions to display. This is highly recommended for
-  discoverability.
-- `show_details`: Adds verbose details and is useful for debugging, but it makes the
-  list denser and harder to skim.
+- `show_desc`: Adds keymap descriptions to display. This is highly recommended for discoverability.
+- `show_details`: Adds verbose details and is useful for debugging, but it makes the list denser and
+  harder to skim.
 
 ### Registers
 
@@ -662,9 +643,8 @@ registers_picker.open_registers_picker({
 ```
 
 Options and behavior:
-
-- `filter`: Restrict which registers are included. Use this if you want to avoid large
-  named registers or special registers.
+- `filter`: Restrict which registers are included. Use this if you want to avoid large named
+  registers or special registers.
 
 ### Marks
 
@@ -683,9 +663,8 @@ marks_picker.open_marks_picker({
 ```
 
 Options and behavior:
-
-- `marks`: A pattern of marks to include. Use lowercase ranges for local marks, uppercase
-  ranges for global marks, or a combined pattern if you want both.
+- `marks`: A pattern of marks to include. Use lowercase ranges for local marks, uppercase ranges for
+  global marks, or a combined pattern if you want both.
 
 ### Jumps
 
@@ -754,9 +733,8 @@ colorscheme_picker.open_colorscheme_picker({
 ```
 
 Options and behavior:
-
-- `preview`: Applies schemes on selection. Use cautiously if you are sensitive to rapid
-  theme changes.
+- `preview`: Applies schemes on selection. Use cautiously if you are sensitive to rapid theme
+  changes.
 
 ### Spell Suggest
 
@@ -773,10 +751,9 @@ spell_suggest_picker.open_spell_suggest({
 ```
 
 Options and behavior:
-
 - `target_word_text`: Override the target word instead of using the word under cursor.
-- `suggest_limit_count`: Limit the number of suggestions. Use lower values for speed,
-  higher values for completeness.
+- `suggest_limit_count`: Limit the number of suggestions. Use lower values for speed, higher values
+  for completeness.
 
 ## Help
 
@@ -836,4 +813,20 @@ local btags_picker = require("fuzzy.pickers.btags")
 btags_picker.open_btags_picker({
   preview = true,
 })
+```
+
+## Registry
+
+The picker registry stores and reuses picker instances. This is a small helper module that lets you
+register a picker under a key, retrieve it later, and open it without recreating a new instance. It
+is intentionally minimal and keeps the caching policy explicit in user code.
+
+```lua
+local registry = require("fuzzy.pickers.registry")
+
+local picker = registry.register_picker_instance("buffers", my_buffers_picker)
+local same_picker = registry.get_picker_instance("buffers")
+registry.open_picker_instance("buffers")
+registry.remove_picker_instance("buffers")
+registry.clear_picker_registry()
 ```

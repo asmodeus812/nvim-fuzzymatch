@@ -3,6 +3,16 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
+--- @class GitPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field cwd? string|fun(): string Working directory for git commands
+--- @field preview? boolean Enable preview window
+--- @field icons? boolean Enable file icons
+--- @field stream_step? integer Stream batch size
+--- @field match_step? integer Match batch size
+--- @field actions? table Custom action map
+--- @field untracked? boolean Include untracked files (git files)
+
 local M = {}
 
 local function build_git_commits_format()
@@ -58,6 +68,9 @@ local function resolve_git_root(opts)
     return git_root
 end
 
+--- Open Git files picker.
+--- @param opts GitPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_git_files(opts)
     opts = util.merge_picker_options({
         reuse = true,
@@ -109,6 +122,9 @@ function M.open_git_files(opts)
     return picker
 end
 
+--- Open Git status picker.
+--- @param opts GitPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_git_status(opts)
     opts = util.merge_picker_options({
         reuse = true,
@@ -159,6 +175,9 @@ function M.open_git_status(opts)
     return picker
 end
 
+--- Open Git branches picker.
+--- @param opts GitPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_git_branches(opts)
     opts = util.merge_picker_options({
         reuse = true,
@@ -186,6 +205,9 @@ function M.open_git_branches(opts)
     return build_git_command_entry(command_args, opts, "Git Branches")
 end
 
+--- Open Git commits picker.
+--- @param opts GitPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_git_commits(opts)
     opts = util.merge_picker_options({
         reuse = true,
@@ -212,6 +234,9 @@ function M.open_git_commits(opts)
     return build_git_command_entry(command_args, opts, "Git Commits")
 end
 
+--- Open Git bcommits picker.
+--- @param opts GitPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_git_bcommits(opts)
     opts = util.merge_picker_options({
         reuse = true,
@@ -250,6 +275,9 @@ function M.open_git_bcommits(opts)
     return build_git_command_entry(command_args, opts, "Git Buffer Commits")
 end
 
+--- Open Git stash picker.
+--- @param opts GitPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_git_stash(opts)
     opts = util.merge_picker_options({
         reuse = true,

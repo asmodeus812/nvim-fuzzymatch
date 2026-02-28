@@ -3,8 +3,21 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
+--- @class QuickfixPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field filename_only? boolean Display only the filename
+--- @field path_shorten? number|nil Path shorten value for display
+--- @field home_to_tilde? boolean Replace home prefix with ~ in display
+--- @field preview? boolean Enable preview window
+--- @field icons? boolean Enable file icons
+--- @field match_step? integer Match batch size
+--- @field prompt_query? string|nil Initial prompt query
+
 local M = {}
 
+--- Open Quickfix picker.
+--- @param opts QuickfixPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_quickfix_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,
@@ -58,6 +71,10 @@ function M.open_quickfix_picker(opts)
     return picker
 end
 
+--- Open Quickfix visual picker.
+--- Prefills the prompt with the visual selection.
+--- @param opts QuickfixPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_quickfix_visual(opts)
     local visual = utils.get_visual_text()
     local query = util.normalize_query_text(visual)

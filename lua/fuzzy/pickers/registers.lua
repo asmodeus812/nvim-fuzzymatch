@@ -2,6 +2,12 @@ local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
+--- @class RegistersPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field filter? string|nil Pattern to filter register names
+--- @field preview? boolean Enable preview window
+--- @field match_step? integer Match batch size
+
 local M = {}
 
 local function collect_register_list()
@@ -19,6 +25,9 @@ local function collect_register_list()
     return register_name_list
 end
 
+--- Open Registers picker.
+--- @param opts RegistersPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_registers_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,

@@ -55,7 +55,7 @@ end
 --- @param thread thread The coroutine thread to find
 --- @return Async|nil
 function Scheduler.get(thread)
-    for _, async in ipairs(Scheduler._queue or {}) do
+   for _, async in ipairs(Scheduler._queue or {}) do
         if assert(async.thread) == assert(thread) then
             return async
         end

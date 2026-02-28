@@ -3,6 +3,27 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
+--- @class GrepPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field cwd? string|fun(): string Working directory for the search
+--- @field hidden? boolean Include hidden files
+--- @field follow? boolean Follow symlinks
+--- @field no_ignore? boolean Disable ignore files
+--- @field no_ignore_vcs? boolean Disable VCS ignore files
+--- @field rg_glob? boolean Enable `query -- args` parsing
+--- @field rg_glob_fn? fun(query: string, opts: table): string, string Custom query/args split
+--- @field glob_flag? string Flag used for glob arguments
+--- @field glob_separator? string Separator pattern for query/args
+--- @field rg_opts? string Startup options for ripgrep
+--- @field grep_opts? string Startup options for grep
+--- @field RIPGREP_CONFIG_PATH? string|nil Ripgrep config path to inject
+--- @field preview? boolean Enable preview window
+--- @field icons? boolean Enable file icons
+--- @field stream_step? integer Stream batch size
+--- @field match_step? integer Match batch size
+--- @field prompt_debounce? integer Prompt debounce in milliseconds
+--- @field prompt_query? string|nil Initial prompt query
+
 local M = {}
 
 local function split_argument_list(arg_text)
@@ -59,6 +80,9 @@ local function build_grep_command(opts)
     end
 end
 
+--- Open Grep picker.
+--- @param opts GrepPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_grep_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,
@@ -171,6 +195,10 @@ function M.open_grep_picker(opts)
     return picker
 end
 
+--- Open Grep word picker.
+--- Prefills the prompt with the word under cursor.
+--- @param opts GrepPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_grep_word(opts)
     local word = vim.fn.expand("<cword>")
     local query = util.normalize_query_text(word)
@@ -181,6 +209,10 @@ function M.open_grep_word(opts)
     return M.open_grep_picker(opts)
 end
 
+--- Open Grep visual picker.
+--- Prefills the prompt with the visual selection.
+--- @param opts GrepPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_grep_visual(opts)
     local visual = utils.get_visual_text()
     local query = util.normalize_query_text(visual)

@@ -3,8 +3,20 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
+--- @class JumpsPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field filename_only? boolean Display only the filename
+--- @field path_shorten? number|nil Path shorten value for display
+--- @field home_to_tilde? boolean Replace home prefix with ~ in display
+--- @field preview? boolean Enable preview window
+--- @field icons? boolean Enable file icons
+--- @field match_step? integer Match batch size
+
 local M = {}
 
+--- Open Jumps picker.
+--- @param opts JumpsPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_jumps_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,

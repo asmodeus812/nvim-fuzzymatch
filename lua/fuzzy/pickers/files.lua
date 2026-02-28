@@ -3,6 +3,22 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
+--- @class FilesPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field cwd? string|fun(): string Working directory for the scan
+--- @field cwd_prompt? boolean Show cwd in the header
+--- @field cwd_prompt_shorten_val? integer Pathshorten value
+--- @field cwd_prompt_shorten_len? integer Max cwd header length
+--- @field hidden? boolean Include hidden files
+--- @field follow? boolean Follow symlinks
+--- @field no_ignore? boolean Disable ignore files
+--- @field no_ignore_vcs? boolean Disable VCS ignore files
+--- @field ignore_current_file? boolean Exclude current file from results
+--- @field preview? boolean Enable preview window
+--- @field icons? boolean Enable file icons
+--- @field stream_step? integer Stream batch size
+--- @field match_step? integer Match batch size
+
 local M = {}
 
 local function build_files_command(opts)
@@ -58,6 +74,9 @@ local function build_files_command(opts)
     end
 end
 
+--- Open Files picker.
+--- @param opts FilesPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_files_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,

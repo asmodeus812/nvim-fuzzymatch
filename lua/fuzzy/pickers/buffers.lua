@@ -3,6 +3,21 @@ local Select = require("fuzzy.select")
 local utils = require("fuzzy.utils")
 local util = require("fuzzy.pickers.util")
 
+--- @class BuffersPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field current_tab? boolean Restrict to buffers in the current tabpage
+--- @field show_unlisted? boolean Include unlisted buffers
+--- @field show_unloaded? boolean Include unloaded buffers
+--- @field no_term_buffers? boolean Exclude terminal buffers
+--- @field ignore_current_buffer? boolean Exclude the current buffer
+--- @field sort_lastused? boolean Sort by last used, current/alternate pinned
+--- @field filename_only? boolean Display only the filename
+--- @field path_shorten? number|nil Path shorten value for display
+--- @field home_to_tilde? boolean Replace home prefix with ~ in display
+--- @field preview? boolean Enable preview window
+--- @field icons? boolean Enable file icons
+--- @field match_step? integer Batch size for matching
+
 local M = {}
 
 local FUTURE_TIMESTAMP_VALUE = os.time({
@@ -78,6 +93,9 @@ local function filter_buffer_numbers(
     return filtered_buffer_list
 end
 
+--- Open Buffers picker.
+--- @param opts BuffersPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_buffers_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,

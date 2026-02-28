@@ -2,6 +2,13 @@ local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
+--- @class SpellSuggestPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field target_word_text? string|nil Override the word under cursor
+--- @field suggest_limit_count? integer Maximum number of suggestions
+--- @field preview? boolean Enable preview window
+--- @field match_step? integer Match batch size
+
 local M = {}
 
 local function find_word_bounds(line_text_value, cursor_col_number)
@@ -55,6 +62,9 @@ local function replace_cursor_word(word_text_value)
     )
 end
 
+--- Open Spell suggest picker.
+--- @param opts SpellSuggestPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_spell_suggest(opts)
     opts = util.merge_picker_options({
         reuse = true,

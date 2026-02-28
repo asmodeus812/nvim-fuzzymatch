@@ -2,8 +2,16 @@ local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
+--- @class CommandHistoryPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field preview? boolean Enable preview window
+--- @field match_step? integer Match batch size
+
 local M = {}
 
+--- Open Command history picker.
+--- @param opts CommandHistoryPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_command_history(opts)
     opts = util.merge_picker_options({
         reuse = true,

@@ -1,8 +1,5 @@
 local TEMPLATE = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
 
-local table_pool = { tables = {}, used = {} }
-for i = 1, 16, 1 do table.insert(table_pool.tables, i, {}) end
-
 math.randomseed(os.clock())
 local random = math.random
 
@@ -17,92 +14,7 @@ local M = {
     EMPTY_TABLE = {},
 }
 
---- Prime the table pool by pre-allocating tables of specified sizes. Ensures the pool contains at least one table for each size in the input. Useful when you expect match operations to allocate multiple tables of known sizes, reducing GC pressure.
---- Existing tables with the same size are left untouched.
---- @param sizes integer[] List of sizes to prime the pool with
-function M.prime_pool(sizes)
-    assert(type(sizes) == "table")
-    for _, size in ipairs(sizes) do
-        assert(type(size) == "number" and size > 0)
-        local found = false
-        for _, tbl in ipairs(table_pool.tables) do
-            if #tbl == size then
-                found = true
-                break
-            end
-        end
-        if not found then
-            local t = {}
-            for i = 1, size do t[i] = false end
-            table.insert(table_pool.tables, t)
-        end
-    end
-    table.sort(table_pool.tables, function(a, b)
-        return #a < #b
-    end)
-    return M
-end
 
---- Obtain a table from the pool, optionally specifying a minimum size, to look for a table of at least that size If no such table is
---- found, a new table is created
---- @param size integer|nil Minimum size of the table to obtain
---- @return table The obtained table
-function M.obtain_table(size)
-    if #table_pool.tables > 0 then
-        local tbl
-        assert(not size or size >= 0)
-        if size and size > 0 then
-            local tables = table_pool.tables
-            for i = 1, #tables, 1 do
-                if #tables[i] >= size then
-                    tbl = table.remove(tables, i)
-                    break
-                end
-            end
-        end
-        if not tbl then
-            tbl = table.remove(table_pool.tables)
-        end
-        table_pool.used[tbl] = true
-        return tbl
-    else
-        local tbl = {}
-        table_pool.used[tbl] = true
-        return tbl
-    end
-end
-
---- Return a table to the pool, making it available for reuse. The table becomes valid for reuse after this call, and can be pulled from
---- the pool by using the obtain_table function.
---- @param tbl table The table to return to the pool
---- @return table The same table that was returned to the pool
-function M.return_table(tbl)
-    assert(table_pool.used[tbl])
-    table_pool.used[tbl] = nil
-    table.insert(table_pool.tables, tbl)
-    table.sort(table_pool.tables, function(a, b)
-        return #a < #b
-    end)
-    return tbl
-end
-
---- Detach a table from the pool without returning it, making it no longer tracked by the pool. The table becomes the caller's
---- responsibility after this call, and will not be reused by the pool.
---- @param tbl table The table to detach from the pool
-function M.detach_table(tbl)
-    assert(table_pool.used[tbl])
-    table_pool.used[tbl] = nil
-    return tbl
-end
-
---- Attach a table to the pool, making it tracked by the pool. The table is not returned to the pool yet, but can be returned later
---- using the return_table function.
---- @param tbl table The table to attach to the pool
-function M.attach_table(tbl)
-    assert(not table_pool.used[tbl])
-    table_pool.used[tbl] = true
-    return tbl
-end
 
 --- Fill a table with a specified value. If the value is nil or the table is empty, the table is returned unchanged. The function
 --- asserts that the first and last elements of the table are equal after filling.
@@ -408,4 +320,4 @@ function M.get_bufname(bufnr, bufinfo)
     return bufname
 end
 
-return M.prime_pool({ 1024, 2048, 4096, 8192, 16384 })
+return M

@@ -3,6 +3,16 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
+--- @class MarksPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field marks? string Pattern of marks to include
+--- @field filename_only? boolean Display only the filename
+--- @field path_shorten? number|nil Path shorten value for display
+--- @field home_to_tilde? boolean Replace home prefix with ~ in display
+--- @field preview? boolean Enable preview window
+--- @field icons? boolean Enable file icons
+--- @field match_step? integer Match batch size
+
 local M = {}
 
 local function collect_mark_list()
@@ -18,6 +28,9 @@ local function collect_mark_list()
     return mark_entry_list
 end
 
+--- Open Marks picker.
+--- @param opts MarksPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_marks_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,

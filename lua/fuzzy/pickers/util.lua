@@ -7,14 +7,24 @@ local function resolve_working_directory(cwd)
     return type(cwd) == "function" and cwd() or cwd
 end
 
+--- Open Merge picker options picker.
+--- @param default_picker_options table Default picker options
+--- @param user_picker_options table|nil User picker options to merge
+--- @return table
 function M.merge_picker_options(default_picker_options, user_picker_options)
     return vim.tbl_deep_extend("force", default_picker_options, user_picker_options or {})
 end
 
+--- Open Command is available picker.
+--- @param command_name string|nil Command name to check
+--- @return boolean
 function M.command_is_available(command_name)
     return command_name and vim.fn.executable(command_name) == 1
 end
 
+--- Open Pick first command picker.
+--- @param command_candidate_list string[]|nil Command candidates
+--- @return string|nil
 function M.pick_first_command(command_candidate_list)
     for _, command_name in ipairs(command_candidate_list or {}) do
         if M.command_is_available(command_name) then
@@ -24,6 +34,9 @@ function M.pick_first_command(command_candidate_list)
     return nil
 end
 
+--- Open Find git root picker.
+--- @param current_working_directory string|nil Working directory to search from
+--- @return string|nil
 function M.find_git_root(current_working_directory)
     if not M.command_is_available("git") then
         return nil
@@ -45,6 +58,10 @@ function M.find_git_root(current_working_directory)
     return nil
 end
 
+--- Open Build picker headers picker.
+--- @param picker_title string
+--- @param picker_options table|nil
+--- @return table|nil
 function M.build_picker_headers(picker_title, picker_options)
     if picker_options and picker_options.headers ~= nil then
         return picker_options.headers
@@ -78,6 +95,10 @@ function M.build_picker_headers(picker_title, picker_options)
     return header_blocks
 end
 
+--- Open Format display path picker.
+--- @param path_value string
+--- @param picker_options table|nil
+--- @return string
 function M.format_display_path(path_value, picker_options)
     if type(path_value) ~= "string" or #path_value == 0 then
         return path_value
@@ -115,6 +136,13 @@ function M.format_display_path(path_value, picker_options)
     return normalized_path
 end
 
+--- Open Format location entry picker.
+--- @param filename string
+--- @param line_number number
+--- @param column_number number
+--- @param entry_text string|nil
+--- @param entry_prefix string|nil
+--- @return string
 function M.format_location_entry(
     filename,
     line_number,
@@ -139,6 +167,10 @@ function M.format_location_entry(
     return table.concat(string_parts)
 end
 
+--- Open Build default actions picker.
+--- @param converter_callback fun(entry: any): table|false|nil
+--- @param picker_options table|nil
+--- @return table
 function M.build_default_actions(converter_callback, picker_options)
     local action_map = {
         ["<cr>"] = Select.action(Select.select_entry, Select.all(converter_callback)),
@@ -165,6 +197,9 @@ function M.build_default_actions(converter_callback, picker_options)
     return action_map
 end
 
+--- Open Build picker options picker.
+--- @param picker_options table|nil
+--- @return table
 function M.build_picker_options(picker_options)
     return {
         match_limit = picker_options.match_limit,
@@ -180,6 +215,10 @@ function M.build_picker_options(picker_options)
     }
 end
 
+--- Open Empty picker.
+--- @param empty_message string|nil
+--- @param picker_options table|nil
+--- @return Picker
 function M.open_empty_picker(empty_message, picker_options)
     picker_options = picker_options or {}
     local picker = Picker.new({
@@ -194,6 +233,9 @@ function M.open_empty_picker(empty_message, picker_options)
     return picker
 end
 
+--- Open Collect history entries picker.
+--- @param history_type string
+--- @return string[]
 function M.collect_history_entries(history_type)
     local history_entry_list = {}
     local history_count = vim.fn.histnr(history_type)
@@ -206,6 +248,9 @@ function M.collect_history_entries(history_type)
     return history_entry_list
 end
 
+--- Open Parse stack entries picker.
+--- @param history_text string
+--- @return table
 function M.parse_stack_entries(history_text)
     local history_entry_list = {}
     for _, line_text in ipairs(vim.split(history_text or "", "\n")) do
@@ -220,6 +265,11 @@ function M.parse_stack_entries(history_text)
     return history_entry_list
 end
 
+--- Open Stream buffer lines picker.
+--- @param buf integer
+--- @param chunk_size integer
+--- @param stream_callback fun(entry: table): nil
+--- @return nil
 function M.stream_buffer_lines(buf, chunk_size, stream_callback)
     local total_line_count = vim.api.nvim_buf_line_count(buf)
     local start_index = 0
@@ -242,6 +292,11 @@ function M.stream_buffer_lines(buf, chunk_size, stream_callback)
     end
 end
 
+--- Open Stream line numbers picker.
+--- @param buf integer
+--- @param chunk_size integer
+--- @param stream_callback fun(entry: table): nil
+--- @return nil
 function M.stream_line_numbers(buf, chunk_size, stream_callback)
     local total_line_count = vim.api.nvim_buf_line_count(buf)
     local start_index = 0
@@ -257,6 +312,9 @@ function M.stream_line_numbers(buf, chunk_size, stream_callback)
     end
 end
 
+--- Open Normalize query text picker.
+--- @param query_text_value string|nil
+--- @return string|nil
 function M.normalize_query_text(query_text_value)
     if type(query_text_value) ~= "string" then
         return nil

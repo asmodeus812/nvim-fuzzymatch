@@ -2,6 +2,11 @@ local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
+--- @class ColorschemePickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field preview? boolean Enable preview window
+--- @field match_step? integer Match batch size
+
 local M = {}
 
 local function apply_colorscheme_name(colorscheme_name)
@@ -11,6 +16,9 @@ local function apply_colorscheme_name(colorscheme_name)
     return true
 end
 
+--- Open Colorscheme picker.
+--- @param opts ColorschemePickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_colorscheme_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,

@@ -2,6 +2,13 @@ local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
+--- @class CommandsPickerOptions
+--- @field reuse? boolean Reuse the picker instance between opens
+--- @field include_builtin? boolean Include built-in commands
+--- @field sort_lastused? boolean Sort by last used
+--- @field preview? boolean Enable preview window
+--- @field match_step? integer Match batch size
+
 local M = {}
 
 local function collect_command_names(opts)
@@ -32,6 +39,9 @@ local function collect_command_names(opts)
     return command_name_list
 end
 
+--- Open Commands picker.
+--- @param opts CommandsPickerOptions|nil Picker options for this picker
+--- @return Picker
 function M.open_commands_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,
