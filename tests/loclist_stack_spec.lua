@@ -22,6 +22,29 @@ function M.run()
             picker:close()
         end)
     end)
+
+    helpers.run_test_case("loclist_stack_action", function()
+        helpers.with_cmd_capture(function(calls)
+            helpers.with_mock(vim.fn, "execute", function(command_name)
+                if command_name == "lhistory" then
+                    return "  list 3  Loclist-3\n"
+                end
+                return ""
+            end, function()
+                local stack_picker = require("fuzzy.pickers.loclist_stack")
+                local picker = stack_picker.open_loclist_stack({
+                    preview = false,
+                    prompt_debounce = 0,
+                })
+                helpers.wait_for_list(picker)
+                helpers.wait_for_entries(picker)
+                local action = picker.select._options.mappings["<cr>"]
+                action(picker.select)
+                helpers.assert_ok(#calls > 0, "cmd calls")
+                helpers.close_picker(picker)
+            end)
+        end)
+    end)
 end
 
 return M

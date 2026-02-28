@@ -23,6 +23,7 @@ function M.wait_for(fn, timeout)
     return ok
 end
 
+
 function M.setup_global_state()
     vim.o.swapfile = false
     vim.o.backup = false
@@ -70,9 +71,6 @@ function M.create_temp_path(prefix)
 end
 
 function M.reset_state()
-    if vim.wo then
-        pcall(function() vim.wo.winfixbuf = false end)
-    end
     pcall(function() vim.cmd("silent! only") end)
     pcall(function() vim.cmd("enew") end)
 end
@@ -123,6 +121,28 @@ function M.wait_for_list(picker)
     return M.wait_for(function()
         local lines = M.get_list_lines(picker)
         return lines and #lines > 0
+    end, 1500)
+end
+
+function M.wait_for_entries(picker)
+    return M.wait_for(function()
+        local entries = M.get_entries(picker)
+        return entries and #entries > 0
+    end, 1500)
+end
+
+function M.wait_for_prompt_cursor(picker)
+    return M.wait_for(function()
+        --- @diagnostic disable-next-line: invisible
+        local select = picker and picker.select or nil
+        local win = select and select.prompt_window or nil
+        if not win or not vim.api.nvim_win_is_valid(win) then
+            return false
+        end
+        local query = select:query() or ""
+        local cursor = vim.api.nvim_win_get_cursor(win)
+        return cursor[1] == 1
+            and cursor[2] == vim.str_byteindex(query, #query)
     end, 1500)
 end
 
@@ -208,6 +228,53 @@ function M.with_mock_map(target, value_map, callback)
     for key, value in pairs(original_map) do
         target[key] = value
     end
+    if not ok then
+        error(err)
+    end
+end
+
+function M.with_cmd_capture(callback)
+    local calls = {}
+    local original = vim.cmd
+    local stub = {
+        copen = function(...)
+            calls[#calls + 1] = { kind = "copen", args = { ... } }
+        end,
+        lopen = function(...)
+            calls[#calls + 1] = { kind = "lopen", args = { ... } }
+        end,
+        colorscheme = function(...)
+            calls[#calls + 1] = { kind = "colorscheme", args = { ... } }
+        end,
+        normal = function(...)
+            calls[#calls + 1] = { kind = "normal", args = { ... } }
+        end,
+        startinsert = function(...)
+            calls[#calls + 1] = { kind = "startinsert", args = { ... } }
+        end,
+        stopinsert = function(...)
+            calls[#calls + 1] = { kind = "stopinsert", args = { ... } }
+        end,
+        edit = function(...)
+            calls[#calls + 1] = { kind = "edit", args = { ... } }
+        end,
+        redraw = function(...)
+            calls[#calls + 1] = { kind = "redraw", args = { ... } }
+        end,
+    }
+    setmetatable(stub, {
+        __call = function(_, cmd)
+            calls[#calls + 1] = { kind = "cmd", args = { cmd } }
+        end,
+        __index = function(_, key)
+            return function(...)
+                calls[#calls + 1] = { kind = tostring(key), args = { ... } }
+            end
+        end,
+    })
+    vim.cmd = stub
+    local ok, err = pcall(callback, calls)
+    vim.cmd = original
     if not ok then
         error(err)
     end

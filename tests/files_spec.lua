@@ -1,6 +1,7 @@
 ---@diagnostic disable: invisible
 local helpers = require("tests.helpers")
 local util = require("fuzzy.pickers.util")
+local Picker = require("fuzzy.picker")
 
 local M = { name = "files" }
 
@@ -58,6 +59,36 @@ function M.run()
             if not ok then
                 error(err)
             end
+        end)
+    end)
+
+    helpers.run_test_case("files_rg_args", function()
+        local captured = nil
+        helpers.with_mock(Picker, "new", function(opts)
+            captured = opts
+            return {
+                _options = opts,
+                open = function() end,
+            }
+        end, function()
+            helpers.with_mock(util, "pick_first_command", function()
+                return "rg"
+            end, function()
+                local files_picker = require("fuzzy.pickers.files")
+                files_picker.open_files_picker({
+                    hidden = false,
+                    follow = true,
+                    no_ignore = true,
+                    no_ignore_vcs = true,
+                    preview = false,
+                    icons = false,
+                })
+                local args = captured.context.args
+                helpers.assert_list_contains(args, "--files", "rg args")
+                helpers.assert_list_contains(args, "--follow", "rg args")
+                helpers.assert_list_contains(args, "--no-ignore", "rg args")
+                helpers.assert_list_contains(args, "--no-ignore-vcs", "rg args")
+            end)
         end)
     end)
 end

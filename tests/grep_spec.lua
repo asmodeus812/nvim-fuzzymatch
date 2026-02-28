@@ -1,6 +1,7 @@
 ---@diagnostic disable: invisible
 local helpers = require("tests.helpers")
 local util = require("fuzzy.pickers.util")
+local Picker = require("fuzzy.picker")
 
 local M = { name = "grep" }
 
@@ -48,6 +49,58 @@ function M.run()
             prompt_input("first")
             helpers.wait_for_line_contains(picker, "first line")
             picker:close()
+        end)
+    end)
+
+    helpers.run_test_case("grep_glob_args", function()
+        local captured = nil
+        helpers.with_mock(Picker, "new", function(opts)
+            captured = opts
+            return {
+                _options = opts,
+                open = function() end,
+            }
+        end, function()
+            helpers.with_mock(util, "pick_first_command", function()
+                return "rg"
+            end, function()
+                local grep_picker = require("fuzzy.pickers.grep")
+                grep_picker.open_grep_picker({
+                    rg_glob = true,
+                    rg_opts = "--line-number",
+                    preview = false,
+                    icons = false,
+                    prompt_debounce = 0,
+                })
+                local ctx = captured.context
+                local args = ctx.interactive("needle -- *.lua", ctx)
+                helpers.assert_list_contains(args, "--iglob=*.lua", "glob arg")
+            end)
+        end)
+    end)
+
+    helpers.run_test_case("grep_cmd_args", function()
+        local captured = nil
+        helpers.with_mock(Picker, "new", function(opts)
+            captured = opts
+            return {
+                _options = opts,
+                open = function() end,
+            }
+        end, function()
+            helpers.with_mock(util, "pick_first_command", function()
+                return "grep"
+            end, function()
+                local grep_picker = require("fuzzy.pickers.grep")
+                grep_picker.open_grep_picker({
+                    preview = false,
+                    icons = false,
+                    prompt_debounce = 0,
+                })
+                local ctx = captured.context
+                local args = ctx.interactive("needle", ctx)
+                helpers.eq(args[#args], ".", "grep path")
+            end)
         end)
     end)
 end

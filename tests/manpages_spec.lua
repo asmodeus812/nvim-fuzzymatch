@@ -24,6 +24,26 @@ function M.run()
             picker:close()
         end)
     end)
+
+    helpers.run_test_case("manpages_action", function()
+        helpers.with_mock(vim.fn, "getcompletion", function()
+            return { "manpage" }
+        end, function()
+            helpers.with_cmd_capture(function(calls)
+                local man_picker = require("fuzzy.pickers.manpages")
+                local picker = man_picker.open_manpages_picker({
+                    preview = false,
+                    prompt_debounce = 0,
+                })
+                helpers.wait_for_list(picker)
+                helpers.wait_for_entries(picker)
+                local action = picker.select._options.mappings["<cr>"]
+                action(picker.select)
+                helpers.assert_ok(#calls > 0, "man cmd")
+                helpers.close_picker(picker)
+            end)
+        end)
+    end)
 end
 
 return M

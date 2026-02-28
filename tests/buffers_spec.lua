@@ -99,10 +99,18 @@ end
 
 function M.run()
     local bufs = setup_buffers()
+    local cwd_dir = helpers.create_temp_dir()
+    local other_dir = helpers.create_temp_dir()
+    local cwd_path = vim.fs.joinpath(cwd_dir, "cwd.txt")
+    local other_path = vim.fs.joinpath(other_dir, "other.txt")
+    local cwd_buf = helpers.create_named_buffer(cwd_path, { "cwd buffer" }, true)
+    local other_buf = helpers.create_named_buffer(other_path, { "other buffer" }, true)
     local display = {
         [bufs.buf1] = vim.fs.basename(vim.api.nvim_buf_get_name(bufs.buf1)),
         [bufs.buf2] = vim.fs.basename(vim.api.nvim_buf_get_name(bufs.buf2)),
         [bufs.buf3] = vim.fs.basename(vim.api.nvim_buf_get_name(bufs.buf3)),
+        [cwd_buf] = vim.fs.basename(vim.api.nvim_buf_get_name(cwd_buf)),
+        [other_buf] = vim.fs.basename(vim.api.nvim_buf_get_name(other_buf)),
     }
 
     run_test_case("default", {
@@ -157,6 +165,18 @@ function M.run()
         icons = false,
     }, {
         query = "buffer one",
+        display = display,
+    })
+
+    run_test_case("cwd", {
+        show_unlisted = true,
+        show_unloaded = true,
+        preview = false,
+        icons = false,
+        cwd = cwd_dir,
+    }, {
+        include = { cwd_buf },
+        exclude = { other_buf },
         display = display,
     })
 end

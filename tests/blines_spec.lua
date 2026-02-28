@@ -28,6 +28,43 @@ function M.run()
 
         vim.api.nvim_buf_delete(buf, { force = true })
     end)
+
+    helpers.run_test_case("blines_word_visual", function()
+        local buf = helpers.create_named_buffer("blines_word.txt", {
+            "alpha",
+        })
+        vim.api.nvim_set_current_buf(buf)
+
+        helpers.with_mock(vim.fn, "expand", function()
+            return "alpha"
+        end, function()
+            local picker = require("fuzzy.pickers.blines").open_buffer_lines_word({
+                preview = false,
+                prompt_debounce = 0,
+            })
+            helpers.wait_for(function()
+                return helpers.get_query(picker) == "alpha"
+            end, 1500)
+            helpers.wait_for_prompt_cursor(picker)
+            picker:close()
+        end)
+
+        helpers.with_mock(require("fuzzy.utils"), "get_visual_text", function()
+            return "alpha"
+        end, function()
+            local picker = require("fuzzy.pickers.blines").open_buffer_lines_visual({
+                preview = false,
+                prompt_debounce = 0,
+            })
+            helpers.wait_for(function()
+                return helpers.get_query(picker) == "alpha"
+            end, 1500)
+            helpers.wait_for_prompt_cursor(picker)
+            picker:close()
+        end)
+
+        vim.api.nvim_buf_delete(buf, { force = true })
+    end)
 end
 
 return M

@@ -28,6 +28,9 @@ M.tests = {
     require("tests.tags_spec"),
     require("tests.btags_spec"),
     require("tests.colorscheme_spec"),
+    require("tests.spell_suggest_spec"),
+    require("tests.registry_spec"),
+    require("tests.git_spec"),
 }
 
 return M

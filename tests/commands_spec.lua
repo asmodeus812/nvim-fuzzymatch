@@ -24,6 +24,41 @@ function M.run()
             picker:close()
         end)
     end)
+
+    helpers.run_test_case("commands_builtin_action", function()
+        helpers.with_mock_map(vim.api, {
+            nvim_get_commands = function(opts)
+                if opts and opts.builtin then
+                    return { edit = {}, write = {} }
+                end
+                return {}
+            end,
+        }, function()
+            helpers.with_cmd_capture(function(calls)
+                local commands_picker = require("fuzzy.pickers.commands")
+                local picker = commands_picker.open_commands_picker({
+                    include_builtin = true,
+                    include_user = false,
+                    preview = false,
+                    prompt_debounce = 0,
+                })
+                helpers.wait_for_list(picker)
+                helpers.wait_for_entries(picker)
+                helpers.wait_for_line_contains(picker, "edit")
+                local action = picker.select._options.mappings["<cr>"]
+                action(picker.select)
+                local found = false
+                for _, call in ipairs(calls) do
+                    if call.kind == "cmd" and call.args[1] == "edit" then
+                        found = true
+                        break
+                    end
+                end
+                helpers.assert_ok(found, "cmd")
+                helpers.close_picker(picker)
+            end)
+        end)
+    end)
 end
 
 return M

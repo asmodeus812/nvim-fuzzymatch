@@ -28,6 +28,38 @@ function M.run()
             picker:close()
         end)
     end)
+
+    helpers.run_test_case("command_history_action", function()
+        helpers.with_cmd_capture(function(calls)
+            helpers.with_mock_map(vim.fn, {
+                histnr = function()
+                    return 1
+                end,
+                histget = function()
+                    return "echo 999"
+                end,
+            }, function()
+                local history_picker = require("fuzzy.pickers.command_history")
+                local picker = history_picker.open_command_history({
+                    preview = false,
+                    prompt_debounce = 0,
+                })
+                helpers.wait_for_list(picker)
+                helpers.wait_for_entries(picker)
+                local action = picker.select._options.mappings["<cr>"]
+                action(picker.select)
+                local found = false
+                for _, call in ipairs(calls) do
+                    if call.kind == "cmd" and call.args[1] == "echo 999" then
+                        found = true
+                        break
+                    end
+                end
+                helpers.assert_ok(found, "cmd")
+                helpers.close_picker(picker)
+            end)
+        end)
+    end)
 end
 
 return M
