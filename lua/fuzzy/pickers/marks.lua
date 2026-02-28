@@ -58,6 +58,9 @@ function M.open_marks_picker(opts)
                 )
             end
         end
+        if not file_path or #file_path == 0 then
+            file_path = "[No Name]"
+        end
         return {
             bufnr = buf,
             filename = file_path,
@@ -91,6 +94,9 @@ function M.open_marks_picker(opts)
                         utils.get_bufinfo(buf)
                     )
                 end
+            end
+            if not file_path or #file_path == 0 then
+                file_path = "[No Name]"
             end
             file_path = util.format_display_path(
                 file_path,

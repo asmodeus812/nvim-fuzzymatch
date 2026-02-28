@@ -27,6 +27,8 @@ function M.run()
         helpers.wait_for_line_contains(picker, "gamma line")
 
         local prompt_input = picker.select._options.prompt_input
+        assert(type(prompt_input) == "function")
+        --- @cast prompt_input fun(string)
         prompt_input("gamma")
         helpers.wait_for_line_contains(picker, "gamma line")
         picker:close()

@@ -38,7 +38,7 @@ function M.open_lines_picker(opts)
             filename = utils.get_bufname(
                 entry.bufnr,
                 utils.get_bufinfo(entry.bufnr)
-            ),
+            ) or "[No Name]",
             lnum = entry.lnum or 1,
             col = 1,
         }
@@ -49,6 +49,9 @@ function M.open_lines_picker(opts)
             entry.bufnr,
             utils.get_bufinfo(entry.bufnr)
         )
+        if not file_path or #file_path == 0 then
+            file_path = "[No Name]"
+        end
         local display_path = util.format_display_path(file_path, opts)
         return table.concat({ display_path, ":", entry.lnum, ": " })
     end

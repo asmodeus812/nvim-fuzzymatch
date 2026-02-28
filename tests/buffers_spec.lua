@@ -55,14 +55,14 @@ end
 
 local function run_test_case(name, opts, expectations)
     local picker = helpers.open_buffers_picker(opts)
-    helpers.assert_ok(picker ~= nil, "picker nil")
+    helpers.assert_ok(picker ~= nil, table.concat({ "picker nil: ", name }))
     helpers.wait_for_list(picker)
 
     if expectations.query then
         helpers.type_query(picker, expectations.query)
         helpers.wait_for(function()
             return helpers.get_query(picker) == expectations.query
-        end, 2000)
+        end, 1500)
         helpers.eq(helpers.get_query(picker), expectations.query, "query")
     end
 

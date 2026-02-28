@@ -21,7 +21,10 @@ function M.open_btags_picker(opts)
     }, opts)
 
     local buf = vim.api.nvim_get_current_buf()
-    local current_buffer_name = utils.get_bufname(buf)
+    local current_buffer_name = utils.get_bufname(
+        buf,
+        utils.get_bufinfo(buf)
+    )
     local tag_entry_list = vim.fn.taglist(".*") or {}
     local filtered_entry_list = {}
     for _, tag_entry in ipairs(tag_entry_list) do

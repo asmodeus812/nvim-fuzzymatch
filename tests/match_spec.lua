@@ -13,7 +13,7 @@ local function run_basic_case()
     local list = { "alpha", "beta", "gamma", "delta" }
     match:match(list, "a", function() end)
 
-    local results = match:wait(2000)
+    local results = match:wait(1500)
     helpers.assert_ok(results ~= nil, "match nil")
     local entries = results and results[1] or {}
     helpers.assert_ok(type(entries) == "table", "results")
@@ -32,7 +32,7 @@ local function run_transform_key()
     match:match(list, "alp", function() end, {
         key = "text",
     })
-    local results = match:wait(2000)
+    local results = match:wait(1500)
     helpers.assert_ok(results ~= nil, "transform nil")
 
     helpers.assert_ok(results ~= nil, "entry")
@@ -57,8 +57,9 @@ local function run_text_cb()
             return entry.text
         end,
     })
-    local results = match:wait(2000)
+    local results = match:wait(1500)
     helpers.assert_ok(results ~= nil, "text_cb nil")
+    assert(results)
     local got = results[1] or {}
     local exp = expected and expected[1] or {}
     helpers.eq(got, exp, "text_cb results")
@@ -84,7 +85,7 @@ local function run_destroy_case()
     local list = { "alpha", "beta" }
 
     match:match(list, "a", function() end)
-    match:wait(2000)
+    match:wait(1500)
     match:destroy()
     helpers.assert_ok(match.results == nil, "destroy")
 end

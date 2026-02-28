@@ -7,8 +7,6 @@ local function run_lines_case()
     local stream = Stream.new({ lines = true, step = 2 })
     local buf_size = 0
     local acc_size = 0
-    local onexit = false
-
     stream:start(function(cb)
         cb("one\n")
         cb("two\n")
@@ -21,12 +19,10 @@ local function run_lines_case()
                 acc_size = #accum
             end
         end,
-        onexit = function()
-            onexit = true
-        end,
+        onexit = function() end,
     })
 
-    local results = stream:wait(2000)
+    local results = stream:wait(1500)
     helpers.assert_ok(results ~= nil, "stream nil")
     helpers.assert_ok(type(results) == "table", "results")
     helpers.assert_ok(#results >= 0, "results")
@@ -53,7 +49,7 @@ local function run_transform_case()
         callback = function() end,
     })
 
-    local results = stream:wait(2000)
+    local results = stream:wait(1500)
     helpers.assert_ok(results ~= nil, "transform nil")
     helpers.assert_ok(type(results) == "table", "transform")
     stream:destroy()
@@ -71,7 +67,7 @@ local function run_bytes_case()
         callback = function() end,
     })
 
-    local results = stream:wait(2000)
+    local results = stream:wait(1500)
     helpers.assert_ok(results ~= nil, "bytes nil")
     local joined = table.concat(results or {}, "")
     helpers.eq(joined, "abcd", "bytes")
@@ -91,7 +87,7 @@ local function run_restart_case()
     end, {
         callback = function() end,
     })
-    stream:wait(2000)
+    stream:wait(1500)
 
     stream:start(function(cb)
         cb("two\n")
@@ -99,7 +95,7 @@ local function run_restart_case()
     end, {
         callback = function() end,
     })
-    local results = stream:wait(2000)
+    local results = stream:wait(1500)
     helpers.assert_ok(results ~= nil, "restart nil")
     helpers.assert_ok(type(results) == "table", "restart")
     stream:destroy()

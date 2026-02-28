@@ -38,6 +38,8 @@ function M.run()
             })
 
             local prompt_input = picker.select._options.prompt_input
+            assert(type(prompt_input) == "function")
+            --- @cast prompt_input fun(string)
             prompt_input("needle")
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "alpha.txt")

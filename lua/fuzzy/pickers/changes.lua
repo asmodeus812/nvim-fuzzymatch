@@ -59,7 +59,7 @@ function M.open_changes_picker(opts)
             local buffer_name = utils.get_bufname(
                 current_buf,
                 utils.get_bufinfo(current_buf)
-            )
+            ) or "[No Name]"
             local display_path = util.format_display_path(
                 buffer_name,
                 opts

@@ -22,7 +22,7 @@ function M.run()
     helpers.wait_for(function()
         return picker.select and picker.select._state.entries
             and #picker.select._state.entries == 3
-    end, 2000)
+    end, 1500)
 
     helpers.eq(#picker.select._state.entries, 3, "entries")
     local lines = helpers.get_list_lines(picker)
@@ -32,12 +32,12 @@ function M.run()
     helpers.type_query(picker, "gam")
     helpers.wait_for(function()
         return picker.select:query():find("gam", 1, true) ~= nil
-    end, 2000)
+    end, 1500)
 
     helpers.type_query(picker, "<c-u>")
     helpers.wait_for(function()
         return picker.select:query() == ""
-    end, 2000)
+    end, 1500)
 
     picker:close()
 
@@ -64,7 +64,7 @@ function M.run()
         return stream_picker.select
             and stream_picker.select._state.entries
             and #stream_picker.select._state.entries == 3
-    end, 2000)
+    end, 1500)
 
     local stream_lines = helpers.get_list_lines(stream_picker)
     helpers.assert_line_contains(stream_lines, "ONE", "display")

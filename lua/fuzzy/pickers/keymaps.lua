@@ -19,7 +19,7 @@ local function collect_keymap_entries(opts)
         local global_keymap_list = vim.api.nvim_get_keymap(mode_name) or {}
         for _, keymap_entry in ipairs(global_keymap_list) do
             keymap_entry.mode = mode_name
-            keymap_entry.buffer = false
+            keymap_entry.buffer = 0
             keymap_entry_list[#keymap_entry_list + 1] = keymap_entry
         end
 
@@ -27,7 +27,7 @@ local function collect_keymap_entries(opts)
             local buffer_keymap_list = vim.api.nvim_buf_get_keymap(0, mode_name) or {}
             for _, keymap_entry in ipairs(buffer_keymap_list) do
                 keymap_entry.mode = mode_name
-                keymap_entry.buffer = true
+                keymap_entry.buffer = 1
                 keymap_entry_list[#keymap_entry_list + 1] = keymap_entry
             end
         end
@@ -67,7 +67,7 @@ function M.open_keymaps_picker(opts)
         },
         display = function(entry_value)
             assert(type(entry_value) == "table")
-            local prefix_text = entry_value.buffer and "[b]" or "[g]"
+            local prefix_text = entry_value.buffer == 1 and "[b]" or "[g]"
             local mode_text = entry_value.mode or "?"
             local right_hand_side_text = entry_value.rhs or ""
             if opts.max_text

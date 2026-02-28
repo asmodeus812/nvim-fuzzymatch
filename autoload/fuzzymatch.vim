@@ -11,15 +11,11 @@ function! fuzzymatch#getbufinfo(bufnr) abort
     unlet! raw_info.variables
   endif
   unlet! vars
+  unlet! raw_info.lnum
   unlet! raw_info.linecount
   unlet! raw_info.changedtick
-  unlet! raw_info.lnum
-  unlet! raw_info.lnumcur
-  unlet! raw_info.lnumnum
-  unlet! raw_info.lnumshown
-  unlet! raw_info.lastusedtick
   unlet! info_list
-  return info_list[0]
+  return raw_info
 endfunction
 
 function! fuzzymatch#getwininfo(winid) abort

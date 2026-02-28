@@ -19,7 +19,7 @@ end
 --- @param command_name string|nil Command name to check
 --- @return boolean
 function M.command_is_available(command_name)
-    return command_name and vim.fn.executable(command_name) == 1
+    return command_name ~= nil and vim.fn.executable(command_name) == 1
 end
 
 --- Open Pick first command picker.
@@ -201,18 +201,7 @@ end
 --- @param picker_options table|nil
 --- @return table
 function M.build_picker_options(picker_options)
-    return {
-        match_limit = picker_options.match_limit,
-        match_step = picker_options.match_step,
-        match_timer = picker_options.match_timer,
-        stream_step = picker_options.stream_step,
-        stream_type = picker_options.stream_type,
-        stream_debounce = picker_options.stream_debounce,
-        prompt_debounce = picker_options.prompt_debounce,
-        prompt_query = picker_options.prompt_query,
-        prompt_decor = picker_options.prompt_decor,
-        window_size = picker_options.window_size,
-    }
+    return picker_options or {}
 end
 
 --- Open Empty picker.

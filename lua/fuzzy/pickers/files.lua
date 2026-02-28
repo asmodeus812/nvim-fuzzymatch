@@ -112,7 +112,10 @@ function M.open_files_picker(opts)
     local map_callback_func = nil
     if opts.ignore_current_file then
         local current_buf = vim.api.nvim_get_current_buf()
-        local current_file_path = utils.get_bufname(current_buf)
+        local current_file_path = utils.get_bufname(
+            current_buf,
+            utils.get_bufinfo(current_buf)
+        )
         if current_file_path == "[No Name]"
             or current_file_path == "[Quickfix List]"
             or current_file_path == "[Location List]"

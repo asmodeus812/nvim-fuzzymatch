@@ -123,11 +123,17 @@ function Picker.cwd_visitor(entry, context)
 end
 
 function Picker.env_visitor(entry, context)
-    -- Note: finish default implementation if needed
+    if context == nil then
+        return entry
+    end
+    return entry
 end
 
 function Picker.args_visitor(entry, context)
-    -- Note: finish default implementation if needed
+    if context == nil then
+        return entry
+    end
+    return entry
 end
 
 --- Create a new converter instance, that can be used to convert entries from the picker by enriching the entry from the base converter with the picker context, mostly to ensure that the filename is absolute, based on the current working directory of the picker. This is done through the visitor functions that will be called in sequence after the base converter, each visitor function takes the converted entry and the picker context as arguments, and must return a table representing the converted entry, or false to skip the entry.

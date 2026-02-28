@@ -1,7 +1,5 @@
 ---@diagnostic disable: invisible
 local helpers = require("tests.helpers")
-local util = require("fuzzy.pickers.util")
-
 local M = { name = "quickfix_stack" }
 
 function M.run()
@@ -19,7 +17,7 @@ function M.run()
             })
             helpers.wait_for(function()
                 return helpers.get_entries(picker) ~= nil
-            end, 2000)
+            end, 1500)
             helpers.wait_for_line_contains(picker, "list 1")
             picker:close()
         end)

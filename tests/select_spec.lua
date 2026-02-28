@@ -27,14 +27,14 @@ local function run_action_case()
     select:list(entries)
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == total
-    end, 2000)
+    end, 1500)
     helpers.wait_for(function()
         local lines = helpers.get_buffer_lines(select.list_buffer)
         return lines and #lines > 0
-    end, 2000)
+    end, 1500)
     helpers.wait_for(function()
         return helpers.get_buffer_line_count(select.list_buffer) >= height
-    end, 2000)
+    end, 1500)
 
     select:move_down()
     helpers.eq(select._state.cursor[1], 2, "move down")
@@ -88,7 +88,7 @@ local function run_select_action_case()
     select:list({ "one", "two", "three" })
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 3
-    end, 2000)
+    end, 1500)
 
     select:select_entry(function(list)
         selected = list
@@ -107,7 +107,7 @@ local function run_select_action_case()
     select:list({ "one", "two", "three" })
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 3
-    end, 2000)
+    end, 1500)
 
     select:select_next(function(list)
         selected = list
@@ -126,7 +126,7 @@ local function run_select_action_case()
     select:list({ "one", "two", "three" })
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 3
-    end, 2000)
+    end, 1500)
 
     select:select_prev(function(list)
         selected = list
@@ -144,7 +144,7 @@ local function run_select_action_case()
     select:list({ "one", "two" })
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 2
-    end, 2000)
+    end, 1500)
 
     select:select_horizontal(function() return false end)
     helpers.assert_ok(select:isopen() == false, "closed")
@@ -158,7 +158,7 @@ local function run_select_action_case()
     select:list({ "one", "two" })
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 2
-    end, 2000)
+    end, 1500)
 
     select:select_vertical(function() return false end)
     helpers.assert_ok(select:isopen() == false, "closed")
@@ -172,7 +172,7 @@ local function run_select_action_case()
     select:list({ "one", "two" })
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 2
-    end, 2000)
+    end, 1500)
 
     select:select_tab(function() return false end)
     helpers.assert_ok(select:isopen() == false, "closed")
@@ -186,7 +186,7 @@ local function run_select_action_case()
     select:list({ "one", "two" })
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 2
-    end, 2000)
+    end, 1500)
 
     select:send_quickfix(function() return false end)
     helpers.assert_ok(select:isopen() == false, "closed")
@@ -200,7 +200,7 @@ local function run_select_action_case()
     select:list({ "one", "two" })
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 2
-    end, 2000)
+    end, 1500)
 
     select:send_locliset(function() return false end)
     helpers.assert_ok(select:isopen() == false, "closed")
@@ -224,7 +224,7 @@ local function run_basic_case()
     helpers.wait_for(function()
         return select._state.entries
             and #select._state.entries == 3
-    end, 2000)
+    end, 1500)
 
     helpers.eq(#select._state.entries, 3, "entries")
     helpers.wait_for(function()
@@ -235,7 +235,7 @@ local function run_basic_case()
             end
         end
         return false
-    end, 2000)
+    end, 1500)
 
     helpers.eq(select:query(), "", "query")
 
@@ -256,7 +256,7 @@ local function run_toggle_case()
     helpers.wait_for(function()
         return select._state.entries
             and #select._state.entries == 3
-    end, 2000)
+    end, 1500)
 
     select:toggle_entry()
     helpers.assert_ok(
@@ -288,7 +288,7 @@ local function run_prompt_case()
     select:open()
     local prompt_ready = helpers.wait_for(function()
         return helpers.is_window_valid(select.prompt_window)
-    end, 2000)
+    end, 1500)
     helpers.assert_ok(prompt_ready, "prompt window")
     vim.api.nvim_buf_set_lines(select.prompt_buffer, 0, 1, false, { "hello" })
     local query = select:_prompt_getquery()
@@ -296,7 +296,7 @@ local function run_prompt_case()
     select._state.query = query
     helpers.wait_for(function()
         return select:query() == "hello"
-    end, 2000)
+    end, 1500)
     helpers.eq(select:query(), "hello", "prompt query")
     vim.api.nvim_buf_set_lines(select.prompt_buffer, 0, 1, false, { "" })
     query = select:_prompt_getquery()
@@ -325,7 +325,7 @@ local function run_preview_case()
     helpers.wait_for(function()
         return select.preview_window
             and helpers.is_window_valid(select.preview_window)
-    end, 2000)
+    end, 1500)
 
     helpers.wait_for(function()
         local preview_buffer = select.preview_window
@@ -337,7 +337,7 @@ local function run_preview_case()
             end
         end
         return false
-    end, 2000)
+    end, 1500)
     local preview_buffer = select.preview_window
         and vim.api.nvim_win_get_buf(select.preview_window)
     local preview_lines = helpers.get_buffer_lines(preview_buffer)

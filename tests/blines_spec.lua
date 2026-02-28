@@ -20,6 +20,8 @@ function M.run()
         helpers.wait_for_line_contains(picker, "first")
 
         local prompt_input = picker.select._options.prompt_input
+        assert(type(prompt_input) == "function")
+        --- @cast prompt_input fun(string)
         prompt_input("second")
         helpers.wait_for_line_contains(picker, "second")
         picker:close()

@@ -11,7 +11,7 @@ local M = {}
 
 local function apply_colorscheme_name(colorscheme_name)
     assert(type(colorscheme_name) == "string" and #colorscheme_name > 0)
-    local ok, err = pcall(vim.cmd.colorscheme, colorscheme_name)
+    local ok = pcall(vim.cmd.colorscheme, colorscheme_name)
     assert(ok)
     return true
 end
@@ -32,6 +32,7 @@ function M.open_colorscheme_picker(opts)
     local preview_state_table = { last = current_colorscheme_name }
     local colorscheme_name_list = vim.fn.getcompletion("", "color") or {}
 
+    --- @type table|false
     local preview_instance_object = false
     if opts.preview ~= false then
         preview_instance_object = Select.CustomPreview.new(function(entry_value, buffer_id, _)

@@ -40,6 +40,9 @@ function M.open_jumps_picker(opts)
                 utils.get_bufinfo(buf)
             )
         end
+        if not file_name or #file_name == 0 then
+            file_name = "[No Name]"
+        end
         return {
             filename = file_name,
             lnum = entry_value.lnum or 1,
@@ -68,6 +71,9 @@ function M.open_jumps_picker(opts)
                     buf,
                     utils.get_bufinfo(buf)
                 )
+            end
+            if not file_name or #file_name == 0 then
+                file_name = "[No Name]"
             end
             return util.format_location_entry(
                 util.format_display_path(

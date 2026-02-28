@@ -19,7 +19,7 @@ function M.eq(actual, expected, message)
 end
 
 function M.wait_for(fn, timeout)
-    local ok = vim.wait(timeout or 2000, fn, 10)
+    local ok = vim.wait(timeout or 1500, fn, 10)
     return ok
 end
 
@@ -73,36 +73,45 @@ function M.reset_state()
     if vim.wo then
         pcall(function() vim.wo.winfixbuf = false end)
     end
-    pcall(vim.cmd, "silent! only")
-    pcall(vim.cmd, "enew")
+    pcall(function() vim.cmd("silent! only") end)
+    pcall(function() vim.cmd("enew") end)
 end
 
 function M.open_buffers_picker(opts)
     local buffers_picker = require("fuzzy.pickers.buffers")
     local picker = buffers_picker.open_buffers_picker(opts or {})
     M.wait_for(function()
+        --- @diagnostic disable-next-line: invisible
         return picker and picker.select and picker.select:isopen()
-    end, 2000)
+    end, 1500)
     return picker
 end
 
 function M.type_query(picker, text)
+    --- @diagnostic disable-next-line: invisible
     M.assert_ok(picker and picker.select, "picker not available")
+    --- @diagnostic disable-next-line: invisible
     picker.select:position_prompt(text)
 end
 
 function M.get_query(picker)
+    --- @diagnostic disable-next-line: invisible
     M.assert_ok(picker and picker.select, "picker not available")
+    --- @diagnostic disable-next-line: invisible
     return picker.select:query()
 end
 
 function M.get_entries(picker)
+    --- @diagnostic disable-next-line: invisible
     M.assert_ok(picker and picker.select, "picker not available")
+    --- @diagnostic disable-next-line: invisible
     return picker.select._state.entries
 end
 
 function M.get_list_lines(picker)
+    --- @diagnostic disable-next-line: invisible
     M.assert_ok(picker and picker.select, "picker not available")
+    --- @diagnostic disable-next-line: invisible
     local buf = picker.select.list_buffer
     if not buf or not vim.api.nvim_buf_is_valid(buf) then
         return {}
@@ -114,7 +123,7 @@ function M.wait_for_list(picker)
     return M.wait_for(function()
         local lines = M.get_list_lines(picker)
         return lines and #lines > 0
-    end, 2000)
+    end, 1500)
 end
 
 function M.wait_for_line_contains(picker, text)
@@ -126,7 +135,7 @@ function M.wait_for_line_contains(picker, text)
             end
         end
         return false
-    end, 2000)
+    end, 1500)
 end
 
 function M.get_lines(buf, start, finish)
@@ -162,6 +171,7 @@ end
 
 function M.with_cwd(dir_path, callback)
     local prev_cwd = vim.uv.cwd()
+    assert(prev_cwd)
     vim.uv.chdir(dir_path)
     local ok, err = pcall(callback)
     vim.uv.chdir(prev_cwd)

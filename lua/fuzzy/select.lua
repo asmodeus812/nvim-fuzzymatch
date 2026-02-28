@@ -4,7 +4,6 @@ local LIST_STATUS_NAMESPACE = vim.api.nvim_create_namespace("list_status_namespa
 local LIST_TOGGLE_NAMESPACE = vim.api.nvim_create_namespace("list_toggle_namespace")
 local LIST_HEADER_NAMESPACE = vim.api.nvim_create_namespace("list_header_namespace")
 
-local highlight_extmark_opts = { limit = 1, type = "highlight", details = false, hl_name = false }
 local detailed_extmark_opts = { limit = 4, type = "highlight", details = true, hl_name = true }
 local padding = { " ", "SelectHeaderPadding" }
 local spacing = { ",", "SelectHeaderDelimiter" }
@@ -2102,10 +2101,12 @@ function Select:open()
             })
 
             local decor = opts.prompt_decor or "> "
+            local decor_text = type(decor) == "table"
+                and decor.prefix
+                or decor
+            assert(type(decor_text) == "string" and #decor_text > 0)
             assert(vim.fn.sign_define(sign_name, {
-                text = type(decor) == "table"
-                    and assert(decor.prefix)
-                    or assert(decor),
+                text = decor_text,
                 texthl = "SelectPrefixText",
             }) == 0, "failed to define sign")
 

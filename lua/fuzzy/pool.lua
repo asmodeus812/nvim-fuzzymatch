@@ -1,14 +1,14 @@
 --- @class Pool
 --- A pool class to efficiently reuse tables of varying sizes with light pruning.
---- @field private tables table
---- @field private used table
---- @field private meta table
---- @field private max_idle number|nil Maximum idle time in milliseconds before a pooled table is discarded
---- @field private max_tables number|nil Maximum number of pooled tables to keep, older idle tables are discarded
---- @field private prune_interval number Prune interval in milliseconds for the background cleanup timer
---- @field private last_prune number Last prune timestamp in milliseconds
---- @field private prune_timer uv_timer_t|nil Timer used to run periodic pruning
---- @field private now fun(): number Returns a millisecond timestamp
+--- @field tables table
+--- @field used table
+--- @field meta table
+--- @field max_idle number|nil Maximum idle time in milliseconds before a pooled table is discarded
+--- @field max_tables number|nil Maximum number of pooled tables to keep, older idle tables are discarded
+--- @field prune_interval number Prune interval in milliseconds for the background cleanup timer
+--- @field last_prune number Last prune timestamp in milliseconds
+--- @field prune_timer uv_timer_t|nil Timer used to run periodic pruning
+--- @field now fun(): number Returns a millisecond timestamp
 local Pool = {}
 Pool.__index = Pool
 
@@ -35,8 +35,8 @@ function Pool.new(opts)
     end
     self.prune_timer = vim.uv.new_timer()
     self.prune_timer:start(self.prune_interval, self.prune_interval, function()
-        self.last_prune = self.now()
-        self:prune(self.last_prune)
+        Pool.last_prune = Pool.now()
+        Pool.prune(Pool.last_prune)
     end)
     return self
 end

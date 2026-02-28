@@ -249,7 +249,10 @@ function M.open_git_bcommits(opts)
     assert(util.command_is_available("git"))
 
     local buf = vim.api.nvim_get_current_buf()
-    local buf_path = utils.get_bufname(buf)
+    local buf_path = utils.get_bufname(
+        buf,
+        utils.get_bufinfo(buf)
+    )
     assert(type(buf_path) == "string" and #buf_path > 0)
     assert(buf_path ~= "[No Name]"
         and buf_path ~= "[Quickfix List]"

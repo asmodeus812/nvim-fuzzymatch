@@ -286,6 +286,23 @@ function M.is_quickfix(bufnr, bufinfo)
     return false
 end
 
+--- Check if a window is a quickfix or location list window.
+--- @param winid integer
+--- @return integer|false 1 for quickfix, 2 for loclist, false otherwise
+function M.win_is_qf(winid)
+    if not winid or winid == 0 then
+        return false
+    end
+    local info = vim.fn["fuzzymatch#getwininfo"](winid)
+    if not info or vim.tbl_isempty(info) then
+        return false
+    end
+    if info.quickfix == 1 then
+        return info.loclist == 1 and 2 or 1
+    end
+    return false
+end
+
 --- Get the buffer info for a given buffer number using the 'fuzzymatch#getbufinfo' Vim function. The function returns a table containing the buffer number and its associated info.
 --- @param buf integer The buffer number to get info for
 --- @return table A table containing the buffer number and its associated info

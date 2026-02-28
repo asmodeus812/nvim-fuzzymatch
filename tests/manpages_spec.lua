@@ -15,8 +15,10 @@ function M.run()
             })
             helpers.wait_for(function()
                 return helpers.get_entries(picker) ~= nil
-            end, 2000)
+            end, 1500)
             local prompt_input = picker.select._options.prompt_input
+            assert(type(prompt_input) == "function")
+            --- @cast prompt_input fun(string)
             prompt_input("manpage")
             helpers.wait_for_line_contains(picker, "manpage")
             picker:close()

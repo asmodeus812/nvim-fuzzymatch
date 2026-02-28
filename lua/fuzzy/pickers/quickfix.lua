@@ -54,7 +54,10 @@ function M.open_quickfix_picker(opts)
                 if not buf or buf <= 0 then
                     filename = "[No Name]"
                 else
-                    filename = utils.get_bufname(buf) or "[No Name]"
+                    filename = utils.get_bufname(
+                        buf,
+                        utils.get_bufinfo(buf)
+                    ) or "[No Name]"
                 end
             end
             return util.format_location_entry(

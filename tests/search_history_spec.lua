@@ -1,7 +1,5 @@
 ---@diagnostic disable: invisible
 local helpers = require("tests.helpers")
-local util = require("fuzzy.pickers.util")
-
 local M = { name = "search_history" }
 
 function M.run()
