@@ -252,6 +252,13 @@ function Match:running()
     return self._state.timer ~= nil
 end
 
+--- Return the matcher options table.
+--- This returns the live internal options reference and is intended for read-only access.
+--- @return MatchOptions
+function Match:options()
+    return assert(self._options)
+end
+
 --- Waits for the matching operation to complete or until the specified timeout is reached, and returns the results.
 --- @param timeout? integer The maximum time in milliseconds to wait for the matching operation to complete. If not provided, uses the timeout from options or a default maximum timeout.
 --- @return (string[]|integer[]|number[])[]|nil The results of the matching operation, or nil if the operation timed out.

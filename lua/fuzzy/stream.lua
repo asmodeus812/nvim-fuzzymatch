@@ -302,6 +302,13 @@ function Stream:running()
     return self:_is_streaming()
 end
 
+--- Return the stream options table.
+--- This returns the live internal options reference and is intended for read-only access.
+--- @return StreamOptions
+function Stream:options()
+    return assert(self._options)
+end
+
 -- Destroys the stream and any pending state that is currently being allocated into the stream, note that this is done automatically for
 -- ephemeral streams when a new stream is re-started the resources for the previous ones are invalidated
 function Stream:destroy()

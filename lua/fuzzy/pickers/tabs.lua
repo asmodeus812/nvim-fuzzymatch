@@ -36,10 +36,10 @@ function M.open_tabs_picker(opts)
                     and vim.api.nvim_win_get_buf(active_window_id)
                     or nil
                 if buf and buf ~= 0 then
-                    file_path = utils.get_bufname(
-                        buf,
-                        nil
-                    )
+                    file_path = utils.get_bufname(buf)
+                end
+                if not file_path or #file_path == 0 then
+                    file_path = utils.NO_NAME
                 end
                 stream_callback({
                     tabpage = tabpage,
@@ -66,20 +66,7 @@ function M.open_tabs_picker(opts)
             assert(vim.api.nvim_tabpage_is_valid(tabpage))
             local tabpage_index = vim.api.nvim_tabpage_get_number(tabpage)
             local file_path = type(entry_value) == "table"
-                and entry_value.file_path or nil
-            if not file_path or #file_path == 0 then
-                local window_list = vim.api.nvim_tabpage_list_wins(tabpage)
-                local active_window_id = window_list[1]
-                local buf = active_window_id
-                    and vim.api.nvim_win_get_buf(active_window_id)
-                    or nil
-                file_path = buf
-                    and utils.get_bufname(
-                        buf,
-                        utils.get_bufinfo(buf)
-                    )
-                    or utils.NO_NAME
-            end
+                and assert(entry_value.file_path) or utils.NO_NAME
             file_path = util.format_display_path(file_path, opts)
             return table.concat({ "[", tabpage_index, "] ", file_path })
         end,

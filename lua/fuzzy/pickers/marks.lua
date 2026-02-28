@@ -45,29 +45,13 @@ function M.open_marks_picker(opts)
         local buf = mark_position[1]
         local line_number = mark_position[2]
         local column_number = mark_position[3]
-        local file_path = entry_value.file
-        if not file_path or #file_path == 0 then
-            if buf and buf > 0 then
-                file_path = utils.get_bufname(
-                    buf,
-                    utils.get_bufinfo(buf)
-                )
-            end
-        end
-        if not file_path or #file_path == 0 then
-            file_path = utils.NO_NAME
-        end
+        local filename = assert(entry_value.file)
         return {
             bufnr = buf,
-            filename = file_path,
+            filename = filename,
             lnum = line_number or 1,
             col = column_number or 1,
         }
-    end
-
-    local decorators = {}
-    if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(conv) }
     end
 
     if opts.preview == true then
@@ -75,23 +59,26 @@ function M.open_marks_picker(opts)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
+
+    local decorators = {}
+    if opts.icons ~= false then
+        decorators = { Select.IconDecorator.new(conv) }
+    end
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local mark_entry_list = collect_mark_list()
             for _, entry_value in ipairs(mark_entry_list) do
-                local file_path = entry_value.file
-                if not file_path or #file_path == 0 then
+                local filename = entry_value.file
+                if not filename or #filename == 0 then
                     local mark_position = entry_value.pos or {}
                     local buf = mark_position[1]
                     if buf and buf > 0 then
-                        file_path = utils.get_bufname(
-                            buf,
-                            utils.get_bufinfo(buf)
-                        )
-                        entry_value.file = file_path
+                        filename = utils.get_bufname(buf)
                     end
                 end
-                stream_callback(entry_value)
+                stream_callback(vim.tbl_extend("force", {}, entry_value, {
+                    file = filename or utils.NO_NAME,
+                }))
             end
             stream_callback(nil)
         end,
@@ -104,24 +91,13 @@ function M.open_marks_picker(opts)
             local buf = mark_position[1]
             local line_number = mark_position[2]
             local column_number = mark_position[3]
-            local file_path = entry_value.file
-            if not file_path or #file_path == 0 then
-                if buf and buf > 0 then
-                    file_path = utils.get_bufname(
-                        buf,
-                        utils.get_bufinfo(buf)
-                    )
-                end
+            local filename = assert(entry_value.file)
+            local display_path = util.format_display_path(filename, opts)
+            if not display_path or #display_path == 0 then
+                display_path = utils.NO_NAME
             end
-            if not file_path or #file_path == 0 then
-                file_path = utils.NO_NAME
-            end
-            file_path = util.format_display_path(
-                file_path,
-                opts
-            )
             return util.format_location_entry(
-                file_path,
+                filename,
                 line_number or 1,
                 column_number or 1,
                 nil,

@@ -129,6 +129,16 @@ local function icon_set()
     return ok and module or {}
 end
 
+local function cursor_clamp(cursor, count)
+    if count > 0 then
+        local min = math.min(cursor[1], count)
+        cursor[2], cursor[1] = 0, math.max(1, min)
+    else
+        cursor[2], cursor[1] = 0, 1
+    end
+    return cursor
+end
+
 --- Deletes listed buffers if valid; used for previewer buffer cleanup.
 --- @param buffers table List of buffer numbers to delete
 --- @return table Empty table or passed table (if empty)
@@ -164,9 +174,9 @@ end
 --- @param entry any Entry table
 --- @param display function|string|nil Formatter or property
 --- @return string|any Rendered string or entry field
-local function line_mapper(entry, display)
+local function line_mapper(entry, display, index)
     if type(display) == "function" then
-        return display(assert(entry))
+        return display(assert(entry), index)
     elseif type(display) == "string" then
         assert(entry and next(entry))
         return entry[display]
@@ -340,6 +350,28 @@ local function virtual_content(buffer, ns, line, col, text, lines)
     })
 end
 
+--- Create a cache table and prime hash slots once.
+--- @param size integer
+--- @return table
+local function cache_new(size)
+    local cache = {}
+    for i = 1, math.max(0, size), 1 do
+        cache[-i] = utils.EMPTY_STRING
+    end
+    return cache
+end
+
+--- Reset cache content.
+--- @param state table Select state
+--- @return table
+local function cache_reset(state)
+    local cache = state.display_cache
+    for key, _ in pairs(cache or {}) do
+        cache[key] = nil
+    end
+    return cache
+end
+
 --- Populates a buffer with given lines/items (optional mapping/display).
 --- @param buffer integer Buffer handle
 --- @param items table List items
@@ -399,7 +431,9 @@ local function populate_range(buffer, start, _end, entries, display)
         lines = Pool.obtain(diff)
 
         for target = start, _end, 1 do
-            lines[(target - start) + 1] = line_mapper(entries[target], display)
+            lines[(target - start) + 1] = line_mapper(
+                entries[target], display, target
+            )
         end
 
         utils.resize_table(lines, diff)
@@ -453,7 +487,7 @@ local function highlight_range(buffer, start, _end, entries, positions, display)
 
         for i = 1, #matches, 2 do
             local byte_start, byte_end = compute_offsets(
-                line_mapper(entry, display), matches[i + 0], matches[i + 1]
+                line_mapper(entry, display, target), matches[i + 0], matches[i + 1]
             )
             vim.api.nvim_buf_set_extmark(
                 buffer,
@@ -500,7 +534,7 @@ local function decorate_range(buffer, start, _end, entries, decorators, display)
         local entry = entries[target]
         local index = (target - start) + 1
         local content, highlights = compute_decoration(entry,
-            line_mapper(entry, display), decorators
+            line_mapper(entry, display, target), decorators
         )
         if #content > 0 then
             assert(#content == #highlights)
@@ -1130,11 +1164,10 @@ end
 function Select:_highlight_list()
     local entries = self._state.entries
     local positions = self._state.positions
-    if entries and #entries >= 0 and positions and #positions > 0 then
+    if entries and #entries >= 0 and positions and #positions == #entries then
         local position = vim.api.nvim_win_get_cursor(self.list_window)
         local height = vim.api.nvim_win_get_height(self.list_window)
         local cursor = assert(self._state.cursor)
-        assert(#entries == #positions)
         highlight_range(
             self.list_buffer,
             math.max(1, cursor[1] - (position[1] - 1)),
@@ -1186,9 +1219,59 @@ function Select:_display_preview()
     end
 end
 
+--- Wrap display callback with index-based cache for visible render proximity.
+--- @return function|string|nil wrapped display
+function Select:_display_wrap()
+    local display = self._options.display
+    if type(display) ~= "function" then
+        return display
+    end
+
+    return function(entry, index)
+        entry = assert(entry)
+        if type(index) ~= "number" then
+            return display(entry)
+        end
+
+        local key = -index
+        local state = self._state
+        local cache = state.display_cache
+        local cached = cache[key] or nil
+        if cached and cached ~= nil then
+            return cached
+        end
+
+        local value = display(entry)
+        cache[key] = value
+        return value
+    end
+end
+
+--- Clamp cached entries to the specified absolute index range.
+function Select:_display_clamp()
+    local entries = self._state.entries
+    local cursor = self._state.cursor
+    if entries and cursor then
+        local height = vim.api.nvim_win_get_height(self.list_window)
+        local start = math.max(1, cursor[1] - (height * 2))
+        local _end = math.min(#entries, cursor[1] + (height * 2))
+        local cache = self._state.display_cache
+        for key, _ in pairs(cache or {}) do
+            local index = -key
+            if index < start or index > _end then
+                cache[key] = nil
+            end
+        end
+    end
+end
+
 --- Internal: schedules a UI render of list+related features.
 function Select:_render_list()
     local executor = Async.wrap(function()
+        if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
+            self:_display_clamp()
+        end
+
         if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
             self:_populate_list()
         end
@@ -1226,6 +1309,7 @@ end
 
 --- Resets the state variables for a Select instance.
 function Select:_reset_state()
+    cache_reset(self._state)
     self._state.streaming = false
     self._state.positions = nil
     self._state.entries = nil
@@ -1481,13 +1565,9 @@ function Select:move_cursor(dir, callback)
             self:_render_list()
         end
     end
+
     local count = vim.api.nvim_buf_line_count(self.list_buffer)
-    if count > 0 then
-        local min = math.min(position[1], count)
-        position[2], position[1] = 0, math.max(1, min)
-    else
-        position[2], position[1] = 0, 1
-    end
+    position = cursor_clamp(position, count)
     vim.api.nvim_win_set_cursor(self.list_window, position)
 
     self:_display_preview()
@@ -1897,6 +1977,13 @@ function Select:query()
     return assert(self._state.query)
 end
 
+--- Return the select options table.
+--- This returns the live internal options reference and is intended for read-only access.
+--- @return SelectOptions
+function Select:options()
+    return assert(self._options)
+end
+
 --- Closes the selection interface, the buffers and any state associated with the interface will be destroyed as well, to retain the selection state consider using `hide`
 function Select:close()
     self:_close_view(true)
@@ -1944,15 +2031,8 @@ function Select:list(entries, positions)
     }
     if entries ~= nil then
         local cursor = self._state.cursor
-        if cursor and assert(#cursor == 2) then
-            local count = #entries
-            if count == 0 then
-                cursor[1], cursor[2] = 1, 0
-            else
-                local min = math.min(cursor[1], count)
-                cursor[1], cursor[2] = math.max(1, min), 0
-            end
-        end
+        cursor_clamp(cursor, #entries)
+        cache_reset(self._state)
         self._state.positions = positions
         self._state.entries = entries
         self._state.streaming = true
@@ -2513,13 +2593,20 @@ function Select.new(opts)
                 all = false,
                 entries = {}
             },
-            cursor = { 1, 0 },
             entries = nil,
             positions = nil,
-            streaming = false
+            streaming = false,
+            cursor = { 1, 0 },
         },
     }, Select)
 
+    local ratio = opts.window_ratio
+    local height = compute_height(ratio, 1)
+    local size = math.floor(height) * 2
+    local cache_size = math.max(8, size)
+
+    self._state.display_cache = cache_new(cache_size)
+    self._options.display = self:_display_wrap()
     return self
 end
 

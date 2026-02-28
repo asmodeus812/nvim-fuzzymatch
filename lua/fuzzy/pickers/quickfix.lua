@@ -33,16 +33,23 @@ function M.open_quickfix_picker(opts)
     end
 
     local qf_info = vim.fn.getqflist({ items = 1, title = 1 })
-    local converter_cb = Select.default_converter
-    local decorators = {}
-    if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(converter_cb) }
+    local converter_cb = function(entry_value)
+        return {
+            bufnr = entry_value.bufnr,
+            filename = assert(entry_value.filename),
+            lnum = entry_value.lnum or 1,
+            col = entry_value.col or 1,
+        }
     end
-
     if opts.preview == true then
         opts.preview = Select.BufferPreview.new(nil, converter_cb)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
+    end
+
+    local decorators = {}
+    if opts.icons ~= false then
+        decorators = { Select.IconDecorator.new(converter_cb) }
     end
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, _, cwd)
@@ -52,11 +59,7 @@ function M.open_quickfix_picker(opts)
                 if not filename or #filename == 0 then
                     local buf = entry_value.bufnr
                     if buf and buf > 0 then
-                        filename = utils.get_bufname(
-                            buf,
-                            utils.get_bufinfo(buf)
-                        )
-                        entry_value.filename = filename
+                        filename = utils.get_bufname(buf)
                     end
                 end
                 if cwd
@@ -69,7 +72,9 @@ function M.open_quickfix_picker(opts)
                     ) then
                     goto continue
                 end
-                stream_callback(entry_value)
+                stream_callback(vim.tbl_extend("force", {}, entry_value, {
+                    filename = filename or utils.NO_NAME,
+                }))
                 ::continue::
             end
             stream_callback(nil)
@@ -85,23 +90,8 @@ function M.open_quickfix_picker(opts)
         actions = util.build_default_actions(converter_cb, opts),
         decorators = decorators,
         display = function(entry)
-            local filename = entry.filename
-            if not filename or #filename == 0 then
-                local buf = entry.bufnr
-                if buf and buf > 0 then
-                    filename = utils.get_bufname(
-                        buf,
-                        utils.get_bufinfo(buf)
-                    )
-                end
-            end
-            if not filename or #filename == 0 then
-                filename = utils.NO_NAME
-            end
-            local display_path = util.format_display_path(
-                filename,
-                opts
-            )
+            local filename = assert(entry.filename)
+            local display_path = util.format_display_path(filename, opts)
             if not display_path or #display_path == 0 then
                 display_path = utils.NO_NAME
             end

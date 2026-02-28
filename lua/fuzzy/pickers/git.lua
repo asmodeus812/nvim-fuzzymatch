@@ -14,12 +14,6 @@ local utils = require("fuzzy.utils")
 
 local M = {}
 
-local function normalize_cwd(opts)
-    if opts and opts.cwd == true then
-        opts.cwd = vim.loop.cwd
-    end
-end
-
 local function build_git_commits_format()
     return table.concat({
         "%h ",
@@ -29,22 +23,40 @@ local function build_git_commits_format()
     })
 end
 
-local function build_git_command_entry(command_args, opts, title)
-    assert(command_args ~= nil)
-    local actions = { ["<cr>"] = Select.default_select }
+local function resolve_picker_cwd(source)
+    local opts = source:options() or {}
+    return util.resolve_working_directory(opts.cwd)
+end
+
+local function resolve_git_root(source)
+    local cwd = resolve_picker_cwd(source)
+    return util.find_git_root(cwd)
+end
+
+local function build_git_picker(opts, config)
+    local actions = config.actions or { ["<cr>"] = Select.default_select }
     if opts and opts.actions then
         actions = vim.tbl_deep_extend("force", actions, opts.actions)
     end
+
+    local context = vim.tbl_extend("force", {
+        cwd = function(picker)
+            return resolve_picker_cwd(picker)
+        end,
+    }, config.context or {})
+
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = "git",
-        headers = util.build_picker_headers(title, opts),
-        context = {
-            args = command_args,
-            cwd = opts.cwd,
-        },
-        preview = false,
+        content = config.content or "git",
+        headers = util.build_picker_headers(config.title, opts),
+        context = context,
+        preview = config.preview == nil and false or config.preview,
         actions = actions,
+        decorators = config.decorators,
+        display = config.display,
     }, util.build_picker_options(opts)))
+    if config.bind then
+        config.bind(picker)
+    end
     picker:open()
     return picker
 end
@@ -64,15 +76,6 @@ local function parse_git_status_entry(entry)
     }
 end
 
-local function resolve_git_root(opts)
-    local cwd = type(opts.cwd) == "function" and opts.cwd() or opts.cwd
-    local git_root = util.find_git_root(cwd)
-    if not git_root then
-        return nil
-    end
-    return git_root
-end
-
 --- Open Git files picker.
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
@@ -85,11 +88,12 @@ function M.open_git_files(opts)
         stream_step = 100000,
         match_step = 75000,
     }, opts)
-    normalize_cwd(opts)
+
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
 
     assert(util.command_is_available("git"))
-
-    local git_root = assert(resolve_git_root(opts))
 
     local command_args = { "ls-files" }
     if opts.untracked then
@@ -104,30 +108,31 @@ function M.open_git_files(opts)
     )
     local converter_cb = converter:get()
 
-    local decorators = {}
-    if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(converter_cb) }
-    end
-
     if opts.preview == true then
         opts.preview = Select.BufferPreview.new(nil, converter_cb)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
-    local picker = Picker.new(vim.tbl_extend("force", {
-        content = "git",
-        headers = util.build_picker_headers("Git Files", opts),
+
+    local decorators = {}
+    if opts.icons ~= false then
+        decorators = { Select.IconDecorator.new(converter_cb) }
+    end
+    local picker = build_git_picker(opts, {
+        title = "Gitfiles",
         context = {
             args = command_args,
-            cwd = git_root,
+            cwd = function(picker)
+                return assert(resolve_git_root(picker))
+            end,
         },
         preview = opts.preview,
-        actions = util.build_default_actions(converter_cb, opts),
         decorators = decorators,
-    }, util.build_picker_options(opts)))
-
-    converter:bind(picker)
-    picker:open()
+        actions = util.build_default_actions(converter_cb, opts),
+        bind = function(instance)
+            converter:bind(instance)
+        end,
+    })
     return picker
 end
 
@@ -142,11 +147,12 @@ function M.open_git_status(opts)
         stream_step = 50000,
         match_step = 50000,
     }, opts)
-    normalize_cwd(opts)
+
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
 
     assert(util.command_is_available("git"))
-
-    local git_root = assert(resolve_git_root(opts))
 
     local converter = Picker.Converter.new(
         parse_git_status_entry,
@@ -154,37 +160,38 @@ function M.open_git_status(opts)
     )
     local converter_cb = converter:get()
 
-    local decorators = {}
-    if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(converter_cb) }
-    end
-
     if opts.preview == true then
         opts.preview = Select.BufferPreview.new(nil, converter_cb)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
-    local picker = Picker.new(vim.tbl_extend("force", {
-        content = "git",
-        headers = util.build_picker_headers("Git Status", opts),
+
+    local decorators = {}
+    if opts.icons ~= false then
+        decorators = { Select.IconDecorator.new(converter_cb) }
+    end
+    local picker = build_git_picker(opts, {
+        title = "Status",
         context = {
             args = {
                 "-c", "color.status=false",
                 "status", "--porcelain=v1",
             },
-            cwd = git_root,
+            cwd = function(picker)
+                return assert(resolve_git_root(picker))
+            end,
         },
         preview = opts.preview,
-        actions = util.build_default_actions(converter_cb, opts),
         decorators = decorators,
+        actions = util.build_default_actions(converter_cb, opts),
         display = function(entry_value)
             assert(type(entry_value) == "string")
             return entry_value
         end,
-    }, util.build_picker_options(opts)))
-
-    converter:bind(picker)
-    picker:open()
+        bind = function(instance)
+            converter:bind(instance)
+        end,
+    })
     return picker
 end
 
@@ -198,12 +205,12 @@ function M.open_git_branches(opts)
         stream_step = 50000,
         match_step = 50000,
     }, opts)
-    normalize_cwd(opts)
+
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
 
     assert(util.command_is_available("git"))
-
-    local git_root = assert(resolve_git_root(opts))
-    opts.cwd = git_root
 
     local command_args = {
         "branch",
@@ -215,7 +222,15 @@ function M.open_git_branches(opts)
         "--sort=-HEAD",
     }
 
-    return build_git_command_entry(command_args, opts, "Git Branches")
+    return build_git_picker(opts, {
+        title = "Branches",
+        context = {
+            args = command_args,
+            cwd = function(picker)
+                return assert(resolve_git_root(picker))
+            end,
+        },
+    })
 end
 
 --- Open Git commits picker.
@@ -228,12 +243,12 @@ function M.open_git_commits(opts)
         stream_step = 50000,
         match_step = 50000,
     }, opts)
-    normalize_cwd(opts)
+
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
 
     assert(util.command_is_available("git"))
-
-    local git_root = assert(resolve_git_root(opts))
-    opts.cwd = git_root
 
     local command_args = {
         "log",
@@ -244,75 +259,15 @@ function M.open_git_commits(opts)
         }),
     }
 
-    return build_git_command_entry(command_args, opts, "Git Commits")
-end
-
---- Open Git bcommits picker.
---- @param opts GitPickerOptions|nil Picker options for this picker
---- @return Picker
-function M.open_git_bcommits(opts)
-    opts = util.merge_picker_options({
-        cwd = nil,
-        preview = false,
-        stream_step = 50000,
-        match_step = 50000,
-    }, opts)
-    normalize_cwd(opts)
-
-    assert(util.command_is_available("git"))
-
-    local actions = { ["<cr>"] = Select.default_select }
-    if opts and opts.actions then
-        actions = vim.tbl_deep_extend("force", actions, opts.actions)
-    end
-
-    local picker = Picker.new(vim.tbl_extend("force", {
-        content = "git",
-        headers = util.build_picker_headers("Git Buffer Commits", opts),
+    return build_git_picker(opts, {
+        title = "Commits",
         context = {
-            cwd = function()
-                local buf = vim.api.nvim_get_current_buf()
-                local buf_path = utils.get_bufname(
-                    buf,
-                    utils.get_bufinfo(buf)
-                )
-                assert(type(buf_path) == "string" and #buf_path > 0)
-                assert(buf_path ~= utils.NO_NAME
-                    and buf_path ~= "[Quickfix List]"
-                    and buf_path ~= "[Location List]")
-                local buf_dir = vim.fs.dirname(vim.fs.normalize(buf_path))
-                return assert(util.find_git_root(buf_dir))
-            end,
-            args = function()
-                local buf = vim.api.nvim_get_current_buf()
-                local buf_path = utils.get_bufname(
-                    buf,
-                    utils.get_bufinfo(buf)
-                )
-                assert(type(buf_path) == "string" and #buf_path > 0)
-                assert(buf_path ~= utils.NO_NAME
-                    and buf_path ~= "[Quickfix List]"
-                    and buf_path ~= "[Location List]")
-                local buf_dir = vim.fs.dirname(vim.fs.normalize(buf_path))
-                local git_root = assert(util.find_git_root(buf_dir))
-                local rel_path = vim.fs.relpath(buf_path, git_root) or buf_path
-                return {
-                    "log",
-                    "--color=never",
-                    table.concat({
-                        "--pretty=format:",
-                        build_git_commits_format(),
-                    }),
-                    "--",
-                    rel_path,
-                }
+            args = command_args,
+            cwd = function(picker)
+                return assert(resolve_git_root(picker))
             end,
         },
-        preview = false,
-        actions = actions,
-    }, util.build_picker_options(opts)))
-    picker:open()
-    return picker
+    })
 end
 
 --- Open Git stash picker.
@@ -325,12 +280,12 @@ function M.open_git_stash(opts)
         stream_step = 50000,
         match_step = 50000,
     }, opts)
-    normalize_cwd(opts)
+
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
 
     assert(util.command_is_available("git"))
-
-    local git_root = assert(resolve_git_root(opts))
-    opts.cwd = git_root
 
     local command_args = {
         "--no-pager",
@@ -338,7 +293,62 @@ function M.open_git_stash(opts)
         "list",
     }
 
-    return build_git_command_entry(command_args, opts, "Git Stash")
+    return build_git_picker(opts, {
+        title = "Stash",
+        context = {
+            args = command_args,
+            cwd = function(picker)
+                return assert(resolve_git_root(picker))
+            end,
+        },
+    })
+end
+
+--- Open Git bcommits picker.
+--- @param opts GitPickerOptions|nil Picker options for this picker
+--- @return Picker
+function M.open_git_bcommits(opts)
+    opts = util.merge_picker_options({
+        cwd = true,
+        preview = false,
+        stream_step = 50000,
+        match_step = 50000,
+    }, opts)
+
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
+
+    assert(util.command_is_available("git"))
+
+    return build_git_picker(opts, {
+        title = "BCommits",
+        context = {
+            cwd = function(picker)
+                return resolve_picker_cwd(picker)
+            end,
+            args = function(picker)
+                local buf = vim.api.nvim_get_current_buf()
+                local buf_path = utils.get_bufname(buf) or utils.NO_NAME
+                buf_path = vim.fs.normalize(assert(buf_path))
+
+                local cwd = resolve_picker_cwd(picker) or ""
+                local rel_path = vim.fs.relpath(buf_path, cwd)
+                rel_path = rel_path or buf_path
+
+                return {
+                    "log",
+                    "--color=never",
+                    table.concat({
+                        "--pretty=format:",
+                        build_git_commits_format(),
+                    }),
+                    "--",
+                    rel_path,
+                }
+            end,
+        },
+    })
 end
 
 return M

@@ -859,15 +859,29 @@ manpages_picker.open_manpages_picker({
 
 ### Vimdoc
 
-Lists Neovim API function docs from `vim.fn.api_info()`. Entries are normalized to `nvim_*()` tags and open with help.
+Lists Neovim API docs from `vim.fn.api_info()`. Entries are structured with metadata (since, method/deprecated state,
+return type), can be filtered, and open the relevant help tag on confirm.
 
 ```lua
 local vimdoc_picker = require("fuzzy.pickers.vimdoc")
 
 vimdoc_picker.open_vimdoc_picker({
-  preview = false,
+  preview = true,
+  prefix = "nvim_",
+  include_deprecated = true,
+  include_private = false,
+  sort_by = "name",
 })
 ```
+
+Options and behavior:
+
+- `prefix`: Prefix filter for API names. Set `false` to disable.
+- `include_deprecated`: Include deprecated APIs.
+- `deprecated_only`: Show only deprecated APIs.
+- `include_private`: Include private/internal API names (such as `nvim__*`).
+- `sort_by`: `"name"` (default) or `"since"`.
+- `preview`: When enabled, shows signature/parameters/metadata for the selected API entry.
 
 ## Tags
 

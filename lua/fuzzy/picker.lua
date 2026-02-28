@@ -624,6 +624,13 @@ function Picker:context()
     return assert(self._state._evaluated_context)
 end
 
+--- Return the picker options table.
+--- This returns the live internal options reference and is intended for read-only access.
+--- @return PickerOptions
+function Picker:options()
+    return assert(self._options)
+end
+
 --- Check whether the primary picker or a running stage is open. The picker is considered open when any of the primary components of the selection interface are within view.
 --- @return boolean whether the picker or any running stage is open
 function Picker:isopen()
@@ -850,7 +857,7 @@ function Picker.new(opts)
 
     self._options.actions = vim.tbl_deep_extend("keep", self._options.actions, {
         ["<cr>"]    = self:_confirm_prompt(),
-       ["<esc>"]   = self:_cancel_prompt(),
+        ["<esc>"]   = self:_cancel_prompt(),
         ["<m-esc>"] = self:_hide_prompt(),
     })
 

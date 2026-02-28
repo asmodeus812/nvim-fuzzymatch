@@ -13,6 +13,7 @@ function M.run()
         helpers.with_mock(vim.fn, "getchangelist", function()
             return { change_list, 1 }
         end, function()
+            vim.v.errmsg = ""
             local changes_picker = require("fuzzy.pickers.changes")
             local picker = changes_picker.open_changes_picker({
                 preview = false,
@@ -22,6 +23,10 @@ function M.run()
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "changes.txt")
             helpers.wait_for_line_contains(picker, ":")
+            helpers.assert_ok(
+                not tostring(vim.v.errmsg):find("Invalid 'buffer': Expected Lua number", 1, true),
+                "no invalid buffer warnings"
+            )
             picker:close()
         end)
 

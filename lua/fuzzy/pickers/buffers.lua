@@ -108,14 +108,15 @@ end
 
 local function filter_buffer_numbers(
     opts,
+    cur_buf,
     buf_list,
     included_buffer_map
 )
     local filtered_buffer_list = {}
     for _, buf in ipairs(buf_list) do
         if should_include_buffer(
-                opts, buf,
-                vim.api.nvim_get_current_buf(),
+                opts,
+                buf, cur_buf,
                 included_buffer_map
             ) then
             filtered_buffer_list[#filtered_buffer_list + 1] = buf
@@ -144,6 +145,12 @@ function M.open_buffers_picker(opts)
     }, opts)
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
+    end
+
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new()
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
     end
 
     local decorators = {}
@@ -183,22 +190,15 @@ function M.open_buffers_picker(opts)
     end
 
     table.insert(decorators, prefix_decorator)
-
-    if opts.preview == true then
-        opts.preview = Select.BufferPreview.new()
-    elseif opts.preview == false or opts.preview == nil then
-        opts.preview = false
-    end
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, args, cwd)
             local included_buffer_map
             local buf_list = vim.api.nvim_list_bufs() or {}
-            local current_tab = args and args.tab or vim.api.nvim_get_current_tabpage()
 
             if opts.current_tab == true then
                 included_buffer_map = {}
                 for _, win in ipairs(
-                    vim.api.nvim_tabpage_list_wins(current_tab)
+                    vim.api.nvim_tabpage_list_wins(args.tab)
                 ) do
                     local win_buf = vim.api.nvim_win_get_buf(win)
                     included_buffer_map[win_buf] = true
@@ -207,21 +207,17 @@ function M.open_buffers_picker(opts)
 
             buf_list = filter_buffer_numbers(
                 opts,
+                args.buf,
                 buf_list,
                 included_buffer_map
             )
+
             if opts.sort_lastused then
-                buf_list = sort_buffers_used(
-                    opts,
-                    buf_list
-                )
+                buf_list = sort_buffers_used(opts, buf_list)
             end
             for _, buf in ipairs(buf_list) do
                 local buffer_info = utils.get_bufinfo(buf)
-                local buffer_name_value = utils.get_bufname(
-                    buf,
-                    buffer_info
-                )
+                local buffer_name_value = utils.get_bufname(buf, buffer_info)
                 if buffer_name_value
                     and #buffer_name_value > 0
                     and not util.is_under_directory(
@@ -242,8 +238,9 @@ function M.open_buffers_picker(opts)
         headers = util.build_picker_headers("Buffers", opts),
         context = {
             cwd = opts.cwd,
-            args = function()
+            args = function(_)
                 return {
+                    buf = vim.api.nvim_get_current_buf(),
                     tab = vim.api.nvim_get_current_tabpage(),
                 }
             end,
@@ -255,16 +252,8 @@ function M.open_buffers_picker(opts)
         ),
         decorators = decorators,
         display = function(entry_value)
-            local buf = type(entry_value) == "table"
-                and entry_value.bufnr or entry_value
             local buffer_name = type(entry_value) == "table"
                 and entry_value.filename or nil
-            if not buffer_name or #buffer_name == 0 then
-                buffer_name = utils.get_bufname(
-                    buf,
-                    utils.get_bufinfo(buf)
-                )
-            end
             if not buffer_name or #buffer_name == 0 then
                 buffer_name = utils.NO_NAME
             end

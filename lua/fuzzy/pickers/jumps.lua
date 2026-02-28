@@ -27,37 +27,13 @@ function M.open_jumps_picker(opts)
     }, opts)
 
     local conv = function(entry_value)
-        local file_name = entry_value.filename
-        local buf = entry_value.bufnr
-        if (not file_name or #file_name == 0)
-            and buf and buf > 0 then
-            file_name = utils.get_bufname(
-                buf,
-                utils.get_bufinfo(buf)
-            )
-        end
-        if not file_name or #file_name == 0 then
-            if buf and buf > 0 then
-                file_name = utils.get_bufname(
-                    buf,
-                    utils.get_bufinfo(buf)
-                )
-            end
-        end
-        if not file_name or #file_name == 0 then
-            file_name = utils.NO_NAME
-        end
+        local filename = assert(entry_value.filename)
         return {
-            filename = file_name,
+            filename = filename,
             lnum = entry_value.lnum or 1,
             col = entry_value.col or 1,
             bufnr = entry_value.bufnr,
         }
-    end
-
-    local decorators = {}
-    if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(conv) }
     end
 
     if opts.preview == true then
@@ -65,21 +41,26 @@ function M.open_jumps_picker(opts)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
+
+    local decorators = {}
+    if opts.icons ~= false then
+        decorators = { Select.IconDecorator.new(conv) }
+    end
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local jump_list_data = vim.fn.getjumplist()
             local jump_entry_list = jump_list_data[1] or {}
             for _, entry_value in ipairs(jump_entry_list) do
-                local file_name = entry_value.filename
-                local buf = entry_value.bufnr
-                if buf and buf > 0 then
-                    file_name = utils.get_bufname(
-                        buf,
-                        utils.get_bufinfo(buf)
-                    )
-                    entry_value.filename = file_name
+                local filename = entry_value.filename
+                if not filename or #filename == 0 then
+                    local buf = entry_value.bufnr
+                    if buf and buf > 0 then
+                        filename = utils.get_bufname(buf)
+                    end
                 end
-                stream_callback(entry_value)
+                stream_callback(vim.tbl_extend("force", {}, entry_value, {
+                    filename = filename or utils.NO_NAME,
+                }))
             end
             stream_callback(nil)
         end,
@@ -88,24 +69,13 @@ function M.open_jumps_picker(opts)
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
-            local file_name = entry_value.filename
-            local buf = entry_value.bufnr
-            if not file_name or #file_name == 0 then
-                if buf and buf > 0 then
-                    file_name = utils.get_bufname(
-                        buf,
-                        utils.get_bufinfo(buf)
-                    )
-                end
-            end
-            if not file_name or #file_name == 0 then
-                file_name = utils.NO_NAME
+            local filename = assert(entry_value.filename)
+            local display_path = util.format_display_path(filename, opts)
+            if not display_path or #display_path == 0 then
+                display_path = utils.NO_NAME
             end
             return util.format_location_entry(
-                util.format_display_path(
-                    file_name,
-                    opts
-                ),
+                display_path,
                 entry_value.lnum or 1,
                 entry_value.col or 1,
                 nil,

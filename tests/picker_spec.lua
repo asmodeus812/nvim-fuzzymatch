@@ -15,6 +15,8 @@ function M.run()
             ["<cr>"] = Select.default_select,
         },
     })
+    helpers.assert_ok(picker:options() ~= nil, "picker options")
+    helpers.eq(picker:options().prompt_query, "be", "picker options reference")
 
     picker:open()
     helpers.wait_for_list(picker)

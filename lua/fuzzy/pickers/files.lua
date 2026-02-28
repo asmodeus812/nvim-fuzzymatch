@@ -102,15 +102,15 @@ function M.open_files_picker(opts)
     )
     local conv = converter:get()
 
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new(nil, conv)
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
+
     local decorators = {}
     if opts.icons ~= false then
         decorators = { Select.IconDecorator.new(conv) }
-    end
-
-    if opts.preview == true then
-        opts.preview = Select.BufferPreview.new(nil, conv)
-    elseif opts.preview == false then
-        opts.preview = false
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {

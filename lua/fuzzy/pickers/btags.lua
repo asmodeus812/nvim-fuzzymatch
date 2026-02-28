@@ -21,10 +21,7 @@ function M.open_btags_picker(opts)
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, args)
             local buf = args and args.buf or vim.api.nvim_get_current_buf()
-            local current_buffer_name = utils.get_bufname(
-                buf,
-                utils.get_bufinfo(buf)
-            )
+            local current_buffer_name = utils.get_bufname(buf)
             local tag_entry_list = vim.fn.taglist(".*") or {}
             for _, tag_entry in ipairs(tag_entry_list) do
                 if tag_entry and tag_entry.filename == current_buffer_name then
@@ -35,7 +32,7 @@ function M.open_btags_picker(opts)
         end,
         headers = util.build_picker_headers("Buffer Tags", opts),
         context = {
-            args = function()
+            args = function(_)
                 return { buf = vim.api.nvim_get_current_buf() }
             end,
         },

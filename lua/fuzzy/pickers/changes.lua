@@ -27,11 +27,8 @@ function M.open_changes_picker(opts)
     }, opts)
 
     local conv = function(entry_value)
-        local current_buf = vim.api.nvim_get_current_buf()
-        local current_buffer_name = utils.get_bufname(
-            current_buf,
-            utils.get_bufinfo(current_buf)
-        )
+        local current_buf = assert(entry_value.bufnr)
+        local current_buffer_name = assert(entry_value.filename)
         return {
             bufnr = current_buf,
             filename = current_buffer_name,
@@ -40,29 +37,35 @@ function M.open_changes_picker(opts)
         }
     end
 
-    local decorators = {}
-    if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(conv) }
-    end
-
     if opts.preview == true then
         opts.preview = Select.BufferPreview.new(nil, conv)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
 
+    local decorators = {}
+    if opts.icons ~= false then
+        decorators = { Select.IconDecorator.new(conv) }
+    end
+
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, args)
             local change_list_data = vim.fn.getchangelist(args.buf)
             local change_entry_list = change_list_data[1] or {}
+            local filename = utils.get_bufname(args.buf)
             for _, entry_value in ipairs(change_entry_list) do
-                stream_callback(entry_value)
+                local change_entry = vim.tbl_extend("force", {}, entry_value, {
+                    bufnr = args.buf,
+                    filename = filename,
+                    tick = args.tick,
+                })
+                stream_callback(change_entry)
             end
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Changes", opts),
         context = {
-            args = function()
+            args = function(_)
                 local buf = vim.api.nvim_get_current_buf()
                 return {
                     buf = buf,
@@ -74,15 +77,8 @@ function M.open_changes_picker(opts)
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
-            local buffer_name = utils.get_bufname(
-                entry_value.bufnr
-            ) or utils.NO_NAME
-            local display_path = util.format_display_path(
-                buffer_name,
-                opts
-            )
             return util.format_location_entry(
-                display_path,
+                nil,
                 entry_value.lnum or 1,
                 entry_value.col or 1,
                 nil,

@@ -5,6 +5,8 @@ local M = { name = "stream" }
 
 local function run_lines_case()
     local stream = Stream.new({ lines = true, step = 2 })
+    helpers.assert_ok(stream:options() ~= nil, "stream options")
+    helpers.eq(stream:options().step, 2, "stream options reference")
     local buf_size = 0
     local acc_size = 0
     stream:start(function(cb)

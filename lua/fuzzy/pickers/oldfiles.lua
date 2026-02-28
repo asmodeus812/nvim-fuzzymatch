@@ -33,17 +33,17 @@ function M.open_oldfiles_picker(opts)
         opts.cwd = vim.loop.cwd
     end
 
-    local decorators = {}
     local conv = Select.default_converter
-
-    if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(conv) }
-    end
 
     if opts.preview == true then
         opts.preview = Select.BufferPreview.new(nil, conv)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
+    end
+
+    local decorators = {}
+    if opts.icons ~= false then
+        decorators = { Select.IconDecorator.new(conv) }
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {

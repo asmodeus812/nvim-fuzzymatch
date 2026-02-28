@@ -213,6 +213,8 @@ local function run_basic_case()
         preview = false,
         display = "text",
     })
+    helpers.assert_ok(select:options() ~= nil, "select options")
+    helpers.eq(select:options().display, "text", "select options reference")
 
     select:open()
     select:list({

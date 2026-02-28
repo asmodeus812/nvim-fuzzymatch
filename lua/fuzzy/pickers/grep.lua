@@ -115,11 +115,6 @@ function M.open_grep_picker(opts)
     )
     local converter_cb = converter:get()
 
-    local decorators = {}
-    if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(converter_cb) }
-    end
-
     local function parse_query_value(query)
         if not opts.rg_glob then
             return query, nil
@@ -181,6 +176,12 @@ function M.open_grep_picker(opts)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
+
+    local decorators = {}
+    if opts.icons ~= false then
+        decorators = { Select.IconDecorator.new(converter_cb) }
+    end
+
     local picker = Picker.new(vim.tbl_extend("force", {
         content = cmd,
         headers = util.build_picker_headers("Grep", opts),

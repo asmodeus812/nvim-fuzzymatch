@@ -201,8 +201,10 @@ function M.format_location_entry(
         string_parts[#string_parts + 1] = entry_prefix
         string_parts[#string_parts + 1] = " "
     end
-    string_parts[#string_parts + 1] = filename or utils.NO_NAME
-    string_parts[#string_parts + 1] = ":"
+    if filename and #filename > 0 then
+        string_parts[#string_parts + 1] = filename
+        string_parts[#string_parts + 1] = " "
+    end
     string_parts[#string_parts + 1] = tostring(line_number or 1)
     string_parts[#string_parts + 1] = ":"
     string_parts[#string_parts + 1] = tostring(column_number or 1)
@@ -330,14 +332,19 @@ end
 --- Open Stream line numbers picker.
 --- @param buf integer
 --- @param stream_callback fun(entry: table): nil
+--- @param extra_fields? table|nil Additional fields to merge into each emitted entry
 --- @return nil
-function M.stream_line_numbers(buf, stream_callback)
+function M.stream_line_numbers(buf, stream_callback, extra_fields)
     local total_line_count = vim.api.nvim_buf_line_count(buf)
     for line_number = 1, total_line_count do
-        stream_callback({
+        local entry = {
             bufnr = buf,
             lnum = line_number,
-        })
+        }
+        if type(extra_fields) == "table" then
+            entry = vim.tbl_extend("force", entry, extra_fields)
+        end
+        stream_callback(entry)
     end
 end
 

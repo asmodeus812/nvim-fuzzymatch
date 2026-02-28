@@ -46,7 +46,7 @@ function M.open_blines_picker(opts)
         end,
         headers = util.build_picker_headers("BLines", opts),
         context = {
-            args = function()
+            args = function(_)
                 return { buf = vim.api.nvim_get_current_buf() }
             end,
         },

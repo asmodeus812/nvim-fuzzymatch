@@ -46,6 +46,7 @@ function M.open_lines_picker(opts)
         preview = false,
         match_step = 50000,
     }, opts)
+
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
@@ -60,7 +61,7 @@ function M.open_lines_picker(opts)
 
     local decorator = Select.Decorator.new()
     function decorator:decorate(entry)
-        local file_path = utils.get_bufname(entry.bufnr)
+        local file_path = assert(entry.filename)
         if not file_path or #file_path == 0 then
             file_path = utils.NO_NAME
         end
@@ -103,7 +104,8 @@ function M.open_lines_picker(opts)
                     end
                     util.stream_line_numbers(
                         buf,
-                        stream_callback
+                        stream_callback,
+                        { filename = buffer_name }
                     )
                 end
                 ::continue::
@@ -113,7 +115,7 @@ function M.open_lines_picker(opts)
         headers = util.build_picker_headers("Lines", opts),
         context = {
             cwd = opts.cwd,
-            args = function()
+            args = function(_)
                 return {
                     buf = vim.api.nvim_get_current_buf(),
                 }
@@ -123,6 +125,7 @@ function M.open_lines_picker(opts)
         actions = util.build_default_actions(converter_cb, opts),
         decorators = { decorator },
         display = function(entry)
+            assert(entry.bufnr and entry.lnum)
             local ok, text = pcall(vim.api.nvim_buf_get_lines,
                 entry.bufnr,
                 entry.lnum - 1,

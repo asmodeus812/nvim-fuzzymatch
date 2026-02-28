@@ -5,6 +5,13 @@ local util = require("fuzzy.pickers.util")
 
 local M = { name = "git" }
 
+local function eval(value, picker)
+    if type(value) == "function" then
+        return value(picker)
+    end
+    return value
+end
+
 local function capture_picker(callback)
     local captured = nil
     helpers.with_mock(Picker, "new", function(opts)
@@ -40,7 +47,11 @@ function M.run()
                 })
                 local opts = get()
                 helpers.eq(opts.content, "git", "content")
-                helpers.eq(opts.context.cwd, "/tmp/git-root", "cwd")
+                helpers.eq(eval(opts.context.cwd, {
+                    options = function()
+                        return opts
+                    end,
+                }), "/tmp/git-root", "cwd")
                 helpers.assert_list_contains(opts.context.args, "ls-files", "args")
                 helpers.assert_list_contains(opts.context.args, "--exclude-standard", "args")
             end)
@@ -63,7 +74,11 @@ function M.run()
                     prompt_debounce = 0,
                 })
                 local opts = get()
-                helpers.eq(opts.context.cwd, "/tmp/git-root", "cwd")
+                helpers.eq(eval(opts.context.cwd, {
+                    options = function()
+                        return opts
+                    end,
+                }), "/tmp/git-root", "cwd")
                 helpers.assert_list_contains(opts.context.args, "status", "args")
                 helpers.assert_list_contains(opts.context.args, "--porcelain=v1", "args")
             end)
@@ -85,7 +100,11 @@ function M.run()
                     prompt_debounce = 0,
                 })
                 local opts = get()
-                helpers.eq(opts.context.cwd, "/tmp/git-root", "cwd")
+                helpers.eq(eval(opts.context.cwd, {
+                    options = function()
+                        return opts
+                    end,
+                }), "/tmp/git-root", "cwd")
                 helpers.assert_list_contains(opts.context.args, "branch", "args")
                 helpers.assert_list_contains(opts.context.args, "--all", "args")
             end)
@@ -107,7 +126,11 @@ function M.run()
                     prompt_debounce = 0,
                 })
                 local opts = get()
-                helpers.eq(opts.context.cwd, "/tmp/git-root", "cwd")
+                helpers.eq(eval(opts.context.cwd, {
+                    options = function()
+                        return opts
+                    end,
+                }), "/tmp/git-root", "cwd")
                 helpers.assert_list_contains(opts.context.args, "log", "args")
             end)
         end)
@@ -134,15 +157,13 @@ function M.run()
                     prompt_debounce = 0,
                 })
                 local opts = get()
-                local cwd_value = opts.context.cwd
-                if type(cwd_value) == "function" then
-                    cwd_value = cwd_value()
-                end
-                helpers.eq(cwd_value, dir, "cwd")
-                local args_value = opts.context.args
-                if type(args_value) == "function" then
-                    args_value = args_value()
-                end
+                local picker_stub = {
+                    options = function()
+                        return opts
+                    end,
+                }
+                helpers.eq(eval(opts.context.cwd, picker_stub), vim.loop.cwd(), "cwd")
+                local args_value = eval(opts.context.args, picker_stub)
                 helpers.assert_list_contains(args_value, "log", "args")
                 helpers.assert_list_contains(args_value, "--", "args")
                 local found = false
@@ -174,7 +195,11 @@ function M.run()
                     prompt_debounce = 0,
                 })
                 local opts = get()
-                helpers.eq(opts.context.cwd, "/tmp/git-root", "cwd")
+                helpers.eq(eval(opts.context.cwd, {
+                    options = function()
+                        return opts
+                    end,
+                }), "/tmp/git-root", "cwd")
                 helpers.assert_list_contains(opts.context.args, "stash", "args")
                 helpers.assert_list_contains(opts.context.args, "list", "args")
             end)

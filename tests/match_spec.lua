@@ -10,6 +10,8 @@ end
 
 local function run_basic_case()
     local match = new_match({ step = 1, timer = 2 })
+    helpers.assert_ok(match:options() ~= nil, "match options")
+    helpers.eq(match:options().step, 1, "match options reference")
     local list = { "alpha", "beta", "gamma", "delta" }
     match:match(list, "a", function() end)
 
