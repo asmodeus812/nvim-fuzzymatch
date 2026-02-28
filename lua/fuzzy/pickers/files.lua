@@ -1,7 +1,6 @@
 local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
-local utils = require("fuzzy.utils")
 
 --- @class FilesPickerOptions
 --- @field cwd? string|fun(): string Working directory for the scan
@@ -12,7 +11,6 @@ local utils = require("fuzzy.utils")
 --- @field follow? boolean Follow symlinks
 --- @field no_ignore? boolean Disable ignore files
 --- @field no_ignore_vcs? boolean Disable VCS ignore files
---- @field ignore_current_file? boolean Exclude current file from results
 --- @field preview? boolean Enable preview window
 --- @field icons? boolean Enable file icons
 --- @field stream_step? integer Stream batch size
@@ -77,15 +75,15 @@ end
 --- @param opts FilesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_files_picker(opts)
-    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
-        cwd_prompt = false,
+    opts = util.merge_picker_options({
+        cwd = vim.loop.cwd,
+        cwd_prompt = true,
         cwd_prompt_shorten_val = 1,
         cwd_prompt_shorten_len = 32,
         hidden = true,
         follow = false,
         no_ignore = false,
         no_ignore_vcs = false,
-        ignore_current_file = false,
         preview = true,
         icons = true,
         stream_step = 100000,
@@ -106,48 +104,12 @@ function M.open_files_picker(opts)
         decorators = { Select.IconDecorator.new(conv) }
     end
 
-    local map_callback_func = nil
-    if opts.ignore_current_file then
-        local current_buf = vim.api.nvim_get_current_buf()
-        local current_file_path = utils.get_bufname(
-            current_buf,
-            utils.get_bufinfo(current_buf)
-        )
-        if current_file_path == "[No Name]"
-            or current_file_path == "[Quickfix List]"
-            or current_file_path == "[Location List]"
-        then
-            current_file_path = nil
-        end
-        local current_working_directory = type(opts.cwd) == "function"
-            and opts.cwd() or opts.cwd
-        local current_relative_path = nil
-        if current_file_path and #current_file_path > 0
-            and current_working_directory
-            and #current_working_directory > 0 then
-            local normalized_cwd = vim.fs.normalize(current_working_directory)
-            local normalized_current = vim.fs.normalize(current_file_path)
-            if normalized_current:sub(1, #normalized_cwd + 1) == normalized_cwd .. "/" then
-                current_relative_path = normalized_current:sub(#normalized_cwd + 2)
-            end
-        end
-        map_callback_func = function(entry_value)
-            if current_file_path and #current_file_path > 0
-                and (entry_value == current_file_path
-                    or entry_value == current_relative_path) then
-                return nil
-            end
-            return entry_value
-        end
-    end
-
     local picker = Picker.new(vim.tbl_deep_extend("force", {
         content = cmd,
         headers = util.build_picker_headers("Files", opts),
         context = {
             args = args,
             cwd = opts.cwd,
-            map = map_callback_func,
         },
         preview = opts.preview ~= false
             and Select.BufferPreview.new(nil, conv) or false,

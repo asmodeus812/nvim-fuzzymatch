@@ -17,7 +17,8 @@ local M = {}
 --- @param opts JumpsPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_jumps_picker(opts)
-    opts = util.merge_picker_options({        filename_only = false,
+    opts = util.merge_picker_options({
+        filename_only = false,
         path_shorten = nil,
         home_to_tilde = true,
         preview = true,
@@ -25,20 +26,26 @@ function M.open_jumps_picker(opts)
         match_step = 50000,
     }, opts)
 
-    local jump_list_data = vim.fn.getjumplist()
-    local jump_entry_list = jump_list_data[1] or {}
-
     local conv = function(entry_value)
         local file_name = entry_value.filename
         local buf = entry_value.bufnr
-        if buf and buf > 0 then
+        if (not file_name or #file_name == 0)
+            and buf and buf > 0 then
             file_name = utils.get_bufname(
                 buf,
                 utils.get_bufinfo(buf)
             )
         end
         if not file_name or #file_name == 0 then
-            file_name = "[No Name]"
+            if buf and buf > 0 then
+                file_name = utils.get_bufname(
+                    buf,
+                    utils.get_bufinfo(buf)
+                )
+            end
+        end
+        if not file_name or #file_name == 0 then
+            file_name = utils.NO_NAME
         end
         return {
             filename = file_name,
@@ -54,7 +61,23 @@ function M.open_jumps_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = jump_entry_list,
+        content = function(stream_callback)
+            local jump_list_data = vim.fn.getjumplist()
+            local jump_entry_list = jump_list_data[1] or {}
+            for _, entry_value in ipairs(jump_entry_list) do
+                local file_name = entry_value.filename
+                local buf = entry_value.bufnr
+                if buf and buf > 0 then
+                    file_name = utils.get_bufname(
+                        buf,
+                        utils.get_bufinfo(buf)
+                    )
+                    entry_value.filename = file_name
+                end
+                stream_callback(entry_value)
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Jumps", opts),
         preview = opts.preview ~= false
             and Select.BufferPreview.new(nil, conv) or false,
@@ -63,14 +86,16 @@ function M.open_jumps_picker(opts)
         display = function(entry_value)
             local file_name = entry_value.filename
             local buf = entry_value.bufnr
-            if buf and buf > 0 then
-                file_name = utils.get_bufname(
-                    buf,
-                    utils.get_bufinfo(buf)
-                )
+            if not file_name or #file_name == 0 then
+                if buf and buf > 0 then
+                    file_name = utils.get_bufname(
+                        buf,
+                        utils.get_bufinfo(buf)
+                    )
+                end
             end
             if not file_name or #file_name == 0 then
-                file_name = "[No Name]"
+                file_name = utils.NO_NAME
             end
             return util.format_location_entry(
                 util.format_display_path(

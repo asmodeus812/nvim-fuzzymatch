@@ -71,7 +71,8 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_files(opts)
-    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({
+        cwd = vim.loop.cwd,
         untracked = true,
         preview = true,
         icons = true,
@@ -123,7 +124,8 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_status(opts)
-    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({
+        cwd = vim.loop.cwd,
         preview = true,
         icons = true,
         stream_step = 50000,
@@ -174,7 +176,8 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_branches(opts)
-    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({
+        cwd = vim.loop.cwd,
         preview = false,
         stream_step = 50000,
         match_step = 50000,
@@ -202,7 +205,8 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_commits(opts)
-    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({
+        cwd = vim.loop.cwd,
         preview = false,
         stream_step = 50000,
         match_step = 50000,
@@ -229,7 +233,8 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_bcommits(opts)
-    opts = util.merge_picker_options({        cwd = nil,
+    opts = util.merge_picker_options({
+        cwd = nil,
         preview = false,
         stream_step = 50000,
         match_step = 50000,
@@ -243,9 +248,10 @@ function M.open_git_bcommits(opts)
         utils.get_bufinfo(buf)
     )
     assert(type(buf_path) == "string" and #buf_path > 0)
-    assert(buf_path ~= "[No Name]"
+    assert(buf_path ~= utils.NO_NAME
         and buf_path ~= "[Quickfix List]"
         and buf_path ~= "[Location List]")
+    assert(type(buf_path) == "string" and #buf_path > 0)
 
     local buf_dir = vim.fs.dirname(vim.fs.normalize(buf_path))
     local git_root = assert(util.find_git_root(buf_dir))
@@ -271,7 +277,8 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_stash(opts)
-    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({
+        cwd = vim.loop.cwd,
         preview = false,
         stream_step = 50000,
         match_step = 50000,

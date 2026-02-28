@@ -12,14 +12,19 @@ local M = {}
 --- @param opts ManpagesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_manpages_picker(opts)
-    opts = util.merge_picker_options({        preview = false,
+    opts = util.merge_picker_options({
+        preview = false,
         match_step = 50000,
     }, opts)
 
-    local manpage_list = vim.fn.getcompletion("", "man") or {}
-
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = manpage_list,
+        content = function(stream_callback)
+            local manpage_list = vim.fn.getcompletion("", "man") or {}
+            for _, manpage in ipairs(manpage_list) do
+                stream_callback(manpage)
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Manpages", opts),
         preview = false,
         actions = {

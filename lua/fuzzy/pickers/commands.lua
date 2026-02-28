@@ -42,16 +42,21 @@ end
 --- @param opts CommandsPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_commands_picker(opts)
-    opts = util.merge_picker_options({        include_builtin = true,
+    opts = util.merge_picker_options({
+        include_builtin = true,
         include_user = true,
         preview = false,
         match_step = 50000,
     }, opts)
 
-    local command_name_list = collect_command_names(opts)
-
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = command_name_list,
+        content = function(stream_callback)
+            local command_name_list = collect_command_names(opts)
+            for _, command_name in ipairs(command_name_list) do
+                stream_callback(command_name)
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Commands", opts),
         preview = false,
         actions = {

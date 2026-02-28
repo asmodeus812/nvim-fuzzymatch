@@ -12,14 +12,19 @@ local M = {}
 --- @param opts HelptagsPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_helptags_picker(opts)
-    opts = util.merge_picker_options({        preview = false,
+    opts = util.merge_picker_options({
+        preview = false,
         match_step = 50000,
     }, opts)
 
-    local helptag_list = vim.fn.getcompletion("", "help") or {}
-
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = helptag_list,
+        content = function(stream_callback)
+            local helptag_list = vim.fn.getcompletion("", "help") or {}
+            for _, helptag in ipairs(helptag_list) do
+                stream_callback(helptag)
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Help Tags", opts),
         preview = false,
         actions = {

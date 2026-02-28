@@ -13,7 +13,8 @@ local M = {}
 --- @param opts BufferTagsPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_btags_picker(opts)
-    opts = util.merge_picker_options({        preview = false,
+    opts = util.merge_picker_options({
+        preview = false,
         match_step = 50000,
     }, opts)
 
@@ -22,16 +23,16 @@ function M.open_btags_picker(opts)
         buf,
         utils.get_bufinfo(buf)
     )
-    local tag_entry_list = vim.fn.taglist(".*") or {}
-    local filtered_entry_list = {}
-    for _, tag_entry in ipairs(tag_entry_list) do
-        if tag_entry and tag_entry.filename == current_buffer_name then
-            filtered_entry_list[#filtered_entry_list + 1] = tag_entry
-        end
-    end
-
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = filtered_entry_list,
+        content = function(stream_callback)
+            local tag_entry_list = vim.fn.taglist(".*") or {}
+            for _, tag_entry in ipairs(tag_entry_list) do
+                if tag_entry and tag_entry.filename == current_buffer_name then
+                    stream_callback(tag_entry)
+                end
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Buffer Tags", opts),
         preview = false,
         actions = {

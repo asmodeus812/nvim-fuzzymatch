@@ -12,14 +12,19 @@ local M = {}
 --- @param opts TagsPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_tags_picker(opts)
-    opts = util.merge_picker_options({        preview = false,
+    opts = util.merge_picker_options({
+        preview = false,
         match_step = 50000,
     }, opts)
 
-    local tag_name_list = vim.fn.getcompletion("", "tag") or {}
-
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = tag_name_list,
+        content = function(stream_callback)
+            local tag_name_list = vim.fn.getcompletion("", "tag") or {}
+            for _, tag_name in ipairs(tag_name_list) do
+                stream_callback(tag_name)
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Tags", opts),
         preview = false,
         actions = {

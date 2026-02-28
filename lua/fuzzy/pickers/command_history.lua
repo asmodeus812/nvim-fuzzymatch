@@ -12,14 +12,19 @@ local M = {}
 --- @param opts CommandHistoryPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_command_history(opts)
-    opts = util.merge_picker_options({        preview = false,
+    opts = util.merge_picker_options({
+        preview = false,
         match_step = 50000,
     }, opts)
 
-    local command_history_list = util.collect_history_entries("cmd")
-
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = command_history_list,
+        content = function(stream_callback)
+            local command_history_list = util.collect_history_entries("cmd")
+            for _, history_entry in ipairs(command_history_list) do
+                stream_callback(history_entry)
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Command History", opts),
         preview = false,
         actions = {

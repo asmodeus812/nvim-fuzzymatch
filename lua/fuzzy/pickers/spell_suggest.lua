@@ -65,7 +65,8 @@ end
 --- @param opts SpellSuggestPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_spell_suggest(opts)
-    opts = util.merge_picker_options({        target_word_text = nil,
+    opts = util.merge_picker_options({
+        target_word_text = nil,
         suggest_limit_count = 25,
         preview = false,
     }, opts)
@@ -100,7 +101,12 @@ function M.open_spell_suggest(opts)
     end
 
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = items,
+        content = function(stream_callback)
+            for _, item in ipairs(items) do
+                stream_callback(item)
+            end
+            stream_callback(nil)
+        end,
         headers = headers,
         preview = false,
         actions = {

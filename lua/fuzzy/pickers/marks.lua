@@ -31,15 +31,14 @@ end
 --- @param opts MarksPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_marks_picker(opts)
-    opts = util.merge_picker_options({        filename_only = false,
+    opts = util.merge_picker_options({
+        filename_only = false,
         path_shorten = nil,
         home_to_tilde = true,
         preview = true,
         icons = true,
         match_step = 50000,
     }, opts)
-
-    local mark_entry_list = collect_mark_list()
 
     local conv = function(entry_value)
         local mark_position = entry_value.pos or {}
@@ -56,7 +55,7 @@ function M.open_marks_picker(opts)
             end
         end
         if not file_path or #file_path == 0 then
-            file_path = "[No Name]"
+            file_path = utils.NO_NAME
         end
         return {
             bufnr = buf,
@@ -72,7 +71,25 @@ function M.open_marks_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = mark_entry_list,
+        content = function(stream_callback)
+            local mark_entry_list = collect_mark_list()
+            for _, entry_value in ipairs(mark_entry_list) do
+                local file_path = entry_value.file
+                if not file_path or #file_path == 0 then
+                    local mark_position = entry_value.pos or {}
+                    local buf = mark_position[1]
+                    if buf and buf > 0 then
+                        file_path = utils.get_bufname(
+                            buf,
+                            utils.get_bufinfo(buf)
+                        )
+                        entry_value.file = file_path
+                    end
+                end
+                stream_callback(entry_value)
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Marks", opts),
         preview = opts.preview ~= false
             and Select.BufferPreview.new(nil, conv) or false,
@@ -93,7 +110,7 @@ function M.open_marks_picker(opts)
                 end
             end
             if not file_path or #file_path == 0 then
-                file_path = "[No Name]"
+                file_path = utils.NO_NAME
             end
             file_path = util.format_display_path(
                 file_path,

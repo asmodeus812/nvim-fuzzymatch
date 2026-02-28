@@ -10,8 +10,7 @@ local util = require("fuzzy.pickers.util")
 
 local M = {}
 
-local function collect_keymap_entries(opts)
-    local keymap_entry_list = {}
+local function stream_keymap_entries(opts, stream_callback)
     local mode_list = opts.modes or { "n" }
 
     for _, mode_name in ipairs(mode_list) do
@@ -19,7 +18,7 @@ local function collect_keymap_entries(opts)
         for _, keymap_entry in ipairs(global_keymap_list) do
             keymap_entry.mode = mode_name
             keymap_entry.buffer = 0
-            keymap_entry_list[#keymap_entry_list + 1] = keymap_entry
+            stream_callback(keymap_entry)
         end
 
         if opts.include_buffer then
@@ -27,29 +26,29 @@ local function collect_keymap_entries(opts)
             for _, keymap_entry in ipairs(buffer_keymap_list) do
                 keymap_entry.mode = mode_name
                 keymap_entry.buffer = 1
-                keymap_entry_list[#keymap_entry_list + 1] = keymap_entry
+                stream_callback(keymap_entry)
             end
         end
     end
-
-    return keymap_entry_list
 end
 
 --- Open Keymaps picker.
 --- @param opts KeymapsPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_keymaps_picker(opts)
-    opts = util.merge_picker_options({        include_buffer = true,
+    opts = util.merge_picker_options({
+        include_buffer = true,
         modes = { "n" },
         max_text = 120,
         preview = false,
         match_step = 50000,
     }, opts)
 
-    local keymap_entry_list = collect_keymap_entries(opts)
-
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = keymap_entry_list,
+        content = function(stream_callback)
+            stream_keymap_entries(opts, stream_callback)
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Keymaps", opts),
         preview = false,
         actions = {

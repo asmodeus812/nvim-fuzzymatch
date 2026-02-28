@@ -1,10 +1,15 @@
 local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
+local utils = require("fuzzy.utils")
 
 local M = {}
 
-local function resolve_working_directory(cwd)
-    return type(cwd) == "function" and cwd() or cwd
+--- Open Resolve working directory picker.
+--- @param cwd string|function
+--- @return string|nil
+function M.resolve_working_directory(cwd)
+    ---@diagnostic disable-next-line: return-type-mismatch
+    return (type(cwd) == "function" and cwd()) or cwd
 end
 
 --- Open Merge picker options picker.
@@ -71,7 +76,7 @@ function M.build_picker_headers(picker_title, picker_options)
     end
     local header_blocks = { { picker_title } }
     if picker_options and picker_options.cwd and picker_options.cwd_prompt then
-        local cwd = resolve_working_directory(picker_options.cwd)
+        local cwd = M.resolve_working_directory(picker_options.cwd)
         if type(cwd) == "string" and #cwd > 0 then
             local header_text = cwd
             if picker_options.cwd_prompt_shorten_len then
@@ -89,16 +94,16 @@ function M.build_picker_headers(picker_title, picker_options)
         end
     elseif picker_options and picker_options.cwd then
         table.insert(header_blocks, {
-            resolve_working_directory(picker_options.cwd)
+            M.resolve_working_directory(picker_options.cwd)
         })
     end
     return header_blocks
 end
 
 --- Open Format display path picker.
---- @param path_value string
+--- @param path_value string|nil
 --- @param picker_options table|nil
---- @return string
+--- @return string|nil
 function M.format_display_path(path_value, picker_options)
     if type(path_value) ~= "string" or #path_value == 0 then
         return path_value
@@ -107,7 +112,7 @@ function M.format_display_path(path_value, picker_options)
     if picker_options.filename_only then
         return vim.fs.basename(path_value)
     end
-    local cwd = resolve_working_directory(picker_options.cwd)
+    local cwd = M.resolve_working_directory(picker_options.cwd)
     local normalized_path = vim.fs.normalize(path_value)
     if not picker_options.absolute_path and cwd and #cwd > 0 then
         local normalized_cwd = vim.fs.normalize(cwd)
@@ -136,6 +141,35 @@ function M.format_display_path(path_value, picker_options)
     return normalized_path
 end
 
+--- Open Check if path is under directory picker.
+--- @param root_directory string|nil
+--- @param file_path string|nil
+--- @return boolean
+function M.is_under_directory(root_directory, file_path)
+    if not root_directory or #root_directory == 0 then
+        return true
+    end
+    if not file_path or #file_path == 0 then
+        return false
+    end
+    root_directory = vim.fs.normalize(root_directory)
+    file_path = vim.fs.normalize(file_path)
+    if root_directory == "" then
+        return true
+    end
+    if root_directory == file_path then
+        return true
+    end
+    if root_directory:byte(-1) == string.byte("/") then
+        return vim.startswith(file_path, root_directory)
+    end
+    if not vim.startswith(file_path, root_directory) then
+        return false
+    end
+    local next_char = file_path:byte(#root_directory + 1)
+    return next_char == nil or next_char == string.byte("/")
+end
+
 --- Open Format location entry picker.
 --- @param filename string
 --- @param line_number number
@@ -155,7 +189,7 @@ function M.format_location_entry(
         string_parts[#string_parts + 1] = entry_prefix
         string_parts[#string_parts + 1] = " "
     end
-    string_parts[#string_parts + 1] = filename or "[No Name]"
+    string_parts[#string_parts + 1] = filename or utils.NO_NAME
     string_parts[#string_parts + 1] = ":"
     string_parts[#string_parts + 1] = tostring(line_number or 1)
     string_parts[#string_parts + 1] = ":"
@@ -283,21 +317,15 @@ end
 
 --- Open Stream line numbers picker.
 --- @param buf integer
---- @param chunk_size integer
 --- @param stream_callback fun(entry: table): nil
 --- @return nil
-function M.stream_line_numbers(buf, chunk_size, stream_callback)
+function M.stream_line_numbers(buf, stream_callback)
     local total_line_count = vim.api.nvim_buf_line_count(buf)
-    local start_index = 0
-    while start_index < total_line_count do
-        local end_index = math.min(start_index + chunk_size, total_line_count)
-        for line_number = start_index + 1, end_index do
-            stream_callback({
-                bufnr = buf,
-                lnum = line_number,
-            })
-        end
-        start_index = end_index
+    for line_number = 1, total_line_count do
+        stream_callback({
+            bufnr = buf,
+            lnum = line_number,
+        })
     end
 end
 

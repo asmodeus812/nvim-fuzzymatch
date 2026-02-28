@@ -233,7 +233,6 @@ files_picker.open_files_picker({
   follow = false,
   no_ignore = false,
   no_ignore_vcs = false,
-  ignore_current_file = false,
   preview = true,
   icons = true,
   stream_step = 100000,
@@ -257,8 +256,6 @@ Options and behavior:
 - `no_ignore`, `no_ignore_vcs`: Bypass ignore rules. This is helpful for debugging or searching vendor trees, but it can
   drastically increase the number of results.
 
-- `ignore_current_file`: Excludes the active buffer’s file from the list. Useful when you want only alternative files.
-
 - `preview`, `icons`: Display only.
 
 - `stream_step`, `match_step`: Tune for large trees. Lower these if you see stutter.
@@ -272,6 +269,7 @@ shorten and decorate the line.
 local oldfiles_picker = require("fuzzy.pickers.oldfiles")
 
 oldfiles_picker.open_oldfiles_picker({
+  cwd = vim.loop.cwd,
   stat_file = true,
   preview = true,
   icons = true,
@@ -279,6 +277,8 @@ oldfiles_picker.open_oldfiles_picker({
 ```
 
 Options and behavior:
+
+- `cwd`: Base directory for filtering and path display. When set, only entries under `cwd` are included.
 
 - `stat_file`: When true, performs a stat call to filter missing files and optionally surface extra info. This is useful
   when your oldfiles list is noisy, but it does add I/O cost, so consider disabling on slow filesystems.
@@ -305,6 +305,7 @@ buffers_picker.open_buffers_picker({
   no_term_buffers = true,
   ignore_current_buffer = true,
   sort_lastused = true,
+  cwd = vim.loop.cwd,
   filename_only = false,
   path_shorten = nil,
   home_to_tilde = true,
@@ -327,6 +328,8 @@ Options and behavior:
 
 - `sort_lastused`: Sort buffers by recent use with current and alternate buffers pinned at the top. Disable if you want
   raw buffer order.
+
+- `cwd`: Base directory for filtering and path display. When set, only buffers under `cwd` are included.
 
 - `filename_only`: Display just the filename, not the full path.
 
@@ -368,7 +371,6 @@ matching. This is ideal when you want to search across many files without creati
 local lines_picker = require("fuzzy.pickers.lines")
 
 lines_picker.open_lines_picker({
-  line_chunk_size = 1000,
   show_unlisted = false,
   show_unloaded = false,
   ignore_current_buffer = false,
@@ -378,9 +380,6 @@ lines_picker.open_lines_picker({
 ```
 
 Options and behavior:
-
-- `line_chunk_size`: Controls how many line references are loaded per chunk. Increase for faster initial fill, decrease
-  for smoother UI.
 
 - `show_unlisted`, `show_unloaded`: Include buffers that are not normally visible. This is useful for global searches
   but increases the total item count.
@@ -414,15 +413,13 @@ files because content stays minimal.
 local blines_picker = require("fuzzy.pickers.blines")
 
 blines_picker.open_blines_picker({
-  line_chunk_size = 1000,
+  cwd = vim.loop.cwd,
   preview = false,
   match_step = 50000,
 })
 ```
 
 Options and behavior:
-
-- `line_chunk_size` and `match_step` behave like the all-buffers picker.
 
 - `preview`: Usually unnecessary for current-buffer lines.
 
@@ -545,6 +542,7 @@ quickfix_picker.open_quickfix_picker({
   filename_only = false,
   path_shorten = nil,
   home_to_tilde = true,
+  cwd = vim.loop.cwd,
   preview = true,
   icons = true,
   match_step = 50000,
@@ -556,6 +554,8 @@ Options and behavior:
 - `filename_only`: Display just the filename rather than full path. Matching still uses the content from the list entry.
 
 - `path_shorten`, `home_to_tilde`: Display helpers. These are not part of the match content.
+
+- `cwd`: Base directory for filtering and path display. When set, only entries under `cwd` are included.
 
 - `preview`, `icons`: Display only.
 
@@ -583,11 +583,20 @@ loclist_picker.open_loclist_picker({
   filename_only = false,
   path_shorten = nil,
   home_to_tilde = true,
+  cwd = vim.loop.cwd,
   preview = true,
   icons = true,
   match_step = 50000,
 })
 ```
+
+Options and behavior:
+
+- `filename_only`, `path_shorten`, `home_to_tilde`: Display helpers. These are not part of the match content.
+
+- `cwd`: Base directory for filtering and path display. When set, only entries under `cwd` are included.
+
+- `preview`, `icons`, `match_step`: Same meaning as quickfix; tune for large lists.
 
 The visual variant pre-fills the prompt with the visual selection.
 
@@ -723,6 +732,10 @@ jumps_picker.open_jumps_picker({
 })
 ```
 
+Options and behavior:
+
+- `preview`: Jumps are lightweight; enable only if you need a previewer.
+
 ### Changes
 
 Lists change list entries. Each entry represents a position where the buffer changed, so this picker is useful for
@@ -735,6 +748,10 @@ changes_picker.open_changes_picker({
   preview = false,
 })
 ```
+
+Options and behavior:
+
+- `preview`: Enable if you want a buffer preview when stepping through changes.
 
 ### Command History
 

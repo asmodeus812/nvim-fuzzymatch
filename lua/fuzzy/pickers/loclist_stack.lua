@@ -12,15 +12,20 @@ local M = {}
 --- @param opts LoclistStackPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_loclist_stack(opts)
-    opts = util.merge_picker_options({        preview = false,
+    opts = util.merge_picker_options({
+        preview = false,
         match_step = 50000,
     }, opts)
 
-    local history_text = vim.fn.execute("lhistory")
-    local history_entry_list = util.parse_stack_entries(history_text)
-
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = history_entry_list,
+        content = function(stream_callback)
+            local history_text = vim.fn.execute("lhistory")
+            local history_entry_list = util.parse_stack_entries(history_text)
+            for _, history_entry in ipairs(history_entry_list) do
+                stream_callback(history_entry)
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Loclist Stack", opts),
         preview = false,
         actions = {

@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class LinesPickerOptions
---- @field line_chunk_size? integer Number of line entries per chunk
 --- @field show_unlisted? boolean Include unlisted buffers
 --- @field show_unloaded? boolean Include unloaded buffers
 --- @field ignore_current_buffer? boolean Exclude current buffer
@@ -18,7 +17,7 @@ local M = {}
 --- @param opts LinesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_lines_picker(opts)
-    opts = util.merge_picker_options({        line_chunk_size = 1000,
+    opts = util.merge_picker_options({
         show_unlisted = false,
         show_unloaded = false,
         ignore_current_buffer = false,
@@ -32,22 +31,30 @@ function M.open_lines_picker(opts)
     local converter_cb = function(entry)
         return {
             bufnr = entry.bufnr,
-            filename = utils.get_bufname(
-                entry.bufnr,
-                utils.get_bufinfo(entry.bufnr)
-            ) or "[No Name]",
+            filename = entry.buffer_name
+                or utils.get_bufname(
+                    entry.bufnr,
+                    utils.get_bufinfo(entry.bufnr)
+                ) or utils.NO_NAME,
             lnum = entry.lnum or 1,
             col = 1,
         }
     end
     local decorator = Select.Decorator.new()
     function decorator:decorate(entry)
-        local file_path = utils.get_bufname(
-            entry.bufnr,
-            utils.get_bufinfo(entry.bufnr)
-        )
+        local file_path = entry.buffer_name
+            or utils.get_bufname(
+                entry.bufnr,
+                utils.get_bufinfo(entry.bufnr)
+            )
         if not file_path or #file_path == 0 then
-            file_path = "[No Name]"
+            file_path = utils.NO_NAME
+        end
+        if not file_path or #file_path == 0 then
+            file_path = utils.get_bufname(
+                entry.bufnr,
+                utils.get_bufinfo(entry.bufnr)
+            )
         end
         local display_path = util.format_display_path(file_path, opts)
         return table.concat({ display_path, ":", entry.lnum, ": " })
@@ -64,10 +71,18 @@ function M.open_lines_picker(opts)
                         or vim.api.nvim_buf_is_loaded(buf))
                     and (not opts.ignore_current_buffer
                         or buf ~= current_buf) then
+                    local buffer_info = utils.get_bufinfo(buf)
+                    local buffer_name = utils.get_bufname(
+                        buf,
+                        buffer_info
+                    )
                     util.stream_line_numbers(
                         buf,
-                        opts.line_chunk_size or 1000,
-                        stream_callback
+                        function(entry_value)
+                            entry_value.buffer_name = buffer_name
+                            entry_value.buffer_info = buffer_info
+                            stream_callback(entry_value)
+                        end
                     )
                 end
             end

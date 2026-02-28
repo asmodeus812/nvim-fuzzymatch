@@ -28,14 +28,19 @@ end
 --- @param opts RegistersPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_registers_picker(opts)
-    opts = util.merge_picker_options({        preview = false,
+    opts = util.merge_picker_options({
+        preview = false,
         match_step = 50000,
     }, opts)
 
-    local register_name_list = collect_register_list()
-
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = register_name_list,
+        content = function(stream_callback)
+            local register_name_list = collect_register_list()
+            for _, register_name in ipairs(register_name_list) do
+                stream_callback(register_name)
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Registers", opts),
         preview = false,
         actions = {

@@ -83,7 +83,8 @@ end
 --- @param opts GrepPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_grep_picker(opts)
-    opts = util.merge_picker_options({        cwd = vim.loop.cwd,
+    opts = util.merge_picker_options({
+        cwd = vim.loop.cwd,
         hidden = false,
         follow = false,
         no_ignore = false,

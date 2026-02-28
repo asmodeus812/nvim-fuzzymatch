@@ -6,15 +6,15 @@ local random = math.random
 --- @class Utils
 --- A collection of utility functions and constants for various operations.
 local M = {
-    --- maximum timeout value for operations, set to the maximum positive 32-bit integer
-    MAX_TIMEOUT = 2 ^ 31 - 1,
-    --- An empty string constant, useful for avoiding repeated allocations
+    --- an empty string constant, useful for avoiding repeated allocations
     EMPTY_STRING = "",
-    --- An empty table constant, useful for avoiding repeated allocations
+    --- an empty table constant, useful for avoiding repeated allocations
     EMPTY_TABLE = {},
+    --- maximum timeout value, set to the maximum positive 32-bit integer
+    MAX_TIMEOUT = 2 ^ 31 - 1,
+    --- the default buffer name string when none exists
+    NO_NAME = "[No Name]",
 }
-
-
 
 --- Fill a table with a specified value. If the value is nil or the table is empty, the table is returned unchanged. The function
 --- asserts that the first and last elements of the table are equal after filling.
@@ -273,9 +273,9 @@ end
 
 --- Check if a given window ID corresponds to a quickfix or location list window. The function returns true for quickfix windows, false otherwise
 --- @param bufnr integer The buffer number to check
---- @param bufinfo table Optional buffer info table to use instead of fetching it
+--- @param bufinfo table|nil Optional buffer info table to use instead of fetching it
 function M.is_quickfix(bufnr, bufinfo)
-    bufinfo = bufinfo or (vim.api.nvim_buf_is_valid(bufnr) and M.get_bufinfo(bufnr))
+    bufinfo = bufinfo or (vim.api.nvim_buf_is_valid(bufnr) and M.get_bufinfo(bufnr) or nil)
     if bufinfo and bufinfo.variables
         and bufinfo.variables.current_syntax == "qf"
         and not vim.tbl_isempty(bufinfo.windows)
@@ -315,7 +315,7 @@ end
 
 --- Get the buffer name for a given buffer number, handling special cases for quickfix and location list buffers. If the buffer is invalid, nil is returned. If the buffer has no name, a placeholder name is returned based on whether it is a quickfix/location list or an unnamed buffer.
 --- @param bufnr integer The buffer number to get the name for
---- @param bufinfo table Optional buffer info table to use instead of fetching it
+--- @param bufinfo table|nil Optional buffer info table to use instead of fetching it
 --- @return string|nil The buffer name, or nil if the buffer is invalid
 function M.get_bufname(bufnr, bufinfo)
     if not vim.api.nvim_buf_is_valid(bufnr) then
@@ -330,7 +330,7 @@ function M.get_bufname(bufnr, bufinfo)
         if is_qf then
             bufname = is_qf == 1 and "[Quickfix List]" or "[Location List]"
         else
-            bufname = "[No Name]"
+            bufname = M.NO_NAME
         end
     end
     assert(#bufname > 0)

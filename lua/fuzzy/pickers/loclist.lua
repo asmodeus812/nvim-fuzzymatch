@@ -4,6 +4,7 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class LoclistPickerOptions
+--- @field cwd? string|fun(): string Working directory for path display
 --- @field filename_only? boolean Display only the filename
 --- @field path_shorten? number|nil Path shorten value for display
 --- @field home_to_tilde? boolean Replace home prefix with ~ in display
@@ -18,16 +19,17 @@ local M = {}
 --- @param opts LoclistPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_loclist_picker(opts)
-    opts = util.merge_picker_options({        filename_only = false,
+    opts = util.merge_picker_options({
+        filename_only = false,
         path_shorten = nil,
         home_to_tilde = true,
+        cwd = nil,
         preview = true,
         icons = true,
         match_step = 50000,
     }, opts)
 
     local info = vim.fn.getloclist(0, { items = 1, title = 1 })
-    local items = info.items or {}
     local converter_cb = Select.default_converter
     local decorators = {}
     if opts.icons ~= false then
@@ -35,7 +37,36 @@ function M.open_loclist_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = items,
+        content = function(stream_callback)
+            local loc_items = info.items or {}
+            local current_working_directory = util.resolve_working_directory(opts.cwd)
+            for _, entry_value in ipairs(loc_items) do
+                local filename = entry_value.filename
+                if not filename or #filename == 0 then
+                    local buf = entry_value.bufnr
+                    if buf and buf > 0 then
+                        filename = utils.get_bufname(
+                            buf,
+                            utils.get_bufinfo(buf)
+                        )
+                        entry_value.filename = filename
+                    end
+                end
+                if current_working_directory
+                    and #current_working_directory > 0
+                    and filename
+                    and #filename > 0
+                    and not util.is_under_directory(
+                        current_working_directory,
+                        filename
+                    ) then
+                    goto continue
+                end
+                stream_callback(entry_value)
+                ::continue::
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers(
             info.title or "Location List",
             opts
@@ -48,17 +79,22 @@ function M.open_loclist_picker(opts)
             local filename = entry.filename
             if not filename or #filename == 0 then
                 local buf = entry.bufnr
-                if not buf or buf <= 0 then
-                    filename = "[No Name]"
-                else
+                if buf and buf > 0 then
                     filename = utils.get_bufname(
                         buf,
                         utils.get_bufinfo(buf)
-                    ) or "[No Name]"
+                    )
                 end
             end
-            return util.format_location_entry(
+            if not filename or #filename == 0 then
+                filename = utils.NO_NAME
+            end
+            local display_path = util.format_display_path(
                 filename,
+                opts
+            )
+            return util.format_location_entry(
+                display_path,
                 entry.lnum or 1,
                 entry.col or 1,
                 entry.text,

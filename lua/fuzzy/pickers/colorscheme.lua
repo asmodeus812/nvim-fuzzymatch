@@ -19,7 +19,8 @@ end
 --- @param opts ColorschemePickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_colorscheme_picker(opts)
-    opts = util.merge_picker_options({        live_preview = false,
+    opts = util.merge_picker_options({
+        live_preview = false,
         preview = true,
         prompt_query = "",
         match_step = 50000,
@@ -27,8 +28,6 @@ function M.open_colorscheme_picker(opts)
 
     local current_colorscheme_name = vim.g.colors_name or ""
     local preview_state_table = { last = current_colorscheme_name }
-    local colorscheme_name_list = vim.fn.getcompletion("", "color") or {}
-
     --- @type table|false
     local preview_instance_object = false
     if opts.preview ~= false then
@@ -77,7 +76,13 @@ function M.open_colorscheme_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = colorscheme_name_list,
+        content = function(stream_callback)
+            local colorscheme_name_list = vim.fn.getcompletion("", "color") or {}
+            for _, colorscheme_name in ipairs(colorscheme_name_list) do
+                stream_callback(colorscheme_name)
+            end
+            stream_callback(nil)
+        end,
         headers = util.build_picker_headers("Colorschemes", opts),
         preview = preview_instance_object,
         actions = action_map_table,

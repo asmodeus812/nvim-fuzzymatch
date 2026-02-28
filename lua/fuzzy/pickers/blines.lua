@@ -4,18 +4,16 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class BufferLinesPickerOptions
---- @field line_chunk_size? integer Number of line entries per chunk
 --- @field preview? boolean Enable preview window
 --- @field match_step? integer Batch size for matching
 --- @field prompt_query? string|nil Initial prompt query
 
 local M = {}
-
 --- Open Blines picker.
 --- @param opts BufferLinesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_blines_picker(opts)
-    opts = util.merge_picker_options({        line_chunk_size = 1000,
+    opts = util.merge_picker_options({
         preview = false,
         match_step = 50000,
     }, opts)
@@ -25,10 +23,6 @@ function M.open_blines_picker(opts)
     local converter_cb = function(entry)
         return {
             bufnr = entry.bufnr,
-            filename = utils.get_bufname(
-                entry.bufnr,
-                utils.get_bufinfo(entry.bufnr)
-            ),
             lnum = entry.lnum or 1,
             col = 1,
         }
@@ -42,7 +36,6 @@ function M.open_blines_picker(opts)
         content = function(stream_callback)
             util.stream_line_numbers(
                 current_buf,
-                opts.line_chunk_size or 1000,
                 stream_callback
             )
             stream_callback(nil)
