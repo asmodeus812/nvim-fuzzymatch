@@ -836,8 +836,8 @@ function Picker.new(opts)
     end
 
     self._options.actions = vim.tbl_deep_extend("keep", self._options.actions, {
-        ["<cr>"]  = self:_confirm_prompt(),
-        ["<esc>"] = self:_cancel_prompt(),
+        ["<cr>"]    = self:_confirm_prompt(),
+        ["<esc>"]   = self:_cancel_prompt(),
         ["<m-esc>"] = self:_hide_prompt(),
     })
 

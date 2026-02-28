@@ -151,6 +151,7 @@ function M.open_buffers_picker(opts)
             " ",
         })
     end
+
     table.insert(decorators, prefix_decorator)
 
     local picker = Picker.new(vim.tbl_deep_extend("force", {
