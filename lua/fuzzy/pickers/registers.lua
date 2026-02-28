@@ -19,16 +19,6 @@ local function collect_register_list()
     return register_name_list
 end
 
-local function get_register_preview(register_name)
-    local register_info = vim.fn.getreginfo(register_name)
-    if not register_info or not register_info.regcontents then
-        return ""
-    end
-    local register_text = table.concat(register_info.regcontents, "\\n")
-    register_text = register_text:gsub("\\r?\\n", " ")
-    return register_text
-end
-
 function M.open_registers_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,
@@ -44,15 +34,27 @@ function M.open_registers_picker(opts)
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                local register_info = vim.fn.getreginfo(entry_value)
-                if register_info and register_info.regcontents then
-                    vim.fn.setreg('"', register_info.regcontents, register_info.regtype)
-                end
+                assert(type(entry_value) == "string" and #entry_value > 0)
+                local register_info = assert(vim.fn.getreginfo(entry_value))
+                assert(register_info.regcontents ~= nil)
+                vim.fn.setreg('"', register_info.regcontents, register_info.regtype)
                 return false
             end)),
         },
         display = function(entry_value)
-            local register_preview = get_register_preview(entry_value)
+            assert(type(entry_value) == "string" and #entry_value > 0)
+            local register_info = vim.fn.getreginfo(entry_value)
+            local register_preview = ""
+            if register_info and register_info.regcontents then
+                register_preview = table.concat(
+                    register_info.regcontents,
+                    "\\n"
+                )
+                register_preview = register_preview:gsub(
+                    "\\r?\\n",
+                    " "
+                )
+            end
             if #register_preview > 80 then
                 register_preview = table.concat({
                     register_preview:sub(1, 77),

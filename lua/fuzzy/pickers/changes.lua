@@ -1,6 +1,7 @@
 local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
+local utils = require("fuzzy.utils")
 
 local M = {}
 
@@ -18,11 +19,13 @@ function M.open_changes_picker(opts)
     local change_list_data = vim.fn.getchangelist(0)
     local change_entry_list = change_list_data[1] or {}
     local current_buf = vim.api.nvim_get_current_buf()
-
     local conv = function(entry_value)
         return {
             bufnr = current_buf,
-            filename = vim.api.nvim_buf_get_name(current_buf),
+            filename = utils.get_bufname(
+                current_buf,
+                utils.get_bufinfo(current_buf)
+            ),
             lnum = entry_value.lnum or 1,
             col = entry_value.col or 1,
         }
@@ -41,10 +44,16 @@ function M.open_changes_picker(opts)
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
-            local file_path = vim.api.nvim_buf_get_name(current_buf)
-            file_path = util.format_display_path(file_path, opts)
+            local buffer_name = utils.get_bufname(
+                current_buf,
+                utils.get_bufinfo(current_buf)
+            )
+            local display_path = util.format_display_path(
+                buffer_name,
+                opts
+            )
             return util.format_location_entry(
-                file_path,
+                display_path,
                 entry_value.lnum or 1,
                 entry_value.col or 1,
                 nil,

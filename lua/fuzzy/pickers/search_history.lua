@@ -19,9 +19,8 @@ function M.open_search_history(opts)
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                if entry_value and #entry_value > 0 then
-                    vim.fn.setreg("/", entry_value)
-                end
+                assert(type(entry_value) == "string" and #entry_value > 0)
+                vim.fn.setreg("/", entry_value)
                 return false
             end)),
         },

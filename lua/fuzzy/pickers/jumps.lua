@@ -1,21 +1,9 @@
 local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
+local utils = require("fuzzy.utils")
 
 local M = {}
-
-local function format_jump_entry(jump_entry, opts)
-    local buf = jump_entry.bufnr
-    local file_path = buf and vim.api.nvim_buf_get_name(buf) or jump_entry.filename
-    file_path = util.format_display_path(file_path, opts)
-    return util.format_location_entry(
-        file_path,
-        jump_entry.lnum or 1,
-        jump_entry.col or 1,
-        nil,
-        table.concat({ "[", (jump_entry.nr or "?"), "]" })
-    )
-end
 
 function M.open_jumps_picker(opts)
     opts = util.merge_picker_options({
@@ -32,13 +20,19 @@ function M.open_jumps_picker(opts)
     local jump_entry_list = jump_list_data[1] or {}
 
     local conv = function(entry_value)
+        local file_name = entry_value.filename
         local buf = entry_value.bufnr
-        local file_path = buf and vim.api.nvim_buf_get_name(buf) or entry_value.filename
+        if buf and buf > 0 then
+            file_name = utils.get_bufname(
+                buf,
+                utils.get_bufinfo(buf)
+            )
+        end
         return {
-            filename = file_path,
+            filename = file_name,
             lnum = entry_value.lnum or 1,
             col = entry_value.col or 1,
-            bufnr = buf,
+            bufnr = entry_value.bufnr,
         }
     end
 
@@ -55,7 +49,24 @@ function M.open_jumps_picker(opts)
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
-            return format_jump_entry(entry_value, opts)
+            local file_name = entry_value.filename
+            local buf = entry_value.bufnr
+            if buf and buf > 0 then
+                file_name = utils.get_bufname(
+                    buf,
+                    utils.get_bufinfo(buf)
+                )
+            end
+            return util.format_location_entry(
+                util.format_display_path(
+                    file_name,
+                    opts
+                ),
+                entry_value.lnum or 1,
+                entry_value.col or 1,
+                nil,
+                table.concat({ "[", (entry_value.nr or "?"), "]" })
+            )
         end,
     }, util.build_picker_options(opts)))
 

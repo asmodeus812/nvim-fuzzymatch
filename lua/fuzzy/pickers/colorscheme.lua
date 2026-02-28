@@ -5,12 +5,10 @@ local util = require("fuzzy.pickers.util")
 local M = {}
 
 local function apply_colorscheme_name(colorscheme_name)
-    if type(colorscheme_name) ~= "string" or #colorscheme_name == 0 then
-        return false
-    end
+    assert(type(colorscheme_name) == "string" and #colorscheme_name > 0)
     local ok, err = pcall(vim.cmd.colorscheme, colorscheme_name)
-    assert(ok, err)
-    return ok
+    assert(ok)
+    return true
 end
 
 function M.open_colorscheme_picker(opts)
@@ -29,6 +27,7 @@ function M.open_colorscheme_picker(opts)
     local preview_instance_object = false
     if opts.preview ~= false then
         preview_instance_object = Select.CustomPreview.new(function(entry_value, buffer_id, _)
+            assert(type(entry_value) == "string" and #entry_value > 0)
             if opts.live_preview
                 and entry_value ~= preview_state_table.last then
                 apply_colorscheme_name(entry_value)

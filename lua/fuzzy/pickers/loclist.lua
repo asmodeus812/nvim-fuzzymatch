@@ -36,8 +36,14 @@ function M.open_loclist_picker(opts)
         decorators = decorators,
         display = function(entry)
             local filename = entry.filename
-                or (entry.bufnr and vim.api.nvim_buf_get_name(entry.bufnr))
-                or "[No Name]"
+            if not filename or #filename == 0 then
+                local buf = entry.bufnr
+                if not buf or buf <= 0 then
+                    filename = "[No Name]"
+                else
+                    filename = utils.get_bufname(buf) or "[No Name]"
+                end
+            end
             return util.format_location_entry(
                 filename,
                 entry.lnum or 1,

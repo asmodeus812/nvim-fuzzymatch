@@ -4,7 +4,6 @@ Scheduler = require("fuzzy.scheduler")
 
 local M = {
     config = {},
-    pickers = require("fuzzy.pickers"),
 }
 
 function M.setup(opts)

@@ -82,7 +82,7 @@ function M.open_grep_picker(opts)
     }, opts)
 
     local cmd, args = build_grep_command(opts)
-    assert(cmd, "No grep command available (grep/rg).")
+    assert(cmd)
 
     local converter = Picker.Converter.new(
         Picker.grep_converter,

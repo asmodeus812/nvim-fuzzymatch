@@ -1,6 +1,7 @@
 local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
+local utils = require("fuzzy.utils")
 
 local M = {}
 
@@ -17,25 +18,6 @@ local function collect_mark_list()
     return mark_entry_list
 end
 
-local function mark_to_location(mark_entry)
-    local mark_position = mark_entry.pos or {}
-    local buf = mark_position[1]
-    local line_number = mark_position[2]
-    local column_number = mark_position[3]
-    local file_path = mark_entry.file
-    if not file_path or #file_path == 0 then
-        if buf and buf > 0 then
-            file_path = vim.api.nvim_buf_get_name(buf)
-        end
-    end
-    return {
-        bufnr = buf,
-        filename = file_path,
-        lnum = line_number or 1,
-        col = column_number or 1,
-    }
-end
-
 function M.open_marks_picker(opts)
     opts = util.merge_picker_options({
         reuse = true,
@@ -50,7 +32,25 @@ function M.open_marks_picker(opts)
     local mark_entry_list = collect_mark_list()
 
     local conv = function(entry_value)
-        return mark_to_location(entry_value)
+        local mark_position = entry_value.pos or {}
+        local buf = mark_position[1]
+        local line_number = mark_position[2]
+        local column_number = mark_position[3]
+        local file_path = entry_value.file
+        if not file_path or #file_path == 0 then
+            if buf and buf > 0 then
+                file_path = utils.get_bufname(
+                    buf,
+                    utils.get_bufinfo(buf)
+                )
+            end
+        end
+        return {
+            bufnr = buf,
+            filename = file_path,
+            lnum = line_number or 1,
+            col = column_number or 1,
+        }
     end
 
     local decorators = {}
@@ -66,12 +66,27 @@ function M.open_marks_picker(opts)
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
-            local location_entry = mark_to_location(entry_value)
-            local file_path = util.format_display_path(location_entry.filename, opts)
+            local mark_position = entry_value.pos or {}
+            local buf = mark_position[1]
+            local line_number = mark_position[2]
+            local column_number = mark_position[3]
+            local file_path = entry_value.file
+            if not file_path or #file_path == 0 then
+                if buf and buf > 0 then
+                    file_path = utils.get_bufname(
+                        buf,
+                        utils.get_bufinfo(buf)
+                    )
+                end
+            end
+            file_path = util.format_display_path(
+                file_path,
+                opts
+            )
             return util.format_location_entry(
                 file_path,
-                location_entry.lnum or 1,
-                location_entry.col or 1,
+                line_number or 1,
+                column_number or 1,
                 nil,
                 table.concat({ "[", entry_value.mark or "?", "]" })
             )

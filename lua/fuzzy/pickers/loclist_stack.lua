@@ -20,15 +20,15 @@ function M.open_loclist_stack(opts)
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                if entry_value and entry_value.number then
-                    vim.cmd({ cmd = "lhistory", args = { tostring(entry_value.number) } })
-                    vim.cmd("lopen")
-                end
+                assert(entry_value and entry_value.number)
+                vim.cmd({ cmd = "lhistory", args = { tostring(entry_value.number) } })
+                vim.cmd("lopen")
                 return false
             end)),
         },
         display = function(entry_value)
-            return entry_value.text or ""
+            assert(entry_value and entry_value.text)
+            return entry_value.text
         end,
     }, util.build_picker_options(opts)))
 

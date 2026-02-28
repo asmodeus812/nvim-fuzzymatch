@@ -318,9 +318,10 @@ end
 --- @param timeout integer|nil The maximum time to wait in milliseconds, defaults to the timeout specified in the options, or utils.MAX_TIMEOUT
 --- @return string[]|nil The results accumulated so far, or nil if the timeout was reached
 function Stream:wait(timeout)
-    local done = vim.wait(timeout or self._options.timeout or utils.MAX_TIMEOUT, function()
+    local wait_timeout = timeout or self._options.timeout or utils.MAX_TIMEOUT
+    local done = vim.wait(wait_timeout, function()
         return self.results ~= nil
-    end, 25, true)
+    end, 25, false)
 
     if not done then
         self:stop()

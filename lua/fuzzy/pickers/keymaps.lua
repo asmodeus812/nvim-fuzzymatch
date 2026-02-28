@@ -47,6 +47,7 @@ function M.open_keymaps_picker(opts)
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
+                assert(type(entry_value) == "table")
                 local right_hand_side_text = entry_value.rhs or ""
                 if #right_hand_side_text > 0 then
                     vim.fn.setreg('\"', right_hand_side_text)
@@ -55,6 +56,7 @@ function M.open_keymaps_picker(opts)
             end)),
         },
         display = function(entry_value)
+            assert(type(entry_value) == "table")
             local prefix_text = entry_value.buffer and "[b]" or "[g]"
             local mode_text = entry_value.mode or "?"
             local right_hand_side_text = entry_value.rhs or ""

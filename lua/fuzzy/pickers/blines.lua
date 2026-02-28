@@ -18,7 +18,10 @@ function M.open_blines_picker(opts)
     local converter_cb = function(entry)
         return {
             bufnr = entry.bufnr,
-            filename = vim.api.nvim_buf_get_name(entry.bufnr),
+            filename = utils.get_bufname(
+                entry.bufnr,
+                utils.get_bufinfo(entry.bufnr)
+            ),
             lnum = entry.lnum or 1,
             col = 1,
         }

@@ -22,14 +22,20 @@ function M.open_lines_picker(opts)
     local converter_cb = function(entry)
         return {
             bufnr = entry.bufnr,
-            filename = vim.api.nvim_buf_get_name(entry.bufnr),
+            filename = utils.get_bufname(
+                entry.bufnr,
+                utils.get_bufinfo(entry.bufnr)
+            ),
             lnum = entry.lnum or 1,
             col = 1,
         }
     end
     local decorator = Select.Decorator.new()
     function decorator:decorate(entry)
-        local file_path = vim.api.nvim_buf_get_name(entry.bufnr)
+        local file_path = utils.get_bufname(
+            entry.bufnr,
+            utils.get_bufinfo(entry.bufnr)
+        )
         local display_path = util.format_display_path(file_path, opts)
         return table.concat({ display_path, ":", entry.lnum, ": " })
     end

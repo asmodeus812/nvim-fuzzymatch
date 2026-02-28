@@ -210,13 +210,24 @@ local function compute_decoration(entry, str, decorators)
         end
         if type(txt) == "table" then
             vim.list_extend(text, txt)
+            if type(hl) == "table" then
+                vim.list_extend(highlights, hl)
+            elseif type(hl) == "string" then
+                for _ = 1, #txt do
+                    table.insert(highlights, hl)
+                end
+            else
+                for _ = 1, #txt do
+                    table.insert(highlights, "SelectDecoratorDefault")
+                end
+            end
         elseif type(txt) == "string" then
             table.insert(text, txt)
-        end
-        if type(hl) == "table" then
-            vim.liset_extend(highlights, hl)
-        elseif type(hl) == "string" then
-            table.insert(highlights, hl)
+            if type(hl) == "string" then
+                table.insert(highlights, hl)
+            else
+                table.insert(highlights, "SelectDecoratorDefault")
+            end
         end
         ::continue::
     end
@@ -583,15 +594,20 @@ end
 --- @param buffer integer Preview buffer (fallback)
 local function display_entry(previewer, entry, window, buffer)
     vim.schedule(function()
+        if window == nil or not vim.api.nvim_win_is_valid(window) then
+            return
+        end
         local old_ignore = vim.o.eventignore
         vim.o.eventignore = "all"
         local ok, res, msg = pcall(previewer.preview, previewer, entry, window)
         if ok and res == false then
-            vim.api.nvim_win_set_buf(window, assert(buffer))
-            vim.api.nvim_win_set_cursor(window, { 1, 0 })
-            populate_buffer(buffer, {
-                msg or "Unable to preview current entry",
-            })
+            if buffer ~= nil and vim.api.nvim_buf_is_valid(buffer) then
+                vim.api.nvim_win_set_buf(window, buffer)
+                vim.api.nvim_win_set_cursor(window, { 1, 0 })
+                populate_buffer(buffer, {
+                    msg or "Unable to preview current entry",
+                })
+            end
         elseif not ok and res and #res > 0 then
             vim.notify(res, vim.log.levels.ERROR)
         end
@@ -1460,6 +1476,12 @@ function Select:move_cursor(dir, callback)
             position[1] = math.max(math.min(position[1], height), 1)
             self:_render_list()
         end
+    end
+    local max_line = vim.api.nvim_buf_line_count(self.list_buffer)
+    if max_line > 0 then
+        position[1] = math.max(1, math.min(position[1], max_line))
+    else
+        position[1] = 1
     end
     vim.api.nvim_win_set_cursor(self.list_window, position)
 

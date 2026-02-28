@@ -166,15 +166,17 @@ function M.open_buffers_picker(opts)
         display = function(entry_value)
             local buf = type(entry_value) == "table"
                 and entry_value.bufnr or entry_value
-            local buffer_name = vim.api.nvim_buf_get_name(buf)
+            local buffer_name = utils.get_bufname(
+                buf,
+                utils.get_bufinfo(buf)
+            )
             if not buffer_name or #buffer_name == 0 then
                 buffer_name = "[No Name]"
             end
-            local display_name = util.format_display_path(
+            return util.format_display_path(
                 buffer_name,
                 opts
             )
-            return display_name
         end,
     }, util.build_picker_options(opts)))
 

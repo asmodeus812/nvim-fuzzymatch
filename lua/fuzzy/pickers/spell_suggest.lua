@@ -12,11 +12,11 @@ local function find_word_bounds(line_text_value, cursor_col_number)
             "\\k\\+",
             search_start_number
         )
-        if not match_result_list
-            or match_result_list[2] == nil
-            or match_result_list[2] < 0 then
-            return nil, nil
-        end
+        assert(
+            match_result_list
+            and match_result_list[2] ~= nil
+            and match_result_list[2] >= 0
+        )
         local match_start_number = match_result_list[2]
         local match_end_number = match_result_list[3]
         if cursor_col_number >= match_start_number
@@ -44,9 +44,7 @@ local function replace_cursor_word(word_text_value)
         line_text_value,
         cursor_col_number
     )
-    if not start_col_number then
-        return
-    end
+    assert(start_col_number ~= nil and end_col_number ~= nil)
     vim.api.nvim_buf_set_text(
         0,
         cursor_row_number - 1,

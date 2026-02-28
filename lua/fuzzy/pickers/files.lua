@@ -1,6 +1,7 @@
 local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
+local utils = require("fuzzy.utils")
 
 local M = {}
 
@@ -76,7 +77,7 @@ function M.open_files_picker(opts)
     }, opts)
 
     local cmd, args = build_files_command(opts)
-    assert(cmd, "No file search command available (rg/fd/find).")
+    assert(cmd)
 
     local converter = Picker.Converter.new(
         Picker.default_converter,
@@ -91,7 +92,14 @@ function M.open_files_picker(opts)
 
     local map_callback_func = nil
     if opts.ignore_current_file then
-        local current_file_path = vim.api.nvim_buf_get_name(0)
+        local current_buf = vim.api.nvim_get_current_buf()
+        local current_file_path = utils.get_bufname(current_buf)
+        if current_file_path == "[No Name]"
+            or current_file_path == "[Quickfix List]"
+            or current_file_path == "[Location List]"
+        then
+            current_file_path = nil
+        end
         local current_working_directory = type(opts.cwd) == "function"
             and opts.cwd() or opts.cwd
         local current_relative_path = nil
