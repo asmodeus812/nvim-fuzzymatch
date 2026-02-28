@@ -53,9 +53,6 @@
     - [Static tables](#static-tables)
     - [Basic ui.select](#basic-uiselect)
     - [Advanced ui.select](#advanced-uiselect)
-  - [Sources](#sources)
-    - [Builtin Buffers module](#builtin-buffers-module)
-    - [Builtin Files module](#builtin-files-module)
   - [Requirements](#requirements)
     - [Mandatory](#mandatory)
     - [Optional](#optional)
@@ -89,13 +86,12 @@
 - **Customizable**: Flexible configuration options for various use cases.
 - **Interactive**: Real-time filtering as you type for both system executable and user defined streams.
 - **Standalone**: No external dependencies, easy to integrate into existing setups.
-- **Extensible**: Modular design allows adding new features and sources.
+- **Extensible**: Modular design allows adding new features.
 - **Multiselect**: Supports selecting multiple items and performing batch actions.
 - **Actions**: Predefined actions for common operations like editing, sending selection to quickfix, etc.
 - **Preview**: Predefined previewers allowing previewing common types of resources like files, directories, etc.
 - **Decoration**: Predefined decorators enhancing the visual appearance of the items in the list
 - **Cross-Platform**: Works on any system with a modern version of Neovim, does not depend on external binaries.
-- **Built-in Sources**: Includes example sources for user-streams, files, buffers, and more.
 
 ## Description
 
@@ -1472,54 +1468,6 @@ vim.ui.select = function(items, opts, on_choice)
     picker:open()
     return picker
 )
-```
-
-## Sources
-
-The internal sources are currently only provided to flex and test the features of the plugin, it is however planned for this plugin to
-eventually provide a core set of sources such as - buffers, tabs, user-commands, as well as sources based on system utilities such as
-`ripgrep`, find and more.
-
-Sources just like your own pickers are simply instances of the `Picker` class, with pre-configured options to provide a specific
-functionality. It is also advised that you prioritize using the Picker instances provided by the sources over re-creating them by repeatedly
-calling the source functions e.g. - require("fuzzy.sources.files").files() as this will create a new instance of the picker each time,
-instead you should call it once and re-use the same instance by storing it in a variable somewhere in your configuration. That of course
-depends on your use case, re-creating a source is valid if the context or configuration of the source is expected to change between
-invocations.
-
-| Module     | Description                                                                                  |
-| ---------- | -------------------------------------------------------------------------------------------- |
-| `Files`    | Provides a list of system file and directory related sources and pickers                     |
-| `Buffers`  | Provides a list of neovim buffer related sources and pickers                                 |
-| `Examples` | Provides a list of example sources and pickers demonstrating the core features of the plugin |
-
-### Builtin Buffers module
-
-The sources provided in the `fuzzy.sources.buffer` module are mostly experimental, used to demonstrate the features of the internal core
-components of the fuzzy matcher.
-
-```lua
-local picker = require("fuzzy.sources.buffer").buffers()
-
-```
-
-### Builtin Files module
-
-The sources provided in the `fuzzy.sources.buffer` module are mostly experimental, used to demonstrate the features of the internal core
-components of the fuzzy matcher.
-
-```lua
--- list all files in the target directory
-local picker = require("fuzzy.sources.files").files()
-
--- list only the directories in target directory
-local picker = require("fuzzy.sources.files").dirs()
-
--- list files and directory permissions in target directory
-local picker = require("fuzzy.sources.files").ls()
-
--- interactive grep file content within a target directory
-local picker = require("fuzzy.sources.files").grep()
 ```
 
 ## Requirements

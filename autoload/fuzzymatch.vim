@@ -1,15 +1,25 @@
 function! fuzzymatch#getbufinfo(bufnr) abort
-  let info = getbufinfo(a:bufnr)
-  if empty(info)
+  let info_list = getbufinfo(a:bufnr)
+  if empty(info_list)
     return []
   endif
-  let vars = info[0].variables
-  unlet! info[0].variables
+  let raw_info = info_list[0]
+  let vars = raw_info.variables
   if !empty(vars) && has_key(vars, "current_syntax")
-    let info[0].variables = { "current_syntax": vars.current_syntax }
+    let raw_info.variables = { "current_syntax": vars.current_syntax }
+  else
+    unlet! raw_info.variables
   endif
   unlet! vars
-  return info[0]
+  unlet! raw_info.linecount
+  unlet! raw_info.changedtick
+  unlet! raw_info.lnum
+  unlet! raw_info.lnumcur
+  unlet! raw_info.lnumnum
+  unlet! raw_info.lnumshown
+  unlet! raw_info.lastusedtick
+  unlet! info_list
+  return info_list[0]
 endfunction
 
 function! fuzzymatch#getwininfo(winid) abort
