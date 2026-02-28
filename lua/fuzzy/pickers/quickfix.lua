@@ -93,6 +93,9 @@ function M.open_quickfix_picker(opts)
                 filename,
                 opts
             )
+            if not display_path or #display_path == 0 then
+                display_path = utils.NO_NAME
+            end
             return util.format_location_entry(
                 display_path,
                 entry.lnum or 1,

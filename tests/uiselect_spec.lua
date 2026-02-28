@@ -17,6 +17,7 @@ function M.run()
         helpers.wait_for_list(picker)
         helpers.wait_for_entries(picker)
         local action = picker.select._options.mappings["<cr>"]
+        --- @cast action fun(self: any)
         action(picker.select)
         helpers.eq(picked, "one", "picked")
         helpers.close_picker(picker)

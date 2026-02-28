@@ -49,8 +49,8 @@ function M.run()
 
         helpers.wait_for_list(picker)
         helpers.wait_for_entries(picker)
-        local action = picker.select._options.mappings["<cr>"]
-        action(picker.select)
+        local action = assert(picker).select._options.mappings["<cr>"]
+        action(assert(picker).select, function() end)
         helpers.eq(picked, "one", "picked")
         helpers.close_picker(picker)
         vim.ui.select = original_select

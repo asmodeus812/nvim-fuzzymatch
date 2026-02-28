@@ -23,7 +23,6 @@ function M.wait_for(fn, timeout)
     return ok
 end
 
-
 function M.setup_global_state()
     vim.o.swapfile = false
     vim.o.backup = false
@@ -133,13 +132,12 @@ end
 
 function M.wait_for_prompt_cursor(picker)
     return M.wait_for(function()
-        --- @diagnostic disable-next-line: invisible
         local select = picker and picker.select or nil
         local win = select and select.prompt_window or nil
         if not win or not vim.api.nvim_win_is_valid(win) then
             return false
         end
-        local query = select:query() or ""
+        local query = assert(select):query() or ""
         local cursor = vim.api.nvim_win_get_cursor(win)
         return cursor[1] == 1
             and cursor[2] == vim.str_byteindex(query, #query)

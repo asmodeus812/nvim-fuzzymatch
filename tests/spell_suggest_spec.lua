@@ -34,6 +34,7 @@ function M.run()
             helpers.wait_for_line_contains(picker, "hello")
 
             local action = picker.select._options.mappings["<cr>"]
+            --- @cast action fun(self: any)
             helpers.wait_for_entries(picker)
             action(picker.select)
 
