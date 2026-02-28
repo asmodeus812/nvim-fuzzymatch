@@ -17,7 +17,7 @@ function M.open_tags_picker(opts)
         match_step = 50000,
     }, opts)
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local tag_name_list = vim.fn.getcompletion("", "tag") or {}
             for _, tag_name in ipairs(tag_name_list) do

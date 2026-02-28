@@ -70,7 +70,12 @@ function M.open_marks_picker(opts)
         decorators = { Select.IconDecorator.new(conv) }
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new(nil, conv)
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local mark_entry_list = collect_mark_list()
             for _, entry_value in ipairs(mark_entry_list) do
@@ -91,8 +96,7 @@ function M.open_marks_picker(opts)
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Marks", opts),
-        preview = opts.preview ~= false
-            and Select.BufferPreview.new(nil, conv) or false,
+        preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)

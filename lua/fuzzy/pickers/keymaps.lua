@@ -44,7 +44,7 @@ function M.open_keymaps_picker(opts)
         match_step = 50000,
     }, opts)
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             stream_keymap_entries(opts, stream_callback)
             stream_callback(nil)

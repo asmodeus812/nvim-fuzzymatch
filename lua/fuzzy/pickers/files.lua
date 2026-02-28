@@ -89,6 +89,9 @@ function M.open_files_picker(opts)
         stream_step = 100000,
         match_step = 75000,
     }, opts)
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
 
     local cmd, args = build_files_command(opts)
     assert(cmd)
@@ -104,15 +107,20 @@ function M.open_files_picker(opts)
         decorators = { Select.IconDecorator.new(conv) }
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new(nil, conv)
+    elseif opts.preview == false then
+        opts.preview = false
+    end
+
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = cmd,
         headers = util.build_picker_headers("Files", opts),
         context = {
             args = args,
             cwd = opts.cwd,
         },
-        preview = opts.preview ~= false
-            and Select.BufferPreview.new(nil, conv) or false,
+        preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
     }, util.build_picker_options(opts)))

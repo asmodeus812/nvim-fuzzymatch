@@ -17,7 +17,7 @@ function M.open_command_history(opts)
         match_step = 50000,
     }, opts)
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local command_history_list = util.collect_history_entries("cmd")
             for _, history_entry in ipairs(command_history_list) do

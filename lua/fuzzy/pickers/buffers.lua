@@ -7,8 +7,11 @@ local util = require("fuzzy.pickers.util")
 --- @field current_tab? boolean Restrict to buffers in the current tabpage
 --- @field show_unlisted? boolean Include unlisted buffers
 --- @field show_unloaded? boolean Include unloaded buffers
---- @field no_term_buffers? boolean Exclude terminal buffers
 --- @field ignore_current_buffer? boolean Exclude the current buffer
+--- @field include_special? boolean|string[]|table<string, boolean> Include special buffers:
+---   false: only normal buffers (buftype == "")
+---   true: include all special buftypes
+---   table: include only listed buftypes, as an array or map
 --- @field sort_lastused? boolean Sort by last used, current/alternate pinned
 --- @field cwd? string|fun(): string Working directory for path display
 --- @field filename_only? boolean Display only the filename
@@ -27,7 +30,6 @@ local FUTURE_TIMESTAMP_VALUE = os.time({
     hour = 0,
     minute = 0
 })
-
 local function get_last_used(buf, info)
     local current_buf = vim.api.nvim_get_current_buf()
     local alternate_buffer_number = vim.fn.bufnr("#")
@@ -73,9 +75,20 @@ local function should_include_buffer(
     if not vim.api.nvim_buf_is_valid(buf) then
         return false
     end
-    if opts.no_term_buffers
-        and vim.bo[buf].buftype == "terminal" then
-        return false
+    local buftype = vim.bo[buf].buftype
+    if buftype ~= "" then
+        local include_special = opts.include_special
+        if include_special == true then
+            -- include all special buftypes
+        elseif type(include_special) == "table" then
+            local allowed = include_special[buftype]
+                or vim.tbl_contains(include_special, buftype)
+            if not allowed then
+                return false
+            end
+        else
+            return false
+        end
     end
     if not opts.show_unlisted
         and buf ~= current_buf
@@ -119,8 +132,8 @@ function M.open_buffers_picker(opts)
         current_tab = false,
         show_unlisted = false,
         show_unloaded = false,
-        no_term_buffers = false,
         ignore_current_buffer = false,
+        include_special = false,
         sort_lastused = true,
         cwd = nil,
         filename_only = false,
@@ -129,6 +142,9 @@ function M.open_buffers_picker(opts)
         preview = true,
         icons = true,
     }, opts)
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
 
     local decorators = {}
     if opts.icons ~= false then
@@ -168,12 +184,16 @@ function M.open_buffers_picker(opts)
 
     table.insert(decorators, prefix_decorator)
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = function(stream_callback)
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new()
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
+    local picker = Picker.new(vim.tbl_extend("force", {
+        content = function(stream_callback, args, cwd)
             local included_buffer_map
             local buf_list = vim.api.nvim_list_bufs() or {}
-            local current_tab = vim.api.nvim_get_current_tabpage()
-            local current_working_directory = util.resolve_working_directory(opts.cwd)
+            local current_tab = args and args.tab or vim.api.nvim_get_current_tabpage()
 
             if opts.current_tab == true then
                 included_buffer_map = {}
@@ -205,7 +225,7 @@ function M.open_buffers_picker(opts)
                 if buffer_name_value
                     and #buffer_name_value > 0
                     and not util.is_under_directory(
-                        current_working_directory,
+                        cwd,
                         buffer_name_value
                     ) then
                     goto continue
@@ -220,8 +240,15 @@ function M.open_buffers_picker(opts)
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Buffers", opts),
-        preview = opts.preview ~= false
-            and Select.BufferPreview.new() or false,
+        context = {
+            cwd = opts.cwd,
+            args = function()
+                return {
+                    tab = vim.api.nvim_get_current_tabpage(),
+                }
+            end,
+        },
+        preview = opts.preview,
         actions = util.build_default_actions(
             Picker.default_converter,
             opts

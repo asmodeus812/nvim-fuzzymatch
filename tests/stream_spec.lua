@@ -101,11 +101,33 @@ local function run_restart_case()
     stream:destroy()
 end
 
+local function run_context_case()
+    local stream = Stream.new({ lines = true, step = 1 })
+    local got_cwd
+    local got_env
+    stream:start(function(cb, _, cwd, env)
+        got_cwd = cwd
+        got_env = env
+        cb("ok\n")
+        cb(nil)
+    end, {
+        cwd = "/tmp",
+        env = { "TEST_ENV=1" },
+        callback = function() end,
+    })
+    local results = stream:wait(1500)
+    helpers.assert_ok(results ~= nil, "context nil")
+    helpers.eq(got_cwd, "/tmp", "context cwd")
+    helpers.assert_ok(type(got_env) == "table", "context env")
+    stream:destroy()
+end
+
 function M.run()
     run_lines_case()
     run_transform_case()
     run_bytes_case()
     run_restart_case()
+    run_context_case()
 end
 
 return M

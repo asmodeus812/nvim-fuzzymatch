@@ -18,8 +18,6 @@ function M.open_blines_picker(opts)
         match_step = 50000,
     }, opts)
 
-    local current_buf = vim.api.nvim_get_current_buf()
-
     local converter_cb = function(entry)
         return {
             bufnr = entry.bufnr,
@@ -29,30 +27,41 @@ function M.open_blines_picker(opts)
     end
     local decorator = Select.Decorator.new()
     function decorator:decorate(entry)
-        return table.concat({ entry.lnum, ": " })
+        return tostring(entry.lnum), "Number"
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = function(stream_callback)
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new(nil, converter_cb)
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
+    local picker = Picker.new(vim.tbl_extend("force", {
+        content = function(stream_callback, args)
+            local buf = args and args.buf or vim.api.nvim_get_current_buf()
             util.stream_line_numbers(
-                current_buf,
+                buf,
                 stream_callback
             )
             stream_callback(nil)
         end,
-        headers = util.build_picker_headers("Buffer Lines", opts),
-        preview = opts.preview ~= false
-            and Select.BufferPreview.new(nil, converter_cb) or false,
+        headers = util.build_picker_headers("BLines", opts),
+        context = {
+            args = function()
+                return { buf = vim.api.nvim_get_current_buf() }
+            end,
+        },
+        preview = opts.preview,
         actions = util.build_default_actions(converter_cb, opts),
         decorators = { decorator },
         display = function(entry)
-            local line_text = vim.api.nvim_buf_get_lines(
+            local ok, text = pcall(vim.api.nvim_buf_get_lines,
                 entry.bufnr,
                 entry.lnum - 1,
                 entry.lnum,
                 false
-            )[1]
-            return line_text or ""
+            )
+            assert(ok ~= false and text ~= nil)
+            return ok and #text > 0 and text[1] or ""
         end,
     }, util.build_picker_options(opts)))
 

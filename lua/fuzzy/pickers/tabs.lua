@@ -22,7 +22,7 @@ function M.open_tabs_picker(opts)
         match_step = 50000,
     }, opts)
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local tabpage_list = vim.api.nvim_list_tabpages() or {}
             for _, tabpage in ipairs(tabpage_list) do

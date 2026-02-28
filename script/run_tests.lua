@@ -29,5 +29,5 @@ if #failures > 0 then
     vim.cmd.cq()
 else
     vim.api.nvim_echo({ { "All tests passed\n", "MoreMsg" } }, false, {})
-    vim.cmd.quit()
+    vim.cmd("qa!")
 end

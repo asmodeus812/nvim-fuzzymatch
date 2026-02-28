@@ -28,6 +28,9 @@ function M.open_loclist_picker(opts)
         icons = true,
         match_step = 50000,
     }, opts)
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
 
     local info = vim.fn.getloclist(0, { items = 1, title = 1 })
     local converter_cb = Select.default_converter
@@ -36,10 +39,14 @@ function M.open_loclist_picker(opts)
         decorators = { Select.IconDecorator.new(converter_cb) }
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = function(stream_callback)
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new(nil, converter_cb)
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
+    local picker = Picker.new(vim.tbl_extend("force", {
+        content = function(stream_callback, _, cwd)
             local loc_items = info.items or {}
-            local current_working_directory = util.resolve_working_directory(opts.cwd)
             for _, entry_value in ipairs(loc_items) do
                 local filename = entry_value.filename
                 if not filename or #filename == 0 then
@@ -52,12 +59,12 @@ function M.open_loclist_picker(opts)
                         entry_value.filename = filename
                     end
                 end
-                if current_working_directory
-                    and #current_working_directory > 0
+                if cwd
+                    and #cwd > 0
                     and filename
                     and #filename > 0
                     and not util.is_under_directory(
-                        current_working_directory,
+                        cwd,
                         filename
                     ) then
                     goto continue
@@ -71,8 +78,10 @@ function M.open_loclist_picker(opts)
             info.title or "Location List",
             opts
         ),
-        preview = opts.preview ~= false
-            and Select.BufferPreview.new(nil, converter_cb) or false,
+        context = {
+            cwd = opts.cwd,
+        },
+        preview = opts.preview,
         actions = util.build_default_actions(converter_cb, opts),
         decorators = decorators,
         display = function(entry)

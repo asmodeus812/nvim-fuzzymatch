@@ -203,31 +203,20 @@ end
 --- @return table, table Table of text pieces and their highlights
 local function compute_decoration(entry, str, decorators)
     local text, highlights = {}, {}
-    for _, decor in ipairs(decorators) do
+    for _, decor in ipairs(decorators or {}) do
         local txt, hl = decor:decorate(entry, str)
         if txt ~= nil and txt == false then
             goto continue
         end
         if type(txt) == "table" then
             vim.list_extend(text, txt)
-            if type(hl) == "table" then
-                vim.list_extend(highlights, hl)
-            elseif type(hl) == "string" then
-                for _ = 1, #txt do
-                    table.insert(highlights, hl)
-                end
-            else
-                for _ = 1, #txt do
-                    table.insert(highlights, "SelectDecoratorDefault")
-                end
-            end
         elseif type(txt) == "string" then
             table.insert(text, txt)
-            if type(hl) == "string" then
-                table.insert(highlights, hl)
-            else
-                table.insert(highlights, "SelectDecoratorDefault")
-            end
+        end
+        if type(hl) == "table" then
+            vim.list_extend(highlights, hl)
+        elseif type(hl) == "string" then
+            table.insert(highlights, hl)
         end
         ::continue::
     end
@@ -403,6 +392,7 @@ end
 --- @param display function|string|nil Display/formatter
 local function populate_range(buffer, start, _end, entries, display)
     local lines = utils.EMPTY_TABLE
+
     if _end > 0 then
         assert(start <= _end and start > 0)
         local diff = math.abs(_end - start) + 1
@@ -1204,6 +1194,12 @@ function Select:_render_list()
         end
 
         if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
+            local count = vim.api.nvim_buf_line_count(self.list_buffer)
+            if count > 0 then
+                local pos = vim.api.nvim_win_get_cursor(self.list_window)
+                pos[2], pos[1] = 0, math.max(1, math.min(pos[1], count))
+                vim.api.nvim_win_set_cursor(self.list_window, pos)
+            end
             self:_decorate_list()
             self:_highlight_list()
             self:_display_toggle()
@@ -1464,24 +1460,33 @@ function Select:move_cursor(dir, callback)
         cursor[1] = 1
         position[1] = 1
         self:_render_list()
+    elseif dir > 0 and cursor[1] == 1 then
+        position[1] = 1
+        self:_render_list()
+    elseif dir < 0 and cursor[1] == #entries then
+        position[1] = height
+        self:_render_list()
     else
         if (dir < 0 and position[1] > (offset + 1)) or (dir > 0 and position[1] < (height - offset)) then
-            position[1] = math.min(math.max(position[1] + dir, 1), height)
+            local max = math.max(position[1] + dir, 1)
+            position[1] = math.min(max, height)
         else
             if cursor[1] <= offset then
                 position[1] = cursor[1]
             elseif cursor[1] >= (#entries - offset) then
                 position[1] = height - (#entries - cursor[1])
             end
-            position[1] = math.max(math.min(position[1], height), 1)
+            local min = math.min(position[1], height)
+            position[1] = math.max(min, 1)
             self:_render_list()
         end
     end
-    local max_line = vim.api.nvim_buf_line_count(self.list_buffer)
-    if max_line > 0 then
-        position[1] = math.max(1, math.min(position[1], max_line))
+    local count = vim.api.nvim_buf_line_count(self.list_buffer)
+    if count > 0 then
+        local min = math.min(position[1], count)
+        position[2], position[1] = 0, math.max(1, min)
     else
-        position[1] = 1
+        position[2], position[1] = 0, 1
     end
     vim.api.nvim_win_set_cursor(self.list_window, position)
 
@@ -1938,6 +1943,16 @@ function Select:list(entries, positions)
         positions = { positions, { "table", "nil" }, true },
     }
     if entries ~= nil then
+        local cursor = self._state.cursor
+        if cursor and assert(#cursor == 2) then
+            local count = #entries
+            if count == 0 then
+                cursor[1], cursor[2] = 1, 0
+            else
+                local min = math.min(cursor[1], count)
+                cursor[1], cursor[2] = math.max(1, min), 0
+            end
+        end
         self._state.positions = positions
         self._state.entries = entries
         self._state.streaming = true
@@ -2303,12 +2318,12 @@ function Select.default_converter(entry)
         bufnr = entry.bufnr or nil
         fname = entry.filename or nil
         if bufnr and not fname and assert(vim.api.nvim_buf_is_valid(bufnr)) then
-            fname = utils.get_bufname(bufnr, utils.get_bufinfo(bufnr))
+            fname = utils.get_bufname(bufnr)
         end
     elseif type(entry) == "number" then
         assert(entry > 0 and vim.api.nvim_buf_is_valid(entry))
         bufnr = entry
-        fname = utils.get_bufname(bufnr, utils.get_bufinfo(bufnr))
+        fname = utils.get_bufname(bufnr)
     elseif type(entry) == "string" then
         assert(#entry > 0)
         fname = entry

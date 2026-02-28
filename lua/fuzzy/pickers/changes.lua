@@ -26,12 +26,12 @@ function M.open_changes_picker(opts)
         match_step = 50000,
     }, opts)
 
-    local current_buf = vim.api.nvim_get_current_buf()
-    local current_buffer_name = utils.get_bufname(
-        current_buf,
-        utils.get_bufinfo(current_buf)
-    )
     local conv = function(entry_value)
+        local current_buf = vim.api.nvim_get_current_buf()
+        local current_buffer_name = utils.get_bufname(
+            current_buf,
+            utils.get_bufinfo(current_buf)
+        )
         return {
             bufnr = current_buf,
             filename = current_buffer_name,
@@ -45,9 +45,15 @@ function M.open_changes_picker(opts)
         decorators = { Select.IconDecorator.new(conv) }
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
-        content = function(stream_callback)
-            local change_list_data = vim.fn.getchangelist(0)
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new(nil, conv)
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
+    local picker = Picker.new(vim.tbl_extend("force", {
+        content = function(stream_callback, args)
+            local buf = args and args.buf or vim.api.nvim_get_current_buf()
+            local change_list_data = vim.fn.getchangelist(buf)
             local change_entry_list = change_list_data[1] or {}
             for _, entry_value in ipairs(change_entry_list) do
                 stream_callback(entry_value)
@@ -55,12 +61,24 @@ function M.open_changes_picker(opts)
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Changes", opts),
-        preview = opts.preview ~= false
-            and Select.BufferPreview.new(nil, conv) or false,
+        context = {
+            args = function()
+                local buf = vim.api.nvim_get_current_buf()
+                return {
+                    buf = buf,
+                    tick = vim.api.nvim_buf_get_changedtick(buf),
+                }
+            end,
+        },
+        preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
-            local buffer_name = current_buffer_name or utils.NO_NAME
+            local buf = vim.api.nvim_get_current_buf()
+            local buffer_name = utils.get_bufname(
+                buf,
+                utils.get_bufinfo(buf)
+            ) or utils.NO_NAME
             local display_path = util.format_display_path(
                 buffer_name,
                 opts

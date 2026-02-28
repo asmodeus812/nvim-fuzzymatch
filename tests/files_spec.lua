@@ -91,6 +91,33 @@ function M.run()
             end)
         end)
     end)
+
+    helpers.run_test_case("files_preview_is_previewer", function()
+        local captured = nil
+        helpers.with_mock(Picker, "new", function(opts)
+            captured = opts
+            return {
+                _options = opts,
+                open = function() end,
+            }
+        end, function()
+            helpers.with_mock(util, "pick_first_command", function()
+                return "rg"
+            end, function()
+                local files_picker = require("fuzzy.pickers.files")
+                files_picker.open_files_picker({
+                    preview = true,
+                    icons = false,
+                })
+                helpers.assert_ok(type(captured.preview) == "table", "previewer type")
+                helpers.assert_ok(
+                    type(captured.preview.preview) == "function"
+                        or type(getmetatable(captured.preview).__index.preview) == "function",
+                    "previewer method"
+                )
+            end)
+        end)
+    end)
 end
 
 return M

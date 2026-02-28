@@ -80,9 +80,12 @@ end
 --- A simple converter function that can be used to convert grep-like entries, the expected format is `filename:line:col:message`, where filename is the path to the file, line is the line number, col is the column number, and message is the rest of the line. The message part is ignored by this converter. The converter returns a table with the following keys - `filename` - string, `lnum` - number, `col` - number, or false if the entry could not be converted.
 --- @param entry string the entry to convert, must be a non-empty string
 function Picker.grep_converter(entry)
-    local pat = "^([^:]+):(%d+):(%d+):(.+)$"
     assert(type(entry) == "string" and #entry >= 0)
-    local filename, line_num, col_num = entry:match(pat)
+    local filename, line_num, col_num = entry:match("^(.-):(%d+):(%d+):")
+    if not filename then
+        filename, line_num = entry:match("^(.-):(%d+):")
+        col_num = "1"
+    end
     if filename and #filename > 0 then
         return {
             filename = filename,
@@ -724,7 +727,7 @@ function Picker:open()
 end
 
 --- @class PickerOptions
---- @field content string|function|table the content to use for the picker, can be a command string, a function that takes a callback and calls it for each entry, or a table of entries, if a string or function is provided the content is streamed, if a table is provided the content is static, and the picker can not be interactive. When a table or function is provided the entries can be either strings or tables, when tables are used the display option must be provided to extract a valid matching string from the table. The display function will be used for both displaying in the list and matching the entries against the user query, internally.
+--- @field content string|function|table the content to use for the picker, can be a command string, a function that takes a callback (plus optional args/cwd/env) and calls it for each entry, or a table of entries. If a string or function is provided the content is streamed, if a table is provided the content is static, and the picker can not be interactive. When a table or function is provided the entries can be either strings or tables, when tables are used the display option must be provided to extract a valid matching string from the table. The display function will be used for both displaying in the list and matching the entries against the user query, internally.
 --- @field context? table a table of context to pass to the content function, can contain the following keys - `cwd` - string, `env` - table of environment variables, `args` a table of arguments to start the command with - table, and `map`, a function that transforms each entry before it is added to the stream. The mapper function is useful when the content function produces complex entries, that need to be transformed into useable entries for the picker components downstream. It is independent of the display function, which is used to extract a string from the entry (at which point it may already mapped with the mapper function) for displaying and matching. The mapper function is used to transform the stream entries before they are added to the stream itself. Return nil or false from this function to skip an entry from being added to the stream, `interactive` - boolean|string|number|nil whether the command is interactive, meaning that it will restart the stream on every query change, if a string is provided it is used as a placeholder in the `args` list to replace with the query, if number, the query is inserted at <index> position in `args`, if nil or false the picker is non-interactive, during an interactive mode the matching is done in the second stage, that can be entered with <c-g>.
 --- @field decorators? Select.Decorator[]|nil a list of decorators to use for decorating the entries in the list, each decorator must be a child class derived from Select.Decorator.
 --- @field preview? Select.Preview|boolean|nil a previewer to use for previewing the currently selected entry, can be a user provided previewer, must be an instance of a sub-class of Select.Preview.
@@ -847,7 +850,7 @@ function Picker.new(opts)
 
     self._options.actions = vim.tbl_deep_extend("keep", self._options.actions, {
         ["<cr>"]    = self:_confirm_prompt(),
-        ["<esc>"]   = self:_cancel_prompt(),
+       ["<esc>"]   = self:_cancel_prompt(),
         ["<m-esc>"] = self:_hide_prompt(),
     })
 

@@ -392,7 +392,7 @@ function Stream:start(cmd, opts)
         end
         local executor = Async.wrap(function(stream)
             local ok, err = utils.safe_call(
-                cmd, callback, opts.args
+                cmd, callback, opts.args, opts.cwd, opts.env
             )
             local code = not ok and 1 or 0
             if did_exit == false then

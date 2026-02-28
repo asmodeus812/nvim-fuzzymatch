@@ -14,6 +14,12 @@ local utils = require("fuzzy.utils")
 
 local M = {}
 
+local function normalize_cwd(opts)
+    if opts and opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
+end
+
 local function build_git_commits_format()
     return table.concat({
         "%h ",
@@ -29,7 +35,7 @@ local function build_git_command_entry(command_args, opts, title)
     if opts and opts.actions then
         actions = vim.tbl_deep_extend("force", actions, opts.actions)
     end
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = "git",
         headers = util.build_picker_headers(title, opts),
         context = {
@@ -79,6 +85,7 @@ function M.open_git_files(opts)
         stream_step = 100000,
         match_step = 75000,
     }, opts)
+    normalize_cwd(opts)
 
     assert(util.command_is_available("git"))
 
@@ -102,15 +109,19 @@ function M.open_git_files(opts)
         decorators = { Select.IconDecorator.new(converter_cb) }
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new(nil, converter_cb)
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = "git",
         headers = util.build_picker_headers("Git Files", opts),
         context = {
             args = command_args,
             cwd = git_root,
         },
-        preview = opts.preview ~= false
-            and Select.BufferPreview.new(nil, converter_cb) or false,
+        preview = opts.preview,
         actions = util.build_default_actions(converter_cb, opts),
         decorators = decorators,
     }, util.build_picker_options(opts)))
@@ -131,6 +142,7 @@ function M.open_git_status(opts)
         stream_step = 50000,
         match_step = 50000,
     }, opts)
+    normalize_cwd(opts)
 
     assert(util.command_is_available("git"))
 
@@ -147,7 +159,12 @@ function M.open_git_status(opts)
         decorators = { Select.IconDecorator.new(converter_cb) }
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new(nil, converter_cb)
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = "git",
         headers = util.build_picker_headers("Git Status", opts),
         context = {
@@ -157,8 +174,7 @@ function M.open_git_status(opts)
             },
             cwd = git_root,
         },
-        preview = opts.preview ~= false
-            and Select.BufferPreview.new(nil, converter_cb) or false,
+        preview = opts.preview,
         actions = util.build_default_actions(converter_cb, opts),
         decorators = decorators,
         display = function(entry_value)
@@ -182,6 +198,7 @@ function M.open_git_branches(opts)
         stream_step = 50000,
         match_step = 50000,
     }, opts)
+    normalize_cwd(opts)
 
     assert(util.command_is_available("git"))
 
@@ -211,6 +228,7 @@ function M.open_git_commits(opts)
         stream_step = 50000,
         match_step = 50000,
     }, opts)
+    normalize_cwd(opts)
 
     assert(util.command_is_available("git"))
 
@@ -239,38 +257,62 @@ function M.open_git_bcommits(opts)
         stream_step = 50000,
         match_step = 50000,
     }, opts)
+    normalize_cwd(opts)
 
     assert(util.command_is_available("git"))
 
-    local buf = vim.api.nvim_get_current_buf()
-    local buf_path = utils.get_bufname(
-        buf,
-        utils.get_bufinfo(buf)
-    )
-    assert(type(buf_path) == "string" and #buf_path > 0)
-    assert(buf_path ~= utils.NO_NAME
-        and buf_path ~= "[Quickfix List]"
-        and buf_path ~= "[Location List]")
-    assert(type(buf_path) == "string" and #buf_path > 0)
+    local actions = { ["<cr>"] = Select.default_select }
+    if opts and opts.actions then
+        actions = vim.tbl_deep_extend("force", actions, opts.actions)
+    end
 
-    local buf_dir = vim.fs.dirname(vim.fs.normalize(buf_path))
-    local git_root = assert(util.find_git_root(buf_dir))
-    opts.cwd = git_root
-
-    local rel_path = vim.fs.relpath(buf_path, git_root) or buf_path
-
-    local command_args = {
-        "log",
-        "--color=never",
-        table.concat({
-            "--pretty=format:",
-            build_git_commits_format(),
-        }),
-        "--",
-        rel_path,
-    }
-
-    return build_git_command_entry(command_args, opts, "Git Buffer Commits")
+    local picker = Picker.new(vim.tbl_extend("force", {
+        content = "git",
+        headers = util.build_picker_headers("Git Buffer Commits", opts),
+        context = {
+            cwd = function()
+                local buf = vim.api.nvim_get_current_buf()
+                local buf_path = utils.get_bufname(
+                    buf,
+                    utils.get_bufinfo(buf)
+                )
+                assert(type(buf_path) == "string" and #buf_path > 0)
+                assert(buf_path ~= utils.NO_NAME
+                    and buf_path ~= "[Quickfix List]"
+                    and buf_path ~= "[Location List]")
+                local buf_dir = vim.fs.dirname(vim.fs.normalize(buf_path))
+                return assert(util.find_git_root(buf_dir))
+            end,
+            args = function()
+                local buf = vim.api.nvim_get_current_buf()
+                local buf_path = utils.get_bufname(
+                    buf,
+                    utils.get_bufinfo(buf)
+                )
+                assert(type(buf_path) == "string" and #buf_path > 0)
+                assert(buf_path ~= utils.NO_NAME
+                    and buf_path ~= "[Quickfix List]"
+                    and buf_path ~= "[Location List]")
+                local buf_dir = vim.fs.dirname(vim.fs.normalize(buf_path))
+                local git_root = assert(util.find_git_root(buf_dir))
+                local rel_path = vim.fs.relpath(buf_path, git_root) or buf_path
+                return {
+                    "log",
+                    "--color=never",
+                    table.concat({
+                        "--pretty=format:",
+                        build_git_commits_format(),
+                    }),
+                    "--",
+                    rel_path,
+                }
+            end,
+        },
+        preview = false,
+        actions = actions,
+    }, util.build_picker_options(opts)))
+    picker:open()
+    return picker
 end
 
 --- Open Git stash picker.
@@ -283,6 +325,7 @@ function M.open_git_stash(opts)
         stream_step = 50000,
         match_step = 50000,
     }, opts)
+    normalize_cwd(opts)
 
     assert(util.command_is_available("git"))
 

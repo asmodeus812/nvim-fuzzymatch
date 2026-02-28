@@ -302,7 +302,7 @@ buffers_picker.open_buffers_picker({
   current_tab = false,
   show_unlisted = false,
   show_unloaded = false,
-  no_term_buffers = true,
+  include_special = false, -- false | true | { "terminal", "quickfix" } | { terminal = true }
   ignore_current_buffer = true,
   sort_lastused = true,
   cwd = vim.loop.cwd,
@@ -322,7 +322,11 @@ Options and behavior:
 - `show_unlisted`, `show_unloaded`: Include unlisted or unloaded buffers. Use these when you need a full buffer
   inventory; otherwise keep them off for cleaner lists.
 
-- `no_term_buffers`: Exclude terminal buffers. This is recommended in most cases.
+- `include_special`: Controls special `buftype` entries.
+  - `false`: only normal buffers (`buftype == ""`).
+  - `true`: include all special buftypes.
+  - `table`: include only listed buftypes, as either an array (`{ "terminal", "quickfix" }`) or a map
+    (`{ terminal = true }`).
 
 - `ignore_current_buffer`: Exclude the active buffer. Useful when you are looking for a jump target.
 
@@ -374,6 +378,7 @@ lines_picker.open_lines_picker({
   show_unlisted = false,
   show_unloaded = false,
   ignore_current_buffer = false,
+  include_special = false, -- false | true | { "terminal", "quickfix" } | { terminal = true }
   preview = false,
   match_step = 50000,
 })
@@ -385,6 +390,12 @@ Options and behavior:
   but increases the total item count.
 
 - `ignore_current_buffer`: Excludes the active buffer from the line list.
+
+- `include_special`: Controls special `buftype` entries.
+  - `false`: only normal buffers (`buftype == ""`).
+  - `true`: include all special buftypes.
+  - `table`: include only listed buftypes, as either an array (`{ "terminal", "quickfix" }`) or a map
+    (`{ terminal = true }`).
 
 - `preview`: Previewing full lines can be redundant; keep off unless you add a custom previewer.
 

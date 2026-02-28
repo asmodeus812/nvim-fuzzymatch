@@ -15,21 +15,25 @@ local function collect_command_names(opts)
     local command_name_map = {}
 
     if opts.include_builtin then
-        local builtin_command_map = vim.api.nvim_get_commands({ builtin = true }) or {}
-        for command_name in pairs(builtin_command_map) do
-            if not command_name_map[command_name] then
-                command_name_map[command_name] = true
-                command_name_list[#command_name_list + 1] = command_name
+        local ok, builtin_command_map = pcall(vim.api.nvim_get_commands, { builtin = true })
+        if ok and builtin_command_map then
+            for command_name in pairs(builtin_command_map) do
+                if not command_name_map[command_name] then
+                    command_name_map[command_name] = true
+                    command_name_list[#command_name_list + 1] = command_name
+                end
             end
         end
     end
 
     if opts.include_user then
-        local user_command_map = vim.api.nvim_get_commands({}) or {}
-        for command_name in pairs(user_command_map) do
-            if not command_name_map[command_name] then
-                command_name_map[command_name] = true
-                command_name_list[#command_name_list + 1] = command_name
+        local ok, user_command_map = pcall(vim.api.nvim_get_commands, {})
+        if ok and user_command_map then
+            for command_name in pairs(user_command_map) do
+                if not command_name_map[command_name] then
+                    command_name_map[command_name] = true
+                    command_name_list[#command_name_list + 1] = command_name
+                end
             end
         end
     end
@@ -48,8 +52,9 @@ function M.open_commands_picker(opts)
         preview = false,
         match_step = 50000,
     }, opts)
+    opts.preview = false
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local command_name_list = collect_command_names(opts)
             for _, command_name in ipairs(command_name_list) do

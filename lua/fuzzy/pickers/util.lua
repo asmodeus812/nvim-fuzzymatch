@@ -141,6 +141,18 @@ function M.format_display_path(path_value, picker_options)
     return normalized_path
 end
 
+--- Open Sanitize display text picker.
+--- @param text_value string|nil
+--- @return string|nil
+function M.sanitize_display_text(text_value)
+    if type(text_value) ~= "string" or #text_value == 0 then
+        return text_value
+    end
+    local cleaned = text_value:gsub("[%c]", " ")
+    cleaned = cleaned:gsub("%s+", " ")
+    return cleaned
+end
+
 --- Open Check if path is under directory picker.
 --- @param root_directory string|nil
 --- @param file_path string|nil

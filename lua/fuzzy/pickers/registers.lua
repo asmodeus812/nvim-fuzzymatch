@@ -33,7 +33,7 @@ function M.open_registers_picker(opts)
         match_step = 50000,
     }, opts)
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local register_name_list = collect_register_list()
             for _, register_name in ipairs(register_name_list) do

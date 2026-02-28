@@ -134,11 +134,19 @@ function M.run()
                     prompt_debounce = 0,
                 })
                 local opts = get()
-                helpers.eq(opts.context.cwd, dir, "cwd")
-                helpers.assert_list_contains(opts.context.args, "log", "args")
-                helpers.assert_list_contains(opts.context.args, "--", "args")
+                local cwd_value = opts.context.cwd
+                if type(cwd_value) == "function" then
+                    cwd_value = cwd_value()
+                end
+                helpers.eq(cwd_value, dir, "cwd")
+                local args_value = opts.context.args
+                if type(args_value) == "function" then
+                    args_value = args_value()
+                end
+                helpers.assert_list_contains(args_value, "log", "args")
+                helpers.assert_list_contains(args_value, "--", "args")
                 local found = false
-                for _, value in ipairs(opts.context.args) do
+                for _, value in ipairs(args_value) do
                     if value == "file.txt" or value == file_path then
                         found = true
                         break

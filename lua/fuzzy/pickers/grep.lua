@@ -36,7 +36,7 @@ local function split_argument_list(arg_text)
 end
 
 local function build_grep_command(opts)
-    local cmd = util.pick_first_command({ "grep", "rg" })
+    local cmd = util.pick_first_command({ "rg", "grep" })
     if not cmd then
         return nil, nil
     end
@@ -93,8 +93,8 @@ function M.open_grep_picker(opts)
         rg_glob_fn = nil,
         glob_flag = "--iglob",
         glob_separator = "%s%-%-",
-        rg_opts = nil,
-        grep_opts = nil,
+        rg_opts = {},
+        grep_opts = {},
         RIPGREP_CONFIG_PATH = nil,
         preview = true,
         icons = true,
@@ -102,6 +102,9 @@ function M.open_grep_picker(opts)
         match_step = 25000,
         prompt_debounce = 200,
     }, opts)
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
 
     local cmd, args = build_grep_command(opts)
     assert(cmd)
@@ -173,17 +176,21 @@ function M.open_grep_picker(opts)
         }
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new(nil, converter_cb)
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = cmd,
         headers = util.build_picker_headers("Grep", opts),
         context = {
             args = args,
-            cwd = opts.cwd,
             env = env,
+            cwd = opts.cwd,
             interactive = build_interactive_arguments,
         },
-        preview = opts.preview ~= false
-            and Select.BufferPreview.new(nil, converter_cb) or false,
+        preview = opts.preview,
         actions = util.build_default_actions(converter_cb, opts),
         decorators = decorators,
     }, util.build_picker_options(opts)))

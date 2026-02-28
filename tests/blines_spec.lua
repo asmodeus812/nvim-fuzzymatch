@@ -17,6 +17,7 @@ function M.run()
             prompt_debounce = 0,
         })
         helpers.wait_for_list(picker)
+        helpers.wait_for_line_contains(picker, "1 ")
         helpers.wait_for_line_contains(picker, "first")
 
         local prompt_input = picker.select._options.prompt_input

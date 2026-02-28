@@ -100,7 +100,7 @@ function M.open_spell_suggest(opts)
         table.insert(headers, { target })
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             for _, item in ipairs(items) do
                 stream_callback(item)

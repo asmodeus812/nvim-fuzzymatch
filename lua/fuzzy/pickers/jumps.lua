@@ -60,7 +60,12 @@ function M.open_jumps_picker(opts)
         decorators = { Select.IconDecorator.new(conv) }
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    if opts.preview == true then
+        opts.preview = Select.BufferPreview.new(nil, conv)
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local jump_list_data = vim.fn.getjumplist()
             local jump_entry_list = jump_list_data[1] or {}
@@ -79,8 +84,7 @@ function M.open_jumps_picker(opts)
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Jumps", opts),
-        preview = opts.preview ~= false
-            and Select.BufferPreview.new(nil, conv) or false,
+        preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)

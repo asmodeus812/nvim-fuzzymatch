@@ -93,6 +93,11 @@
 - **Decoration**: Predefined decorators enhancing the visual appearance of the items in the list
 - **Cross-Platform**: Works on any system with a modern version of Neovim, does not depend on external binaries.
 
+## [PICKERS](./PICKERS.md)
+
+List of already existing pre-defined pickers in this plugin, these are still under active development but they are moving quickly the plugin
+provides most of the expected pickers, and the ones that are currently missing are the LSP ones.
+
 ## Description
 
 A fast and Interactive fuzzy matching interface built on the native `fuzzymatch` family of functions. The plugin is designed to offer a

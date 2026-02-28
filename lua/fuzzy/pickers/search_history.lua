@@ -17,7 +17,7 @@ function M.open_search_history(opts)
         match_step = 50000,
     }, opts)
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local search_history_list = util.collect_history_entries("search")
             for _, history_entry in ipairs(search_history_list) do

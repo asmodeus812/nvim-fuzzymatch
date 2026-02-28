@@ -115,7 +115,6 @@ function M.run()
 
     run_test_case("default", {
         sort_lastused = true,
-        no_term_buffers = true,
         ignore_current_buffer = false,
         show_unlisted = true,
         show_unloaded = true,
@@ -179,6 +178,79 @@ function M.run()
         exclude = { other_buf },
         display = display,
     })
+
+    helpers.run_test_case("cwd_uses_content_arg", function()
+        local Picker = require("fuzzy.picker")
+        local captured = nil
+        helpers.with_mock(Picker, "new", function(opts)
+            captured = opts
+            return { _options = opts, open = function() end }
+        end, function()
+            require("fuzzy.pickers.buffers").open_buffers_picker({
+                show_unlisted = true,
+                show_unloaded = true,
+                preview = false,
+                icons = false,
+                cwd = "/should/not/use",
+            })
+        end)
+        helpers.assert_ok(captured and captured.content, "content missing")
+        local entries = {}
+        captured.content(function(entry)
+            if entry ~= nil then
+                entries[#entries + 1] = entry
+            end
+        end, { tab = vim.api.nvim_get_current_tabpage() }, cwd_dir)
+        local found_cwd = false
+        local found_other = false
+        for _, entry in ipairs(entries) do
+            local bufnr = type(entry) == "table" and entry.bufnr or entry
+            if bufnr == cwd_buf then
+                found_cwd = true
+            elseif bufnr == other_buf then
+                found_other = true
+            end
+        end
+        helpers.assert_ok(found_cwd, "cwd entry missing")
+        helpers.assert_ok(not found_other, "other entry present")
+    end)
+
+    helpers.run_test_case("include_special_true", function()
+        local term_buf = helpers.create_named_buffer("", { "special" }, true)
+        vim.bo[term_buf].buftype = "nofile"
+        local picker = helpers.open_buffers_picker({
+            show_unlisted = true,
+            show_unloaded = true,
+            include_special = true,
+            preview = false,
+            icons = false,
+        })
+        helpers.wait_for_list(picker)
+        assert_entries_include(picker, term_buf)
+        helpers.close_picker(picker)
+        vim.api.nvim_buf_delete(term_buf, { force = true })
+    end)
+
+    helpers.run_test_case("include_special_table", function()
+        local term_buf = helpers.create_named_buffer("", { "special a" }, true)
+        vim.bo[term_buf].buftype = "nofile"
+        local quickfix_buf = helpers.create_named_buffer("", { "special b" }, true)
+        vim.bo[quickfix_buf].buftype = "prompt"
+        local picker = helpers.open_buffers_picker({
+            show_unlisted = true,
+            show_unloaded = true,
+            include_special = { "nofile" },
+            preview = false,
+            icons = false,
+        })
+        helpers.wait_for_list(picker)
+        assert_entries_include(picker, term_buf)
+        assert_entries_exclude(picker, quickfix_buf)
+        helpers.close_picker(picker)
+        vim.api.nvim_buf_delete(term_buf, { force = true })
+        vim.api.nvim_buf_delete(quickfix_buf, { force = true })
+    end)
+
 end
 
 return M

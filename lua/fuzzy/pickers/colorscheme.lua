@@ -75,7 +75,7 @@ function M.open_colorscheme_picker(opts)
         )
     end
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local colorscheme_name_list = vim.fn.getcompletion("", "color") or {}
             for _, colorscheme_name in ipairs(colorscheme_name_list) do

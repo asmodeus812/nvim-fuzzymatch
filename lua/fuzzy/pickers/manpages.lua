@@ -17,7 +17,7 @@ function M.open_manpages_picker(opts)
         match_step = 50000,
     }, opts)
 
-    local picker = Picker.new(vim.tbl_deep_extend("force", {
+    local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
             local manpage_list = vim.fn.getcompletion("", "man") or {}
             for _, manpage in ipairs(manpage_list) do

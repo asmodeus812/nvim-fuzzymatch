@@ -5,7 +5,10 @@ local M = { name = "jumps" }
 
 function M.run()
     helpers.run_test_case("jumps", function()
-        local buf = helpers.create_named_buffer("jumps.txt", {
+        local dir_path = helpers.create_temp_dir()
+        local file_path = vim.fs.joinpath(dir_path, "jumps.txt")
+        helpers.write_file(file_path, "one\ntwo\nthree\n")
+        local buf = helpers.create_named_buffer(file_path, {
             "one",
             "two",
             "three",
@@ -31,6 +34,7 @@ function M.run()
 
         vim.api.nvim_buf_delete(buf, { force = true })
     end)
+
 end
 
 return M

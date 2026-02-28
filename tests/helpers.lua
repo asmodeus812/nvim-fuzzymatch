@@ -33,6 +33,7 @@ function M.setup_global_state()
     vim.o.shadafile = "NONE"
     vim.o.shada = ""
     vim.o.updatecount = 0
+    vim.o.hidden = true
 end
 
 function M.setup_runtime()
@@ -70,6 +71,26 @@ function M.create_temp_path(prefix)
 end
 
 function M.reset_state()
+    -- Ensure picker windows/buffers are fully closed between tests.
+    pcall(function()
+        local ok, Registry = pcall(require, "fuzzy.registry")
+        if ok and Registry and Registry.items then
+            for picker, _ in pairs(Registry.items) do
+                if picker and picker.close then
+                    pcall(function()
+                        picker:close()
+                    end)
+                end
+            end
+        end
+    end)
+    pcall(function()
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+            pcall(function()
+                vim.api.nvim_set_option_value("winfixbuf", false, { win = win })
+            end)
+        end
+    end)
     pcall(function() vim.cmd("silent! only") end)
     pcall(function() vim.cmd("enew") end)
 end
@@ -201,6 +222,7 @@ end
 function M.run_test_case(name, callback)
     M.reset_state()
     local ok, err = pcall(callback)
+    M.reset_state()
     if not ok then
         error(string.format("%s: %s", name, err))
     end
