@@ -52,6 +52,7 @@ descriptive guidance.
     - [Help](#help)
         - [Helptags](#helptags)
         - [Manpages](#manpages)
+        - [Vimdoc](#vimdoc)
     - [Tags](#tags)
         - [Tags](#tags)
         - [Buffer Tags](#buffer-tags)
@@ -846,13 +847,25 @@ helptags_picker.open_helptags_picker({
 
 ### Manpages
 
-Lists manpages. The picker uses a native man previewer for the selected entry.
+Lists manpages. Entries are collected from `apropos -k .` (fallback: `man -k .`) and normalized to `name(section)`.
 
 ```lua
 local manpages_picker = require("fuzzy.pickers.manpages")
 
 manpages_picker.open_manpages_picker({
   preview = true,
+})
+```
+
+### Vimdoc
+
+Lists Neovim API function docs from `vim.fn.api_info()`. Entries are normalized to `nvim_*()` tags and open with help.
+
+```lua
+local vimdoc_picker = require("fuzzy.pickers.vimdoc")
+
+vimdoc_picker.open_vimdoc_picker({
+  preview = false,
 })
 ```
 

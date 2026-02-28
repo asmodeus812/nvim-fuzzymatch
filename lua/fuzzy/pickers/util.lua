@@ -183,7 +183,7 @@ function M.is_under_directory(root_directory, file_path)
 end
 
 --- Open Format location entry picker.
---- @param filename string
+--- @param filename string|nil
 --- @param line_number number
 --- @param column_number number
 --- @param entry_text string|nil

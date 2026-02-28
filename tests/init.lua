@@ -25,6 +25,7 @@ M.tests = {
     require("tests.loclist_stack_spec"),
     require("tests.helptags_spec"),
     require("tests.manpages_spec"),
+    require("tests.vimdoc_spec"),
     require("tests.tags_spec"),
     require("tests.btags_spec"),
     require("tests.colorscheme_spec"),

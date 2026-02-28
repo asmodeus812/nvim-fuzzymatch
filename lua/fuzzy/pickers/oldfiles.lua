@@ -45,25 +45,21 @@ function M.open_oldfiles_picker(opts)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
+
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, _, cwd)
             local seen_file_map = {}
             local seen_file_count = 0
             for _, file_path in ipairs(vim.v.oldfiles or {}) do
                 if type(file_path) == "string" and #file_path > 0 then
-                    if not seen_file_map[file_path]
-                        and (not cwd
-                            or util.is_under_directory(
-                                cwd,
-                                file_path
-                            )) then
+                    if not seen_file_map[file_path] and (not cwd or util.is_under_directory(cwd, file_path))
+                    then
                         local stat = vim.loop.fs_stat(file_path)
                         if stat and stat.type == "file" then
                             seen_file_map[file_path] = true
                             seen_file_count = seen_file_count + 1
                             stream_callback(file_path)
-                            if opts.max
-                                and seen_file_count >= opts.max then
+                            if opts.max and seen_file_count >= opts.max then
                                 stream_callback(nil)
                                 return
                             end

@@ -50,10 +50,10 @@ function M.open_changes_picker(opts)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
+
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, args)
-            local buf = args and args.buf or vim.api.nvim_get_current_buf()
-            local change_list_data = vim.fn.getchangelist(buf)
+            local change_list_data = vim.fn.getchangelist(args.buf)
             local change_entry_list = change_list_data[1] or {}
             for _, entry_value in ipairs(change_entry_list) do
                 stream_callback(entry_value)
@@ -74,10 +74,8 @@ function M.open_changes_picker(opts)
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
-            local buf = vim.api.nvim_get_current_buf()
             local buffer_name = utils.get_bufname(
-                buf,
-                utils.get_bufinfo(buf)
+                entry_value.bufnr
             ) or utils.NO_NAME
             local display_path = util.format_display_path(
                 buffer_name,
