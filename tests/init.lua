@@ -31,6 +31,10 @@ M.tests = {
     require("tests.spell_suggest_spec"),
     require("tests.registry_spec"),
     require("tests.git_spec"),
+    require("tests.uiselect_spec"),
+    require("tests.scheduler_spec"),
+    require("tests.pool_spec"),
+    require("tests.init_spec"),
 }
 
 return M

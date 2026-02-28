@@ -1,6 +1,7 @@
 local Stream = require("fuzzy.stream")
 local Select = require("fuzzy.select")
 local Match = require("fuzzy.match")
+local Registry = require("fuzzy.registry")
 
 local utils = require("fuzzy.utils")
 local path = require("fuzzy.path")
@@ -636,12 +637,14 @@ end
 function Picker:close()
     self:_close_stage()
     self:_close_picker()
+    Registry.remove(self)
 end
 
 -- Hide the picker, does not destroy any of the internal state or context of the picker or internal interfaces or components, can be used to simply hide away the picker view and restore it later with open. This will retain the picker state as is while it remains hiddden from view.
 function Picker:hide()
     self:_hide_stage()
     self:_hide_picker()
+    Registry.touch(self)
 end
 
 --- Open the picker, if the picker is already open this is a no-op. If the picker was previously opened and then hidden, this will restore the picker to its previous state. If the picker was never opened before, or if the context has changed since the last time it was opened, this will re-evaluate the context, and re-run the content command or function to populate the stream with new results. When the content is a static table of entries, this will simply display them in the list.
@@ -649,6 +652,7 @@ function Picker:open()
     if self:isopen() then
         return
     end
+    Registry.touch(self)
 
     local evaluated_context = self:_context_evaluate(
         { "args", "cwd", "env" }, self
@@ -866,6 +870,7 @@ function Picker.new(opts)
         self:_create_stage()
     end
 
+    Registry.register(self)
     return self
 end
 

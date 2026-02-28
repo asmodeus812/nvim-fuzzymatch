@@ -1,7 +1,8 @@
 Picker = require("fuzzy.picker")
-Select = require("fuzzy.select")
-Scheduler = require("fuzzy.scheduler")
 Pool = require("fuzzy.pool")
+Registry = require("fuzzy.registry")
+Scheduler = require("fuzzy.scheduler")
+Select = require("fuzzy.select")
 
 local M = {
     config = {},
@@ -9,40 +10,36 @@ local M = {
 
 function M.setup(opts)
     M.config = vim.tbl_deep_extend("keep", opts or {}, {
-        override_select = true,
+        general = {
+            override_select = true
+        },
+        scheduler = {
+            async_budget = 1 * 1e6,
+        },
+        pool = {
+            max_idle = 5 * 60 * 1000,
+            prune_interval = 30 * 1000,
+            max_tables = nil,
+            prime_sizes = { 1024, 2048, 4096, 8192, 16384 },
+        },
+        registry = {
+            max_idle = 5 * 60 * 1000,
+            prune_interval = 30 * 1000,
+        },
     })
-    Scheduler.new({})
-    Pool.new({
-        max_idle = 5 * 60 * 1000,
-        prune_interval = 30 * 1000,
-    })
-    Pool.prime({ 1024, 2048, 4096, 8192, 16384 })
 
-    if M.config.override_select then
+    local pool_config = M.config.pool
+    local registry_config = M.config.registry
+    local scheduler_config = M.config.scheduler
+
+    Pool.new(pool_config)
+    Registry.new(registry_config)
+    Scheduler.new(scheduler_config)
+
+    if M.config.general.override_select then
+        local select_picker = require("fuzzy.pickers.select")
         ---@diagnostic disable-next-line: duplicate-set-field
-        vim.ui.select = function(items, o, confirm)
-            local picker = Picker.new({
-                content = items,
-                context = {
-                    cwd = vim.loop.cwd()
-                },
-                preview = false,
-                display = o and o.format_item and function(i)
-                    local item, _ = o.format_item(i)
-                    return assert(item)
-                end,
-                headers = { o and o.prompt and { o.prompt } },
-                actions = {
-                    ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
-                        confirm(entry)
-                        return false
-                    end)),
-                    ["<tab>"] = false
-                }
-            })
-            picker:open()
-            return picker
-        end
+        vim.ui.select = select_picker.open_select_picker
     end
 
     vim.api.nvim_set_hl(0, "SelectToggleSign", { link = "Special", default = false })
@@ -58,6 +55,8 @@ function M.setup(opts)
     vim.api.nvim_set_hl(0, "PickerHeaderActionKey", { link = "ErrorMsg", default = false })
     vim.api.nvim_set_hl(0, "PickerHeaderActionLabel", { link = "MoreMsg", default = false })
     vim.api.nvim_set_hl(0, "PickerHeaderActionSeparator", { link = "ModeMsg", default = false })
+
+    Pool.prime(pool_config.prime_sizes or {})
 end
 
 return M

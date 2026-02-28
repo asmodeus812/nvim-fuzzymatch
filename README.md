@@ -155,14 +155,45 @@ Plug 'asmodeus812/nvim-fuzzymatch'
 
 ## Configuration
 
-The plugin does require a setup function, that should be called to instantiate the global plugin configuration, at the present moment
-there are minimal set of user defined options that can be overridden but that will change in future releases
+The plugin requires a setup call to initialize global configuration and shared runtime services. The
+defaults are tuned to be fast and safe for large lists, and you can override only the parts you need.
 
 ```lua
 require("fuzzy").setup({
-    override_select = true -- override the built-in vim.ui.select with custom implementation using the fuzzy picker
+    -- override the built-in vim.ui.select with a fuzzy picker implementation
+    override_select = true,
+
+    -- Scheduler controls the async budget for cooperative tasks
+    scheduler = {
+        async_budget = 1 * 1e6,
+    },
+
+    -- Pool controls table reuse and pruning to reduce allocations
+    pool = {
+        max_idle = 5 * 60 * 1000,
+        prune_interval = 30 * 1000,
+        max_tables = nil,
+        prime_sizes = { 1024, 2048, 4096, 8192, 16384 },
+    },
+
+    -- Registry prunes idle picker instances that are not in use
+    registry = {
+        max_idle = 5 * 60 * 1000,
+        prune_interval = 30 * 1000,
+    },
 })
 ```
+
+Configuration details:
+
+- `override_select`: Replaces `vim.ui.select` with the built-in picker-based implementation.
+- `scheduler.async_budget`: Time budget in microseconds for cooperative async tasks.
+- `pool.max_idle`: Maximum idle time in milliseconds before a pooled table is discarded.
+- `pool.prune_interval`: Interval in milliseconds for pool cleanup.
+- `pool.max_tables`: Maximum number of pooled tables to retain, older idle tables are dropped.
+- `pool.prime_sizes`: Sizes used to pre-allocate pool tables at startup.
+- `registry.max_idle`: Maximum idle time in milliseconds before an unused picker is destroyed.
+- `registry.prune_interval`: Interval in milliseconds for registry cleanup.
 
 ## Quickstart
 
