@@ -200,6 +200,7 @@ end
 --- @param char_len integer Length in characters
 --- @return integer?, integer? Byte offsets (start, end)
 local function compute_offsets(str, start_char, char_len)
+    assert(start_char >= 0 and char_len > 0 and #str > 0)
     local start_byte = vim.str_byteindex(str, start_char)
     local end_char = start_char + char_len
     local end_byte = vim.str_byteindex(str, end_char)
@@ -387,7 +388,9 @@ local function populate_buffer(buffer, items, display, step)
         local start, _end = 1, size
         repeat
             for target = start, _end, 1 do
-                lines[(target - start) + 1] = line_mapper(items[target], display)
+                lines[(target - start) + 1] = line_mapper(
+                    items[target], display, target
+                )
             end
             assert(#lines == size)
             Async.yield()
@@ -472,7 +475,7 @@ local function highlight_range(buffer, start, _end, entries, positions, display)
         local entry = entries[target]
         local matches = positions[target]
         local index = (target - start) + 1
-        assert(#matches % 2 == 0 and entry ~= nil)
+        assert(#matches % 2 == 0 and entry)
 
         local decors = vim.api.nvim_buf_get_extmarks(
             buffer, LIST_DECORATED_NAMESPACE,
@@ -487,7 +490,8 @@ local function highlight_range(buffer, start, _end, entries, positions, display)
 
         for i = 1, #matches, 2 do
             local byte_start, byte_end = compute_offsets(
-                line_mapper(entry, display, target), matches[i + 0], matches[i + 1]
+                line_mapper(entry, display, target),
+                matches[i + 0], matches[i + 1]
             )
             vim.api.nvim_buf_set_extmark(
                 buffer,
@@ -1228,7 +1232,6 @@ function Select:_display_wrap()
     end
 
     return function(entry, index)
-        entry = assert(entry)
         if type(index) ~= "number" then
             return display(entry)
         end

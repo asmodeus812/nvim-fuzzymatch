@@ -201,6 +201,7 @@ function Match:_match_worker()
     -- equal size, only the tail can be smaller and usually it is.
     local items = self._state.tail or self._state.chunks
     local args = { items, self.pattern, self.transform }
+    -- TODO: blocker issue match - https://github.com/vim/vim/issues/19540
     local results = utils.time_execution(vim.fn.matchfuzzypos, unpack(args))
 
     local strings = results[1]
