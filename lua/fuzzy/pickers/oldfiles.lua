@@ -56,7 +56,11 @@ function M.open_oldfiles_picker(opts)
                         if stat and stat.type == "file" then
                             seen_file_map[file_path] = true
                             seen_file_count = seen_file_count + 1
-                            stream_callback(file_path)
+                            stream_callback({
+                                filename = file_path,
+                                size = stat.size,
+                                mtime = stat.mtime,
+                            })
                             if opts.max and seen_file_count >= opts.max then
                                 stream_callback(nil)
                                 return
@@ -75,7 +79,8 @@ function M.open_oldfiles_picker(opts)
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
-            return util.format_display_path(entry_value, opts)
+            local filename = entry_value and entry_value.filename or ""
+            return util.format_display_path(filename, opts)
         end,
     }, util.build_picker_options(opts)))
 

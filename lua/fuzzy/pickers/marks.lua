@@ -5,6 +5,8 @@ local utils = require("fuzzy.utils")
 
 --- @class MarksPickerOptions
 --- @field marks? string Pattern of marks to include
+--- @field include_local? boolean Include buffer-local marks
+--- @field include_global? boolean Include global marks
 --- @field filename_only? boolean Display only the filename
 --- @field path_shorten? number|nil Path shorten value for display
 --- @field home_to_tilde? boolean Replace home prefix with ~ in display
@@ -13,15 +15,19 @@ local utils = require("fuzzy.utils")
 
 local M = {}
 
-local function collect_mark_list()
+local function collect_mark_list(opts)
     local mark_entry_list = {}
-    local buffer_mark_list = vim.fn.getmarklist(0) or {}
-    local global_mark_list = vim.fn.getmarklist() or {}
-    for _, mark_entry in ipairs(buffer_mark_list) do
-        table.insert(mark_entry_list, mark_entry)
+    if opts.include_local ~= false then
+        local buffer_mark_list = vim.fn.getmarklist(0) or {}
+        for _, mark_entry in ipairs(buffer_mark_list) do
+            table.insert(mark_entry_list, mark_entry)
+        end
     end
-    for _, mark_entry in ipairs(global_mark_list) do
-        table.insert(mark_entry_list, mark_entry)
+    if opts.include_global ~= false then
+        local global_mark_list = vim.fn.getmarklist() or {}
+        for _, mark_entry in ipairs(global_mark_list) do
+            table.insert(mark_entry_list, mark_entry)
+        end
     end
     return mark_entry_list
 end
@@ -31,6 +37,8 @@ end
 --- @return Picker
 function M.open_marks_picker(opts)
     opts = util.merge_picker_options({
+        include_local = true,
+        include_global = true,
         filename_only = false,
         path_shorten = nil,
         home_to_tilde = true,
@@ -64,8 +72,14 @@ function M.open_marks_picker(opts)
     end
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback)
-            local mark_entry_list = collect_mark_list()
+            local mark_entry_list = collect_mark_list(opts)
             for _, entry_value in ipairs(mark_entry_list) do
+                if opts.marks
+                    and type(entry_value.mark) == "string"
+                    and not entry_value.mark:match(opts.marks)
+                then
+                    goto continue
+                end
                 local filename = entry_value.file
                 if not filename or #filename == 0 then
                     local mark_position = entry_value.pos or {}
@@ -77,6 +91,7 @@ function M.open_marks_picker(opts)
                 stream_callback(vim.tbl_extend("force", {}, entry_value, {
                     file = filename or utils.NO_NAME,
                 }))
+                ::continue::
             end
             stream_callback(nil)
         end,

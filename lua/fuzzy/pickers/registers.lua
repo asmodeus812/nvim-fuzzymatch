@@ -35,7 +35,30 @@ function M.open_registers_picker(opts)
         content = function(stream_callback)
             local register_name_list = collect_register_list()
             for _, register_name in ipairs(register_name_list) do
-                stream_callback(register_name)
+                local register_info = vim.fn.getreginfo(register_name)
+                local register_preview = ""
+                if register_info and register_info.regcontents then
+                    register_preview = table.concat(
+                        register_info.regcontents,
+                        "\\n"
+                    )
+                    register_preview = register_preview:gsub(
+                        "\\r?\\n",
+                        " "
+                    )
+                end
+                if #register_preview > 80 then
+                    register_preview = table.concat({
+                        register_preview:sub(1, 77),
+                        "..."
+                    })
+                end
+                stream_callback({
+                    name = register_name,
+                    preview = register_preview,
+                    regcontents = register_info and register_info.regcontents or nil,
+                    regtype = register_info and register_info.regtype or nil,
+                })
             end
             stream_callback(nil)
         end,
@@ -43,34 +66,25 @@ function M.open_registers_picker(opts)
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                assert(type(entry_value) == "string" and #entry_value > 0)
-                local register_info = assert(vim.fn.getreginfo(entry_value))
-                assert(register_info.regcontents ~= nil)
-                vim.fn.setreg('"', register_info.regcontents, register_info.regtype)
+                local register_name = entry_value and entry_value.name or ""
+                assert(type(register_name) == "string" and #register_name > 0)
+                local regcontents = entry_value and entry_value.regcontents or nil
+                local regtype = entry_value and entry_value.regtype or nil
+                if regcontents == nil then
+                    local register_info = assert(vim.fn.getreginfo(register_name))
+                    regcontents = register_info.regcontents
+                    regtype = register_info.regtype
+                end
+                assert(regcontents ~= nil)
+                vim.fn.setreg('"', regcontents, regtype)
                 return false
             end)),
         },
         display = function(entry_value)
-            assert(type(entry_value) == "string" and #entry_value > 0)
-            local register_info = vim.fn.getreginfo(entry_value)
-            local register_preview = ""
-            if register_info and register_info.regcontents then
-                register_preview = table.concat(
-                    register_info.regcontents,
-                    "\\n"
-                )
-                register_preview = register_preview:gsub(
-                    "\\r?\\n",
-                    " "
-                )
-            end
-            if #register_preview > 80 then
-                register_preview = table.concat({
-                    register_preview:sub(1, 77),
-                    "..."
-                })
-            end
-            return table.concat({ "[", entry_value, "] ", register_preview })
+            local register_name = entry_value and entry_value.name or ""
+            assert(type(register_name) == "string" and #register_name > 0)
+            local register_preview = entry_value and entry_value.preview or ""
+            return table.concat({ "[", register_name, "] ", register_preview })
         end,
     }, util.build_picker_options(opts)))
 

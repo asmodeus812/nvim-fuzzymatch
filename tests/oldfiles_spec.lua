@@ -68,8 +68,12 @@ function M.run()
             end
         end, nil, dir_a)
 
-        helpers.assert_list_contains(entries, path_a, "cwd entry missing")
-        helpers.assert_list_missing(entries, path_b, "other entry present")
+        local filenames = {}
+        for _, entry in ipairs(entries) do
+            filenames[#filenames + 1] = entry.filename
+        end
+        helpers.assert_list_contains(filenames, path_a, "cwd entry missing")
+        helpers.assert_list_missing(filenames, path_b, "other entry present")
     end)
 
     helpers.run_test_case("oldfiles_filter_cursor_clamp", function()
@@ -100,7 +104,7 @@ function M.run()
         helpers.wait_for_entries(picker)
         local select = picker.select
         select._state.cursor = { 2, 0 }
-        select:list({ file_a }, nil)
+        select:list({ { filename = file_a } }, nil)
         helpers.wait_for(function()
             return select._state.cursor[1] == 1
         end, 1500)

@@ -724,12 +724,20 @@ up front.
 local marks_picker = require("fuzzy.pickers.marks")
 
 marks_picker.open_marks_picker({
+  marks = "[a-z]",
+  include_local = true,
+  include_global = true,
 })
 ```
 
 Options and behavior:
 
-This picker currently lists both buffer-local and global marks without filtering.
+- `marks`: Pattern of marks to include. Use lowercase ranges for local marks, uppercase ranges for global marks, or a
+  combined pattern if you want both.
+
+- `include_local`: Include buffer-local marks from the current buffer.
+
+- `include_global`: Include global marks.
 
 ### Jumps
 
