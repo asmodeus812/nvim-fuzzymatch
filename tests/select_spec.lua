@@ -1,6 +1,6 @@
 ---@diagnostic disable: invisible
 local Select = require("fuzzy.select")
-local helpers = require("tests.helpers")
+local helpers = require("script.test_utils")
 
 local M = { name = "select" }
 

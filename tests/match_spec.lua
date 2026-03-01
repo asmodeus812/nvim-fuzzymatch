@@ -1,6 +1,6 @@
 ---@diagnostic disable: invisible
 local Match = require("fuzzy.match")
-local helpers = require("tests.helpers")
+local helpers = require("script.test_utils")
 
 local M = { name = "match" }
 

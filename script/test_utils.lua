@@ -151,6 +151,16 @@ function M.wait_for_entries(picker)
     end, 1500)
 end
 
+function M.wait_for_stream(picker, timeout)
+    M.assert_ok(picker and picker.stream, "picker stream missing")
+    return picker.stream:wait(timeout or 1500)
+end
+
+function M.wait_for_match(picker, timeout)
+    M.assert_ok(picker and picker.match, "picker match missing")
+    return picker.match:wait(timeout or 1500)
+end
+
 function M.wait_for_prompt_cursor(picker)
     return M.wait_for(function()
         local select = picker and picker.select or nil

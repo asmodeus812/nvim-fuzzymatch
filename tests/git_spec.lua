@@ -1,5 +1,5 @@
 ---@diagnostic disable: invisible
-local helpers = require("tests.helpers")
+local helpers = require("script.test_utils")
 local Picker = require("fuzzy.picker")
 local util = require("fuzzy.pickers.util")
 

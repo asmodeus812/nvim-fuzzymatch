@@ -1,5 +1,5 @@
 ---@diagnostic disable: invisible
-local helpers = require("tests.helpers")
+local helpers = require("script.test_utils")
 local utils = require("fuzzy.utils")
 
 local M = { name = "utils" }

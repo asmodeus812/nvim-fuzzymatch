@@ -1,7 +1,7 @@
 package.path = package.path
     .. ";./?.lua;./?/init.lua"
 
-local helpers = require("tests.helpers")
+local helpers = require("script.test_utils")
 helpers.setup_global_state()
 helpers.setup_runtime()
 

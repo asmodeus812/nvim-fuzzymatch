@@ -1,5 +1,5 @@
 local Stream = require("fuzzy.stream")
-local helpers = require("tests.helpers")
+local helpers = require("script.test_utils")
 
 local M = { name = "stream" }
 
