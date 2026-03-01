@@ -109,18 +109,12 @@ function M.type_query(picker, text)
     --- @diagnostic disable-next-line: invisible
     M.assert_ok(picker and picker.select, "picker not available")
     --- @diagnostic disable-next-line: invisible
-    picker.select:position_prompt(text)
-end
-
-function M.input_query(picker, text)
-    --- @diagnostic disable-next-line: invisible
-    M.assert_ok(picker and picker.select, "picker not available")
-    --- @diagnostic disable-next-line: invisible
     local prompt_input = picker.select._options.prompt_input
     if type(prompt_input) == "function" then
         prompt_input(text)
     else
-        M.type_query(picker, text)
+        --- @diagnostic disable-next-line: invisible
+        picker.select:position_prompt(text)
     end
 end
 
