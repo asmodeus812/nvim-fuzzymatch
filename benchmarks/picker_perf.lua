@@ -83,7 +83,7 @@ local function run_command_bench(size)
     helpers.wait_for_stream(picker, 600000)
 
     local t0 = now_ms()
-    helpers.type_query(picker, query)
+    helpers.input_query(picker, query)
     local results = helpers.wait_for_match(picker, 600000)
     local t1 = now_ms()
 
@@ -131,7 +131,7 @@ local function run_content_bench(entries, mode)
     })
 
     local t0 = now_ms()
-    helpers.type_query(picker, query)
+    helpers.input_query(picker, query)
     local results = helpers.wait_for_match(picker, 600000)
     local t1 = now_ms()
 
@@ -169,6 +169,7 @@ function M.run()
     output[#output + 1] = "query=" .. query .. " match_every=" .. match_every
 
     for _, size in ipairs(sizes) do
+        print(string.format("bench size=%d", size))
         log_result(run_command_bench(size), output)
         collectgarbage()
 
