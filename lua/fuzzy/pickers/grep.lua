@@ -18,8 +18,6 @@ local utils = require("fuzzy.utils")
 --- @field RIPGREP_CONFIG_PATH? string|nil Ripgrep config path to inject
 --- @field preview? boolean Enable preview window
 --- @field icons? boolean Enable file icons
---- @field stream_step? integer Stream batch size
---- @field match_step? integer Match batch size
 --- @field prompt_debounce? integer Prompt debounce in milliseconds
 --- @field prompt_query? string|nil Initial prompt query
 
@@ -98,8 +96,6 @@ function M.open_grep_picker(opts)
         RIPGREP_CONFIG_PATH = nil,
         preview = true,
         icons = true,
-        stream_step = 25000,
-        match_step = 25000,
         prompt_debounce = 200,
     }, opts)
     if opts.cwd == true then

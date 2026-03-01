@@ -10,7 +10,6 @@ local utils = require("fuzzy.utils")
 --- @field home_to_tilde? boolean Replace home prefix with ~ in display
 --- @field preview? boolean Enable preview window
 --- @field icons? boolean Enable file icons
---- @field match_step? integer Match batch size
 
 local M = {}
 
@@ -37,7 +36,6 @@ function M.open_marks_picker(opts)
         home_to_tilde = true,
         preview = true,
         icons = true,
-        match_step = 50000,
     }, opts)
 
     local conv = function(entry_value)

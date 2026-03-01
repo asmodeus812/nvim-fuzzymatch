@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 
 --- @class VimdocPickerOptions
 --- @field preview? boolean|Select.Preview Enable preview window
---- @field match_step? integer Match batch size
 --- @field prefix? string|false Prefix filter for API names (default: "nvim_")
 --- @field include_deprecated? boolean Include deprecated API items
 --- @field deprecated_only? boolean Show only deprecated API items
@@ -174,7 +173,6 @@ end
 function M.open_vimdoc_picker(opts)
     opts = util.merge_picker_options({
         preview = true,
-        match_step = 50000,
         prefix = "nvim_",
         include_deprecated = true,
         deprecated_only = false,

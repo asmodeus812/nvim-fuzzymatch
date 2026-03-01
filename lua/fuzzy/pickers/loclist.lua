@@ -10,7 +10,6 @@ local utils = require("fuzzy.utils")
 --- @field home_to_tilde? boolean Replace home prefix with ~ in display
 --- @field preview? boolean Enable preview window
 --- @field icons? boolean Enable file icons
---- @field match_step? integer Match batch size
 --- @field prompt_query? string|nil Initial prompt query
 
 local M = {}
@@ -26,7 +25,6 @@ function M.open_loclist_picker(opts)
         cwd = nil,
         preview = true,
         icons = true,
-        match_step = 50000,
     }, opts)
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd

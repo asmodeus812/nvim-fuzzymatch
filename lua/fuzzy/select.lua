@@ -1268,6 +1268,9 @@ end
 --- Internal: schedules a UI render of list+related features.
 function Select:_render_list()
     local executor = Async.wrap(function()
+        local entries = self._state.entries or {}
+        cursor_clamp(self._state.cursor, #entries)
+
         if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
             self:_display_clamp()
         end
@@ -1277,12 +1280,6 @@ function Select:_render_list()
         end
 
         if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
-            local count = vim.api.nvim_buf_line_count(self.list_buffer)
-            if count > 0 then
-                local pos = vim.api.nvim_win_get_cursor(self.list_window)
-                pos[2], pos[1] = 0, math.max(1, math.min(pos[1], count))
-                vim.api.nvim_win_set_cursor(self.list_window, pos)
-            end
             self:_decorate_list()
             self:_highlight_list()
             self:_display_toggle()
@@ -1522,6 +1519,9 @@ function Select:move_cursor(dir, callback)
     if not entries or #entries == 0 then
         return
     end
+    if dir < 0 and self._state.streaming then
+        return
+    end
 
     assert(cursor[1] >= 1 and cursor[1] <= #entries)
     assert(vim.wo[self.list_window].scrolloff == 0)
@@ -1536,20 +1536,21 @@ function Select:move_cursor(dir, callback)
     cursor[1] = (cursor[1] + dir) % (#entries + 1)
     if cursor[1] == 0 and dir > 0 then cursor[1] = 1 end
 
+    local render = false
     if dir > 1 then
         cursor[1] = #entries
         position[1] = height
-        self:_render_list()
+        render = true
     elseif dir < -1 then
         cursor[1] = 1
         position[1] = 1
-        self:_render_list()
+        render = true
     elseif dir > 0 and cursor[1] == 1 then
         position[1] = 1
-        self:_render_list()
+        render = true
     elseif dir < 0 and cursor[1] == #entries then
         position[1] = height
-        self:_render_list()
+        render = true
     else
         if (dir < 0 and position[1] > (offset + 1)) or (dir > 0 and position[1] < (height - offset)) then
             local max = math.max(position[1] + dir, 1)
@@ -1562,14 +1563,17 @@ function Select:move_cursor(dir, callback)
             end
             local min = math.min(position[1], height)
             position[1] = math.max(min, 1)
-            self:_render_list()
+            render = true
         end
     end
 
     local count = vim.api.nvim_buf_line_count(self.list_buffer)
-    position = cursor_clamp(position, count)
-    vim.api.nvim_win_set_cursor(self.list_window, position)
+    local pos = assert(cursor_clamp(position, count))
+    vim.api.nvim_win_set_cursor(self.list_window, pos)
 
+    if render == true then
+        self:_render_list()
+    end
     self:_display_preview()
 
     local selection = callback and self:_list_selection()
@@ -2030,8 +2034,6 @@ function Select:list(entries, positions)
         positions = { positions, { "table", "nil" }, true },
     }
     if entries ~= nil then
-        local cursor = self._state.cursor
-        cursor_clamp(cursor, #entries)
         cache_reset(self._state)
         self._state.positions = positions
         self._state.entries = entries

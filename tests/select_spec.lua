@@ -35,6 +35,7 @@ local function run_action_case()
     helpers.wait_for(function()
         return helpers.get_buffer_line_count(select.list_buffer) >= height
     end, 1500)
+    select:list(nil, nil)
 
     select:move_down()
     helpers.eq(select._state.cursor[1], 2, "move down")
@@ -127,6 +128,7 @@ local function run_select_action_case()
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 3
     end, 1500)
+    select:list(nil, nil)
 
     select:select_prev(function(list)
         selected = list

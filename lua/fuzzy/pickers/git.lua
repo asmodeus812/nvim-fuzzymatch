@@ -7,8 +7,6 @@ local utils = require("fuzzy.utils")
 --- @field cwd? string|fun(): string Working directory for git commands
 --- @field preview? boolean Enable preview window
 --- @field icons? boolean Enable file icons
---- @field stream_step? integer Stream batch size
---- @field match_step? integer Match batch size
 --- @field actions? table Custom action map
 --- @field untracked? boolean Include untracked files (git files)
 
@@ -85,8 +83,6 @@ function M.open_git_files(opts)
         untracked = true,
         preview = true,
         icons = true,
-        stream_step = 100000,
-        match_step = 75000,
     }, opts)
 
     if opts.cwd == true then
@@ -144,8 +140,6 @@ function M.open_git_status(opts)
         cwd = vim.loop.cwd,
         preview = true,
         icons = true,
-        stream_step = 50000,
-        match_step = 50000,
     }, opts)
 
     if opts.cwd == true then
@@ -202,8 +196,6 @@ function M.open_git_branches(opts)
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         preview = false,
-        stream_step = 50000,
-        match_step = 50000,
     }, opts)
 
     if opts.cwd == true then
@@ -240,8 +232,6 @@ function M.open_git_commits(opts)
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         preview = false,
-        stream_step = 50000,
-        match_step = 50000,
     }, opts)
 
     if opts.cwd == true then
@@ -277,8 +267,6 @@ function M.open_git_stash(opts)
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         preview = false,
-        stream_step = 50000,
-        match_step = 50000,
     }, opts)
 
     if opts.cwd == true then
@@ -311,8 +299,6 @@ function M.open_git_bcommits(opts)
     opts = util.merge_picker_options({
         cwd = true,
         preview = false,
-        stream_step = 50000,
-        match_step = 50000,
     }, opts)
 
     if opts.cwd == true then

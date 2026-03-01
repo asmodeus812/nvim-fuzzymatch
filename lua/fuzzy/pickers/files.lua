@@ -13,8 +13,6 @@ local util = require("fuzzy.pickers.util")
 --- @field no_ignore_vcs? boolean Disable VCS ignore files
 --- @field preview? boolean Enable preview window
 --- @field icons? boolean Enable file icons
---- @field stream_step? integer Stream batch size
---- @field match_step? integer Match batch size
 
 local M = {}
 
@@ -86,8 +84,6 @@ function M.open_files_picker(opts)
         no_ignore_vcs = false,
         preview = true,
         icons = true,
-        stream_step = 100000,
-        match_step = 75000,
     }, opts)
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd

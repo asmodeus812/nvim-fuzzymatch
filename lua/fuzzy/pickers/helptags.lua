@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 
 --- @class HelptagsPickerOptions
 --- @field preview? boolean Enable preview window
---- @field match_step? integer Match batch size
 
 local M = {}
 
@@ -14,7 +13,6 @@ local M = {}
 function M.open_helptags_picker(opts)
     opts = util.merge_picker_options({
         preview = false,
-        match_step = 50000,
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {

@@ -13,7 +13,6 @@ local utils = require("fuzzy.utils")
 ---   true: include all special buftypes
 ---   table: include only listed buftypes, as an array or map
 --- @field preview? boolean Enable preview window
---- @field match_step? integer Batch size for matching
 --- @field prompt_query? string|nil Initial prompt query
 
 local M = {}
@@ -44,7 +43,6 @@ function M.open_lines_picker(opts)
         cwd = nil,
         include_special = false,
         preview = false,
-        match_step = 50000,
     }, opts)
 
     if opts.cwd == true then

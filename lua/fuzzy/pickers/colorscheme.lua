@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 
 --- @class ColorschemePickerOptions
 --- @field preview? boolean Enable preview window
---- @field match_step? integer Match batch size
 
 local M = {}
 
@@ -23,7 +22,6 @@ function M.open_colorscheme_picker(opts)
         live_preview = false,
         preview = true,
         prompt_query = "",
-        match_step = 50000,
     }, opts)
 
     local current_colorscheme_name = vim.g.colors_name or ""

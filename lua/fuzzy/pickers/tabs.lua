@@ -6,7 +6,6 @@ local utils = require("fuzzy.utils")
 --- @class TabsPickerOptions
 --- @field tab_marker? string Marker for current tab display
 --- @field preview? boolean Enable preview window
---- @field match_step? integer Batch size for matching
 
 local M = {}
 
@@ -19,7 +18,6 @@ function M.open_tabs_picker(opts)
         path_shorten = nil,
         home_to_tilde = true,
         preview = false,
-        match_step = 50000,
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {

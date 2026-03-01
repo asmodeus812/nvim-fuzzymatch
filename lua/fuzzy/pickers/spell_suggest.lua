@@ -6,7 +6,6 @@ local util = require("fuzzy.pickers.util")
 --- @field target_word_text? string|nil Override the word under cursor
 --- @field suggest_limit_count? integer Maximum number of suggestions
 --- @field preview? boolean Enable preview window
---- @field match_step? integer Match batch size
 
 local M = {}
 

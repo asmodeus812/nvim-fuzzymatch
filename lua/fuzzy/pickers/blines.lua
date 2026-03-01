@@ -5,7 +5,6 @@ local utils = require("fuzzy.utils")
 
 --- @class BufferLinesPickerOptions
 --- @field preview? boolean Enable preview window
---- @field match_step? integer Batch size for matching
 --- @field prompt_query? string|nil Initial prompt query
 
 local M = {}
@@ -15,7 +14,6 @@ local M = {}
 function M.open_blines_picker(opts)
     opts = util.merge_picker_options({
         preview = false,
-        match_step = 50000,
     }, opts)
 
     local converter_cb = function(entry)

@@ -6,7 +6,6 @@ local util = require("fuzzy.pickers.util")
 --- @field stat_file? boolean Stat entries to filter missing files
 --- @field preview? boolean Enable preview window
 --- @field icons? boolean Enable file icons
---- @field match_step? integer Match batch size
 --- @field cwd? string|fun(): string Working directory for path display
 --- @field filename_only? boolean Display only the filename
 --- @field path_shorten? number|nil Path shorten value for display
@@ -27,7 +26,6 @@ function M.open_oldfiles_picker(opts)
         home_to_tilde = true,
         preview = true,
         icons = true,
-        match_step = 50000,
     }, opts)
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd

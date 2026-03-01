@@ -19,7 +19,6 @@ local util = require("fuzzy.pickers.util")
 --- @field home_to_tilde? boolean Replace home prefix with ~ in display
 --- @field preview? boolean Enable preview window
 --- @field icons? boolean Enable file icons
---- @field match_step? integer Batch size for matching
 
 local M = {}
 

@@ -6,7 +6,6 @@ local util = require("fuzzy.pickers.util")
 --- @field include_builtin? boolean Include built-in commands
 --- @field sort_lastused? boolean Sort by last used
 --- @field preview? boolean Enable preview window
---- @field match_step? integer Match batch size
 
 local M = {}
 
@@ -50,7 +49,6 @@ function M.open_commands_picker(opts)
         include_builtin = true,
         include_user = true,
         preview = false,
-        match_step = 50000,
     }, opts)
     opts.preview = false
 

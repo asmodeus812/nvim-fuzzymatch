@@ -5,7 +5,6 @@ local utils = require("fuzzy.utils")
 
 --- @class BufferTagsPickerOptions
 --- @field preview? boolean Enable preview window
---- @field match_step? integer Match batch size
 
 local M = {}
 
@@ -15,7 +14,6 @@ local M = {}
 function M.open_btags_picker(opts)
     opts = util.merge_picker_options({
         preview = false,
-        match_step = 50000,
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
@@ -45,7 +43,6 @@ function M.open_btags_picker(opts)
             end)),
         },
         display = function(entry_value)
-            assert(entry_value)
             local name_text = entry_value.name or ""
             local kind_text = entry_value.kind or ""
             if #kind_text > 0 then
