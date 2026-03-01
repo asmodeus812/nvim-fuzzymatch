@@ -214,8 +214,8 @@ Options and behavior:
 
 ## Files
 
-File-related pickers are tuned for performance and minimal allocations. They use display functions and decorators to
-enrich the list without touching the content used for matching.
+File-related pickers are tuned for performance and minimal allocations. They use display helpers and decorators to
+enrich the list while keeping matching stable.
 
 ### Files
 
@@ -263,15 +263,17 @@ Options and behavior:
 
 ### Oldfiles
 
-Lists `:oldfiles` entries. The content uses the raw file path so fuzzy matching works by path segment, while display can
-shorten and decorate the line.
+Lists `:oldfiles` entries. Matching is done on the file path, while display can shorten and decorate the line.
 
 ```lua
 local oldfiles_picker = require("fuzzy.pickers.oldfiles")
 
 oldfiles_picker.open_oldfiles_picker({
   cwd = vim.loop.cwd,
-  stat_file = true,
+  max = nil,
+  filename_only = false,
+  path_shorten = nil,
+  home_to_tilde = true,
   preview = true,
   icons = true,
 })
@@ -281,15 +283,15 @@ Options and behavior:
 
 - `cwd`: Base directory for filtering and path display. When set, only entries under `cwd` are included.
 
-- `stat_file`: When true, performs a stat call to filter missing files and optionally surface extra info. This is useful
-  when your oldfiles list is noisy, but it does add I/O cost, so consider disabling on slow filesystems.
+- `max`: Limit the number of entries emitted from `:oldfiles`.
+
+- `filename_only`, `path_shorten`, `home_to_tilde`: Path display helpers.
 
 - `preview`, `icons`: Display only.
 
 ## Buffers
 
-Buffer pickers use buffer numbers as content so matching is efficient and stable. Display is responsible for human-
-friendly labels and state markers.
+Buffer pickers use buffer entries with filename metadata. Matching is performed on the display text.
 
 ### Buffers
 
@@ -351,21 +353,18 @@ buffer details, giving you a lightweight overview of which files are visible in 
 local tabs_picker = require("fuzzy.pickers.tabs")
 
 tabs_picker.open_tabs_picker({
-  tab_marker = "",
   preview = false,
 })
 ```
 
 Options and behavior:
 
-- `tab_marker`: A display marker for the current tab. Use a small symbol; it does not affect matching.
-
 - `preview`: Tabs are not preview-heavy; keep this off unless you add a custom previewer.
 
 ## Lines
 
-Line pickers prioritize keeping memory usage low. Content is lightweight, and line text is resolved at display time so
-you do not pay the cost of building a massive list of strings.
+Line pickers prioritize keeping memory usage low while keeping matching accurate. Line text is available on entries for
+display and matching.
 
 ### Lines (All Buffers)
 
@@ -379,6 +378,7 @@ lines_picker.open_lines_picker({
   show_unlisted = false,
   show_unloaded = false,
   ignore_current_buffer = false,
+  cwd = vim.loop.cwd,
   include_special = false, -- false | true | { "terminal", "quickfix" } | { terminal = true }
   preview = false,
   match_step = 50000,
@@ -391,6 +391,8 @@ Options and behavior:
   but increases the total item count.
 
 - `ignore_current_buffer`: Excludes the active buffer from the line list.
+
+- `cwd`: When set, only buffers under `cwd` are included.
 
 - `include_special`: Controls special `buftype` entries.
   - `false`: only normal buffers (`buftype == ""`).
@@ -425,7 +427,6 @@ files because content stays minimal.
 local blines_picker = require("fuzzy.pickers.blines")
 
 blines_picker.open_blines_picker({
-  cwd = vim.loop.cwd,
   preview = false,
   match_step = 50000,
 })
@@ -544,7 +545,7 @@ avoid heavy per-entry processing.
 
 ### Quickfix
 
-Lists items from the quickfix list. Each entry shows file, line, column, and text while keeping the raw list item as the
+Lists items from the quickfix list. Each entry shows file, line, column, and text while keeping the list entry as the
 match target so filtering remains fast.
 
 ```lua
@@ -653,15 +654,15 @@ formatting.
 
 ### Commands
 
-Lists user commands. Each entry includes the command name and a brief description where available, which makes this
-useful as a command palette when combined with fuzzy search.
+Lists user commands. Each entry includes the command name; this works well as a command palette when combined with fuzzy
+search.
 
 ```lua
 local commands_picker = require("fuzzy.pickers.commands")
 
 commands_picker.open_commands_picker({
-  include_builtin = false,
-  sort_lastused = true,
+  include_builtin = true,
+  include_user = true,
 })
 ```
 
@@ -670,27 +671,30 @@ Options and behavior:
 - `include_builtin`: Include built-in commands. Turn this on if you want a global command palette; leave it off for a
   smaller list focused on your config.
 
-- `sort_lastused`: When true, recently used commands bubble up. Disable if you prefer alphabetical order.
+- `include_user`: Include user-defined commands.
 
 ### Keymaps
 
-Lists keymaps with their modes and, optionally, descriptions. The picker balances readability and density so you can
-search for a mapping by its LHS, RHS, or description without clutter.
+Lists keymaps with their modes and descriptions. The picker balances readability and density so you can search for a
+mapping by its LHS or RHS without clutter.
 
 ```lua
 local keymaps_picker = require("fuzzy.pickers.keymaps")
 
 keymaps_picker.open_keymaps_picker({
-  show_desc = true,
-  show_details = false,
+  include_buffer = true,
+  modes = { "n" },
+  max_text = 120,
 })
 ```
 
 Options and behavior:
 
-- `show_desc`: Adds keymap descriptions to display. This is highly recommended for discoverability.
+- `include_buffer`: Include buffer-local keymaps in addition to global mappings.
 
-- `show_details`: Adds verbose details and is useful for debugging, but it makes the list denser and harder to skim.
+- `modes`: List of modes to include.
+
+- `max_text`: Truncate RHS text to keep the list compact.
 
 ### Registers
 
@@ -701,14 +705,12 @@ makes it easy to find the right register without loading full blobs into the mat
 local registers_picker = require("fuzzy.pickers.registers")
 
 registers_picker.open_registers_picker({
-  filter = nil,
 })
 ```
 
 Options and behavior:
 
-- `filter`: Restrict which registers are included. Use this if you want to avoid large named registers or special
-  registers.
+This picker does not currently filter registers; it always lists the standard set.
 
 ### Marks
 
@@ -722,14 +724,12 @@ up front.
 local marks_picker = require("fuzzy.pickers.marks")
 
 marks_picker.open_marks_picker({
-  marks = "[a-z]",
 })
 ```
 
 Options and behavior:
 
-- `marks`: A pattern of marks to include. Use lowercase ranges for local marks, uppercase ranges for global marks, or a
-  combined pattern if you want both.
+This picker currently lists both buffer-local and global marks without filtering.
 
 ### Jumps
 
