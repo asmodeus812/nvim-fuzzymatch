@@ -84,28 +84,35 @@ function M.compare_tables(t1, t2, visited)
     -- Check if both are empty tables
     if next(t1) == nil and next(t2) == nil then return true end
 
-    -- Check table size by counting elements
-    local count1, count2 = 0, 0
-    for _ in pairs(t1) do count1 = count1 + 1 end
-    for _ in pairs(t2) do count2 = count2 + 1 end
-    if count1 ~= count2 then return false end
-
-    -- Recursively compare all key-value pairs
-    for k, v1 in pairs(t1) do
-        local v2 = t2[k]
-
-        -- Check if key exists in both tables
-        if v2 == nil then return false end
-
-        -- Recursively compare values
-        if not M.compare_tables(v1, v2, visited) then
-            return false
+    -- Fast path for array-like segments
+    local n1 = rawlen(t1)
+    local n2 = rawlen(t2)
+    if n1 > 0 or n2 > 0 then
+        if n1 ~= n2 then return false end
+        for i = 1, n1 do
+            if not M.compare_tables(t1[i], t2[i], visited) then
+                return false
+            end
         end
     end
 
-    -- Also check that t2 doesn't have extra keys not in t1
+    -- Recursively compare all key-value pairs
+    for k, v1 in pairs(t1) do
+        -- Skip array part already compared
+        if type(k) ~= "number" or k < 1 or k > n1 or k % 1 ~= 0 then
+            local v2 = t2[k]
+            if v2 == nil then return false end
+            if not M.compare_tables(v1, v2, visited) then
+                return false
+            end
+        end
+    end
+
+    -- Check for extra keys in t2 (excluding array part already compared)
     for k in pairs(t2) do
-        if t1[k] == nil then return false end
+        if type(k) ~= "number" or k < 1 or k > n2 or k % 1 ~= 0 then
+            if t1[k] == nil then return false end
+        end
     end
 
     return true
@@ -318,7 +325,7 @@ end
 --- @param bufinfo table|nil Optional buffer info table to use instead of fetching it
 --- @return string|nil The buffer name, or nil if the buffer is invalid
 function M.get_bufname(bufnr, bufinfo)
-    if not vim.api.nvim_buf_is_valid(bufnr) then
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
         return
     end
     if bufinfo and bufinfo.name and #bufinfo.name > 0 then

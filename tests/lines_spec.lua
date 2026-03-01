@@ -140,7 +140,7 @@ function M.run()
             if entry ~= nil then
                 entries[#entries + 1] = entry
             end
-        end, { buf = buf_a }, dir_a)
+        end, { current_buf = buf_a, buffers = { buf_a, buf_b } }, dir_a)
 
         local found_a = false
         local found_b = false
@@ -223,7 +223,7 @@ function M.run()
             if entry ~= nil then
                 entries[#entries + 1] = entry
             end
-        end, { buf = normal_buf }, nil)
+        end, { current_buf = normal_buf, buffers = { normal_buf, special_buf } }, nil)
         local found_special = false
         for _, entry in ipairs(entries) do
             if entry.bufnr == special_buf then
@@ -259,7 +259,7 @@ function M.run()
             if entry ~= nil then
                 entries[#entries + 1] = entry
             end
-        end, { buf = term_buf }, nil)
+        end, { current_buf = term_buf, buffers = { term_buf, qf_buf } }, nil)
         local found_term = false
         local found_qf = false
         for _, entry in ipairs(entries) do

@@ -49,18 +49,24 @@ function M.open_manpages_picker(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
-            local manpage_list = collect_manpage_entries()
+        content = function(stream_callback, args)
+            local manpage_list = args.items
             for _, manpage in ipairs(manpage_list) do
                 stream_callback(manpage)
             end
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Manpages", opts),
+        context = {
+            args = function(_)
+                return {
+                    items = collect_manpage_entries(),
+                }
+            end,
+        },
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                assert(type(entry_value) == "string" and #entry_value > 0)
                 vim.cmd({ cmd = "Man", args = { entry_value } })
                 return false
             end)),

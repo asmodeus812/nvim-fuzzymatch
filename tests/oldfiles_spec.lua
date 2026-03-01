@@ -66,7 +66,7 @@ function M.run()
             if entry ~= nil then
                 entries[#entries + 1] = entry
             end
-        end, nil, dir_a)
+        end, { items = vim.v.oldfiles or {} }, dir_a)
 
         local filenames = {}
         for _, entry in ipairs(entries) do

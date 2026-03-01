@@ -98,12 +98,10 @@ function M.open_grep_picker(opts)
         icons = true,
         prompt_debounce = 200,
     }, opts)
+
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
-
-    local cmd, args = build_grep_command(opts)
-    assert(cmd)
 
     local converter = Picker.Converter.new(
         Picker.grep_converter,
@@ -137,13 +135,14 @@ function M.open_grep_picker(opts)
         return regex_text or query, extra_args
     end
 
+    local cmd, args = build_grep_command(opts)
     local function build_interactive_arguments(query, ctx)
         local args_list = vim.list_extend({}, ctx.args or {})
         local pattern, extra = parse_query_value(query)
 
         if cmd == "rg" then
             table.insert(args_list, pattern)
-            if type(extra) == "string" and #extra > 0 then
+            if extra and #extra > 0 then
                 table.insert(args_list, "--")
                 vim.list_extend(args_list, split_argument_list(extra))
             elseif type(extra) == "table" and #extra > 0 then
@@ -179,11 +178,11 @@ function M.open_grep_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = cmd,
+        content = assert(cmd),
         headers = util.build_picker_headers("Grep", opts),
         context = {
-            args = args,
             env = env,
+            args = args,
             cwd = opts.cwd,
             interactive = build_interactive_arguments,
         },

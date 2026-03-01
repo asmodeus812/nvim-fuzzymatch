@@ -1,5 +1,6 @@
 local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
+local utils = require("fuzzy.utils")
 local util = require("fuzzy.pickers.util")
 
 --- @class OldfilesPickerOptions
@@ -17,6 +18,7 @@ local M = {}
 --- @param opts OldfilesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_oldfiles_picker(opts)
+    local conv = Select.default_converter
     opts = util.merge_picker_options({
         cwd = nil,
         max = nil,
@@ -27,11 +29,10 @@ function M.open_oldfiles_picker(opts)
         preview = true,
         icons = true,
     }, opts)
+
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
-
-    local conv = Select.default_converter
 
     if opts.preview == true then
         opts.preview = Select.BufferPreview.new(nil, conv)
@@ -45,11 +46,12 @@ function M.open_oldfiles_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, _, cwd)
+        content = function(stream_callback, args, cwd)
+            local oldfiles = args.items
             local seen_file_map = {}
             local seen_file_count = 0
-            for _, file_path in ipairs(vim.v.oldfiles or {}) do
-                if type(file_path) == "string" and #file_path > 0 then
+            for _, file_path in ipairs(oldfiles) do
+                if file_path and #file_path > 0 then
                     if not seen_file_map[file_path] and (not cwd or util.is_under_directory(cwd, file_path))
                     then
                         local stat = vim.loop.fs_stat(file_path)
@@ -74,12 +76,15 @@ function M.open_oldfiles_picker(opts)
         headers = util.build_picker_headers("Oldfiles", opts),
         context = {
             cwd = opts.cwd,
+            args = function(_)
+                return { items = vim.v.oldfiles or {} }
+            end,
         },
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
-            local filename = entry_value and entry_value.filename or ""
+            local filename = entry_value.filename or utils.NO_NAME
             return util.format_display_path(filename, opts)
         end,
     }, util.build_picker_options(opts)))

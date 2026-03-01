@@ -21,24 +21,15 @@ function M.open_tabs_picker(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
-            local tabpage_list = vim.api.nvim_list_tabpages() or {}
+        content = function(stream_callback, args)
+            local tabpage_list = args.items
             for _, tabpage in ipairs(tabpage_list) do
                 if not vim.api.nvim_tabpage_is_valid(tabpage) then
                     goto continue
                 end
-                local file_path = nil
                 local window_list = vim.api.nvim_tabpage_list_wins(tabpage)
-                local active_window_id = window_list[1]
-                local buf = active_window_id
-                    and vim.api.nvim_win_get_buf(active_window_id)
-                    or nil
-                if buf and buf ~= 0 then
-                    file_path = utils.get_bufname(buf)
-                end
-                if not file_path or #file_path == 0 then
-                    file_path = utils.NO_NAME
-                end
+                local buf = window_list[1] and vim.api.nvim_win_get_buf(window_list[1])
+                local file_path = buf and utils.get_bufname(buf) or utils.NO_NAME
                 stream_callback({
                     tabpage = tabpage,
                     file_path = file_path,
@@ -48,23 +39,27 @@ function M.open_tabs_picker(opts)
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Tabs", opts),
+        context = {
+            args = function(_)
+                return {
+                    items = vim.api.nvim_list_tabpages() or {},
+                }
+            end,
+        },
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                local tabpage = type(entry_value) == "table"
-                    and entry_value.tabpage or entry_value
+                local tabpage = entry_value.tabpage
                 assert(vim.api.nvim_tabpage_is_valid(tabpage))
                 vim.api.nvim_set_current_tabpage(tabpage)
                 return false
             end)),
         },
         display = function(entry_value)
-            local tabpage = type(entry_value) == "table"
-                and entry_value.tabpage or entry_value
+            local tabpage = assert(entry_value.tabpage)
             assert(vim.api.nvim_tabpage_is_valid(tabpage))
             local tabpage_index = vim.api.nvim_tabpage_get_number(tabpage)
-            local file_path = type(entry_value) == "table"
-                and assert(entry_value.file_path) or utils.NO_NAME
+            local file_path = assert(entry_value.file_path)
             file_path = util.format_display_path(file_path, opts)
             return table.concat({ "[", tabpage_index, "] ", file_path })
         end,

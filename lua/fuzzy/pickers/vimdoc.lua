@@ -17,8 +17,8 @@ local function normalize_params(params)
     for _, param in ipairs(params or {}) do
         local ptype = type(param) == "table" and param[1] or nil
         local pname = type(param) == "table" and param[2] or nil
-        if type(ptype) == "string" and #ptype > 0 then
-            if type(pname) == "string" and #pname > 0 then
+        if ptype and #ptype > 0 then
+            if pname and #pname > 0 then
                 parts[#parts + 1] = string.format("%s %s", ptype, pname)
             else
                 parts[#parts + 1] = ptype
@@ -56,7 +56,7 @@ local function pass_filters(entry, opts)
     if not entry or not entry.name then
         return false
     end
-    if type(opts.prefix) == "string" and #opts.prefix > 0
+    if opts.prefix and #opts.prefix > 0
         and not vim.startswith(entry.name, opts.prefix)
     then
         return false
@@ -105,7 +105,7 @@ local function collect_api_entries(opts)
 end
 
 local function open_api_help(entry_value)
-    local tag = type(entry_value) == "table" and entry_value.tag or entry_value
+    local tag = entry_value.tag
     if type(tag) ~= "string" or #tag == 0 then
         return false
     end
@@ -187,14 +187,21 @@ function M.open_vimdoc_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
-            local entry_list = collect_api_entries(opts)
+        content = function(stream_callback, args)
+            local entry_list = args.items
             for _, entry in ipairs(entry_list) do
                 stream_callback(entry)
             end
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Vimdoc", opts),
+        context = {
+            args = function(_)
+                return {
+                    items = collect_api_entries(opts),
+                }
+            end,
+        },
         preview = opts.preview,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)

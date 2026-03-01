@@ -76,7 +76,7 @@ function M.open_spell_suggest(opts)
     end
     local limit = tonumber(opts.suggest_limit_count) or 25
     local items = {}
-    if type(target) == "string" and #target > 0 then
+    if target and #target > 0 then
         items = vim.fn.spellsuggest(
             target,
             limit
@@ -94,7 +94,7 @@ function M.open_spell_suggest(opts)
         "Spell",
         opts
     )
-    if type(target) == "string" and #target > 0 then
+    if target and #target > 0 then
         headers = headers or {}
         table.insert(headers, { target })
     end

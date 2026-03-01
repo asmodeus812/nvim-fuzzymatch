@@ -32,9 +32,10 @@ function M.open_registers_picker(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
-            local register_name_list = collect_register_list()
-            for _, register_name in ipairs(register_name_list) do
+        content = function(stream_callback, args)
+            local register_list = args.items
+            for _, register_entry in ipairs(register_list) do
+                local register_name = register_entry.name
                 local register_info = vim.fn.getreginfo(register_name)
                 local register_preview = ""
                 if register_info and register_info.regcontents then
@@ -63,11 +64,20 @@ function M.open_registers_picker(opts)
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Registers", opts),
+        context = {
+            args = function(_)
+                local register_name_list = collect_register_list()
+                local items = {}
+                for _, register_name in ipairs(register_name_list) do
+                    items[#items + 1] = vim.fn["fuzzymatch#getregsig"](register_name)
+                end
+                return { items = items }
+            end,
+        },
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                local register_name = entry_value and entry_value.name or ""
-                assert(type(register_name) == "string" and #register_name > 0)
+                local register_name = entry_value and entry_value.name or nil
                 local regcontents = entry_value and entry_value.regcontents or nil
                 local regtype = entry_value and entry_value.regtype or nil
                 if regcontents == nil then
@@ -75,14 +85,12 @@ function M.open_registers_picker(opts)
                     regcontents = register_info.regcontents
                     regtype = register_info.regtype
                 end
-                assert(regcontents ~= nil)
-                vim.fn.setreg('"', regcontents, regtype)
+                vim.fn.setreg('"', assert(regcontents), regtype)
                 return false
             end)),
         },
         display = function(entry_value)
-            local register_name = entry_value and entry_value.name or ""
-            assert(type(register_name) == "string" and #register_name > 0)
+            local register_name = entry_value and entry_value.name or nil
             local register_preview = entry_value and entry_value.preview or ""
             return table.concat({ "[", register_name, "] ", register_preview })
         end,

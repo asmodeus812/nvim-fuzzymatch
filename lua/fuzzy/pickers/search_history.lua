@@ -16,18 +16,24 @@ function M.open_search_history(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
-            local search_history_list = util.collect_history_entries("search")
+        content = function(stream_callback, args)
+            local search_history_list = args.items
             for _, history_entry in ipairs(search_history_list) do
                 stream_callback(history_entry)
             end
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Search History", opts),
+        context = {
+            args = function(_)
+                return {
+                    items = util.collect_history_entries("search"),
+                }
+            end,
+        },
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                assert(type(entry_value) == "string" and #entry_value > 0)
                 vim.fn.setreg("/", entry_value)
                 return false
             end)),

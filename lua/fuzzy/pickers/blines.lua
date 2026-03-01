@@ -33,19 +33,27 @@ function M.open_blines_picker(opts)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
+
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, args)
-            local buf = args and args.buf or vim.api.nvim_get_current_buf()
-            util.stream_line_numbers(
-                buf,
-                stream_callback
-            )
+            local buf = args.buf
+            local line_count = args.line_count
+            for line_number = 1, line_count do
+                stream_callback({
+                    bufnr = buf,
+                    lnum = line_number,
+                })
+            end
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("BLines", opts),
         context = {
             args = function(_)
-                return { buf = vim.api.nvim_get_current_buf() }
+                local buf = vim.api.nvim_get_current_buf()
+                return {
+                    buf = buf,
+                    line_count = vim.api.nvim_buf_line_count(buf),
+                }
             end,
         },
         preview = opts.preview,

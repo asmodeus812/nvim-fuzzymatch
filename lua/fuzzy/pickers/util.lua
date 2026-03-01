@@ -77,7 +77,7 @@ function M.build_picker_headers(picker_title, picker_options)
     local header_blocks = { { picker_title } }
     if picker_options and picker_options.cwd and picker_options.cwd_prompt then
         local cwd = M.resolve_working_directory(picker_options.cwd)
-        if type(cwd) == "string" and #cwd > 0 then
+        if cwd and #cwd > 0 then
             local header_text = cwd
             if picker_options.cwd_prompt_shorten_len then
                 header_text = vim.fn.pathshorten(
@@ -278,7 +278,7 @@ function M.collect_history_entries(history_type)
     local history_count = vim.fn.histnr(history_type)
     for index = history_count, 1, -1 do
         local history_entry = vim.fn.histget(history_type, index)
-        if type(history_entry) == "string" and #history_entry > 0 then
+        if history_entry and #history_entry > 0 then
             history_entry_list[#history_entry_list + 1] = history_entry
         end
     end

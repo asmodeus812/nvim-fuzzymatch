@@ -26,11 +26,7 @@ function M.open_quickfix_picker(opts)
         preview = true,
         icons = true,
     }, opts)
-    if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
-    end
 
-    local qf_info = vim.fn.getqflist({ items = 1, title = 1 })
     local converter_cb = function(entry_value)
         return {
             bufnr = entry_value.bufnr,
@@ -39,6 +35,11 @@ function M.open_quickfix_picker(opts)
             col = entry_value.col or 1,
         }
     end
+
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
+    end
+
     if opts.preview == true then
         opts.preview = Select.BufferPreview.new(nil, converter_cb)
     elseif opts.preview == false or opts.preview == nil then
@@ -49,25 +50,19 @@ function M.open_quickfix_picker(opts)
     if opts.icons ~= false then
         decorators = { Select.IconDecorator.new(converter_cb) }
     end
+
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, _, cwd)
-            local qf_items = qf_info.items or {}
+        content = function(stream_callback, args, cwd)
+            local qf_items = args.items
             for _, entry_value in ipairs(qf_items) do
                 local filename = entry_value.filename
                 if not filename or #filename == 0 then
                     local buf = entry_value.bufnr
-                    if buf and buf > 0 then
-                        filename = utils.get_bufname(buf)
-                    end
+                    filename = utils.get_bufname(buf)
                 end
-                if cwd
-                    and #cwd > 0
-                    and filename
-                    and #filename > 0
-                    and not util.is_under_directory(
-                        cwd,
-                        filename
-                    ) then
+                if cwd and #cwd > 0 and filename and #filename > 0
+                    and not util.is_under_directory(cwd, filename)
+                then
                     goto continue
                 end
                 stream_callback(vim.tbl_extend("force", {}, entry_value, {
@@ -77,12 +72,13 @@ function M.open_quickfix_picker(opts)
             end
             stream_callback(nil)
         end,
-        headers = util.build_picker_headers(
-            qf_info.title or "Quickfix",
-            opts
-        ),
+        headers = util.build_picker_headers("Quickfix", opts),
         context = {
             cwd = opts.cwd,
+            args = function()
+                local info = vim.fn.getqflist({ items = 1, title = 1 })
+                return { items = info.items or {} }
+            end
         },
         preview = opts.preview,
         actions = util.build_default_actions(converter_cb, opts),
@@ -94,10 +90,7 @@ function M.open_quickfix_picker(opts)
                 display_path = utils.NO_NAME
             end
             return util.format_location_entry(
-                display_path,
-                entry.lnum or 1,
-                entry.col or 1,
-                entry.text,
+                display_path, entry.lnum or 1, entry.col or 1, entry.text,
                 table.concat({ "[", (entry.bufnr or "?"), "]" })
             )
         end,

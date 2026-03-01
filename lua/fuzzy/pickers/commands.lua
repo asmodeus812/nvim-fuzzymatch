@@ -50,21 +50,26 @@ function M.open_commands_picker(opts)
         include_user = true,
         preview = false,
     }, opts)
-    opts.preview = false
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
-            local command_name_list = collect_command_names(opts)
+        content = function(stream_callback, args)
+            local command_name_list = args.items
             for _, command_name in ipairs(command_name_list) do
                 stream_callback(command_name)
             end
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Commands", opts),
+        context = {
+            args = function(_)
+                return {
+                    items = collect_command_names(opts),
+                }
+            end,
+        },
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                assert(type(entry_value) == "string" and #entry_value > 0)
                 vim.cmd(entry_value)
                 return false
             end)),

@@ -85,12 +85,10 @@ function M.open_files_picker(opts)
         preview = true,
         icons = true,
     }, opts)
+
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
-
-    local cmd, args = build_files_command(opts)
-    assert(cmd)
 
     local converter = Picker.Converter.new(
         Picker.default_converter,
@@ -109,8 +107,9 @@ function M.open_files_picker(opts)
         decorators = { Select.IconDecorator.new(conv) }
     end
 
+    local cmd, args = build_files_command(opts)
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = cmd,
+        content = assert(cmd),
         headers = util.build_picker_headers("Files", opts),
         context = {
             args = args,

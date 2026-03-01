@@ -200,7 +200,10 @@ function M.run()
             if entry ~= nil then
                 entries[#entries + 1] = entry
             end
-        end, { tab = vim.api.nvim_get_current_tabpage() }, cwd_dir)
+        end, {
+            tab = vim.api.nvim_get_current_tabpage(),
+            buf = vim.api.nvim_get_current_buf(),
+        }, cwd_dir)
         local found_cwd = false
         local found_other = false
         for _, entry in ipairs(entries) do

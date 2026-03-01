@@ -7,7 +7,6 @@ local M = {
 --- @param picker Picker
 --- @return Picker
 function M.register_picker_instance(picker_key, picker)
-    assert(type(picker_key) == "string" and #picker_key > 0)
     M.picker_instance_map[picker_key] = picker
     return picker
 end
@@ -16,7 +15,6 @@ end
 --- @param picker_key string
 --- @return Picker|nil
 function M.get_picker_instance(picker_key)
-    assert(type(picker_key) == "string" and #picker_key > 0)
     return M.picker_instance_map[picker_key]
 end
 
@@ -24,7 +22,6 @@ end
 --- @param picker_key string
 --- @return Picker|nil
 function M.remove_picker_instance(picker_key)
-    assert(type(picker_key) == "string" and #picker_key > 0)
     local picker = M.picker_instance_map[picker_key]
     M.picker_instance_map[picker_key] = nil
     return picker

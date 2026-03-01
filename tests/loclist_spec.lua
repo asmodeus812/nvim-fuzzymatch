@@ -112,11 +112,14 @@ function M.run()
             end)
             helpers.assert_ok(captured and captured.content, "content missing")
             local entries = {}
+            local content_args = {
+                items = vim.fn.getloclist(0, { items = 1, title = 1 }).items or {},
+            }
             captured.content(function(entry)
                 if entry ~= nil then
                     entries[#entries + 1] = entry
                 end
-            end, nil, dir_a)
+            end, content_args, dir_a)
             helpers.eq(#entries, 1, "cwd filtered")
             local entry_name = entries[1].filename or ""
             helpers.eq(vim.fs.normalize(entry_name), vim.fs.normalize(file_a), "cwd include")

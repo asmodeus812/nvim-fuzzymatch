@@ -1,6 +1,5 @@
 ---@diagnostic disable: invisible
 local helpers = require("script.test_utils")
-local util = require("fuzzy.pickers.util")
 
 local M = { name = "command_history" }
 
@@ -19,7 +18,6 @@ function M.run()
         }, function()
             local history_picker = require("fuzzy.pickers.command_history")
             local picker = history_picker.open_command_history({
-                preview = false,
                 prompt_debounce = 0,
             })
             helpers.wait_for_list(picker)
@@ -41,7 +39,6 @@ function M.run()
             }, function()
                 local history_picker = require("fuzzy.pickers.command_history")
                 local picker = history_picker.open_command_history({
-                    preview = false,
                     prompt_debounce = 0,
                 })
                 helpers.wait_for_list(picker)

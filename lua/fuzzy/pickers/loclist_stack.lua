@@ -16,8 +16,8 @@ function M.open_loclist_stack(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
-            local history_text = vim.fn.execute("lhistory")
+        content = function(stream_callback, args)
+            local history_text = args.history_text
             local history_entry_list = util.parse_stack_entries(history_text)
             for _, history_entry in ipairs(history_entry_list) do
                 stream_callback(history_entry)
@@ -25,6 +25,13 @@ function M.open_loclist_stack(opts)
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Loclist Stack", opts),
+        context = {
+            args = function(_)
+                return {
+                    history_text = vim.fn.execute("lhistory"),
+                }
+            end,
+        },
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)

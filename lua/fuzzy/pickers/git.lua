@@ -60,7 +60,6 @@ local function build_git_picker(opts, config)
 end
 
 local function parse_git_status_entry(entry)
-    assert(type(entry) == "string" and #entry > 0)
     local _, _, file_path = entry:find("^..%s+(.+)$")
     assert(file_path ~= nil and #file_path > 0)
     local arrow_position = file_path:find("%s+->%s+")
@@ -78,6 +77,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_files(opts)
+    assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         untracked = true,
@@ -88,8 +88,6 @@ function M.open_git_files(opts)
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
-
-    assert(util.command_is_available("git"))
 
     local command_args = { "ls-files" }
     if opts.untracked then
@@ -136,6 +134,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_status(opts)
+    assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         preview = true,
@@ -145,8 +144,6 @@ function M.open_git_status(opts)
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
-
-    assert(util.command_is_available("git"))
 
     local converter = Picker.Converter.new(
         parse_git_status_entry,
@@ -164,6 +161,7 @@ function M.open_git_status(opts)
     if opts.icons ~= false then
         decorators = { Select.IconDecorator.new(converter_cb) }
     end
+
     local picker = build_git_picker(opts, {
         title = "Status",
         context = {
@@ -179,7 +177,6 @@ function M.open_git_status(opts)
         decorators = decorators,
         actions = util.build_default_actions(converter_cb, opts),
         display = function(entry_value)
-            assert(type(entry_value) == "string")
             return entry_value
         end,
         bind = function(instance)
@@ -193,6 +190,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_branches(opts)
+    assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         preview = false,
@@ -201,8 +199,6 @@ function M.open_git_branches(opts)
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
-
-    assert(util.command_is_available("git"))
 
     local command_args = {
         "branch",
@@ -229,6 +225,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_commits(opts)
+    assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         preview = false,
@@ -237,8 +234,6 @@ function M.open_git_commits(opts)
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
-
-    assert(util.command_is_available("git"))
 
     local command_args = {
         "log",
@@ -264,6 +259,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_stash(opts)
+    assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         preview = false,
@@ -272,8 +268,6 @@ function M.open_git_stash(opts)
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
-
-    assert(util.command_is_available("git"))
 
     local command_args = {
         "--no-pager",
@@ -296,6 +290,7 @@ end
 --- @param opts GitPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_git_bcommits(opts)
+    assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
         cwd = true,
         preview = false,
@@ -304,8 +299,6 @@ function M.open_git_bcommits(opts)
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
-
-    assert(util.command_is_available("git"))
 
     return build_git_picker(opts, {
         title = "BCommits",

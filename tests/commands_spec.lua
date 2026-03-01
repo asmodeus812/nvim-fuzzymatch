@@ -15,7 +15,6 @@ function M.run()
             local picker = commands_picker.open_commands_picker({
                 include_builtin = false,
                 include_user = true,
-                preview = false,
                 prompt_debounce = 0,
             })
             helpers.wait_for_list(picker)
@@ -39,7 +38,6 @@ function M.run()
                 local picker = commands_picker.open_commands_picker({
                     include_builtin = true,
                     include_user = false,
-                    preview = false,
                     prompt_debounce = 0,
                 })
                 helpers.wait_for_list(picker)
@@ -57,29 +55,6 @@ function M.run()
                 helpers.assert_ok(found, "cmd")
                 helpers.close_picker(picker)
             end)
-        end)
-    end)
-
-    helpers.run_test_case("commands_preview_ignored", function()
-        helpers.with_mock(vim.api, "nvim_get_commands", function(opts)
-            if opts and opts.builtin then
-                return { edit = {} }
-            end
-            return {}
-        end, function()
-            local commands_picker = require("fuzzy.pickers.commands")
-            local picker = commands_picker.open_commands_picker({
-                include_builtin = true,
-                include_user = false,
-                preview = true,
-                prompt_debounce = 0,
-            })
-            helpers.wait_for_list(picker)
-            helpers.assert_ok(
-                picker.select._options.preview == false or picker.select._options.preview == nil,
-                "preview should remain disabled"
-            )
-            helpers.close_picker(picker)
         end)
     end)
 end

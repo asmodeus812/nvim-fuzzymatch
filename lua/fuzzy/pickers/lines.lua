@@ -45,16 +45,16 @@ function M.open_lines_picker(opts)
         preview = false,
     }, opts)
 
-    if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
-    end
-
     local converter_cb = function(entry)
         return {
             bufnr = entry.bufnr,
             lnum = entry.lnum or 1,
             col = 1,
         }
+    end
+
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
     end
 
     local decorator = Select.Decorator.new()
@@ -78,10 +78,11 @@ function M.open_lines_picker(opts)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
+
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, args, cwd)
-            local buffers = vim.api.nvim_list_bufs() or {}
-            local current_buf = args and args.buf or vim.api.nvim_get_current_buf()
+            local buffers = args.buffers
+            local current_buf = args.current_buf
             for _, buf in ipairs(buffers) do
                 if vim.api.nvim_buf_is_valid(buf)
                     and should_include_buftype(opts, vim.bo[buf].buftype)
@@ -115,7 +116,8 @@ function M.open_lines_picker(opts)
             cwd = opts.cwd,
             args = function(_)
                 return {
-                    buf = vim.api.nvim_get_current_buf(),
+                    current_buf = vim.api.nvim_get_current_buf(),
+                    buffers = vim.api.nvim_list_bufs() or {},
                 }
             end,
         },

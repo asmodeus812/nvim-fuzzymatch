@@ -48,9 +48,8 @@ function M.open_changes_picker(opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, args)
-            local change_list_data = vim.fn.getchangelist(args.buf)
-            local change_entry_list = change_list_data[1] or {}
-            local filename = utils.get_bufname(args.buf)
+            local change_entry_list = args.items
+            local filename = args.filename
             for _, entry_value in ipairs(change_entry_list) do
                 local change_entry = vim.tbl_extend("force", {}, entry_value, {
                     bufnr = args.buf,
@@ -68,6 +67,8 @@ function M.open_changes_picker(opts)
                 return {
                     buf = buf,
                     tick = vim.api.nvim_buf_get_changedtick(buf),
+                    filename = utils.get_bufname(buf),
+                    items = (vim.fn.getchangelist(buf)[1] or {}),
                 }
             end,
         },
@@ -76,11 +77,7 @@ function M.open_changes_picker(opts)
         decorators = decorators,
         display = function(entry_value)
             return util.format_location_entry(
-                nil,
-                entry_value.lnum or 1,
-                entry_value.col or 1,
-                nil,
-                nil
+                nil, entry_value.lnum or 1, entry_value.col or 1
             )
         end,
     }, util.build_picker_options(opts)))

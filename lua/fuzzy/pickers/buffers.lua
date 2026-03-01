@@ -142,6 +142,7 @@ function M.open_buffers_picker(opts)
         preview = true,
         icons = true,
     }, opts)
+
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
@@ -156,12 +157,11 @@ function M.open_buffers_picker(opts)
     if opts.icons ~= false then
         decorators = { Select.IconDecorator.new() }
     end
+
     local prefix_decorator = Select.Decorator.new()
     function prefix_decorator:decorate(entry_value)
-        local buf = type(entry_value) == "table"
-            and entry_value.bufnr or entry_value
-        local buffer_info = type(entry_value) == "table"
-            and entry_value.buffer_info or nil
+        local buf = entry_value.bufnr
+        local buffer_info = entry_value.buffer_info
         local buf_info = buffer_info or utils.get_bufinfo(buf)
         local info = buf_info.info
 
@@ -192,7 +192,7 @@ function M.open_buffers_picker(opts)
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, args, cwd)
             local included_buffer_map
-            local buf_list = vim.api.nvim_list_bufs() or {}
+            local buf_list = args.buffers_list or {}
 
             if opts.current_tab == true then
                 included_buffer_map = {}
@@ -205,9 +205,7 @@ function M.open_buffers_picker(opts)
             end
 
             buf_list = filter_buffer_numbers(
-                opts,
-                args.buf,
-                buf_list,
+                opts, args.buf, buf_list,
                 included_buffer_map
             )
 
@@ -241,25 +239,16 @@ function M.open_buffers_picker(opts)
                 return {
                     buf = vim.api.nvim_get_current_buf(),
                     tab = vim.api.nvim_get_current_tabpage(),
+                    buffers_list = vim.api.nvim_list_bufs(),
                 }
             end,
         },
         preview = opts.preview,
-        actions = util.build_default_actions(
-            Picker.default_converter,
-            opts
-        ),
+        actions = util.build_default_actions(Picker.default_converter, opts),
         decorators = decorators,
         display = function(entry_value)
-            local buffer_name = type(entry_value) == "table"
-                and entry_value.filename or nil
-            if not buffer_name or #buffer_name == 0 then
-                buffer_name = utils.NO_NAME
-            end
-            return util.format_display_path(
-                buffer_name,
-                opts
-            )
+            local buffer_name = entry_value.filename or utils.NO_NAME
+            return util.format_display_path(buffer_name, opts)
         end,
     }, util.build_picker_options(opts)))
 

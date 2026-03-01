@@ -71,11 +71,11 @@ function M.open_marks_picker(opts)
         decorators = { Select.IconDecorator.new(conv) }
     end
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
-            local mark_entry_list = collect_mark_list(opts)
+        content = function(stream_callback, args)
+            local mark_entry_list = args.items
             for _, entry_value in ipairs(mark_entry_list) do
-                if opts.marks
-                    and type(entry_value.mark) == "string"
+                if opts.marks ~= nil
+                    and entry_value.mark
                     and not entry_value.mark:match(opts.marks)
                 then
                     goto continue
@@ -84,9 +84,7 @@ function M.open_marks_picker(opts)
                 if not filename or #filename == 0 then
                     local mark_position = entry_value.pos or {}
                     local buf = mark_position[1]
-                    if buf and buf > 0 then
-                        filename = utils.get_bufname(buf)
-                    end
+                    filename = utils.get_bufname(buf)
                 end
                 stream_callback(vim.tbl_extend("force", {}, entry_value, {
                     file = filename or utils.NO_NAME,
@@ -96,12 +94,18 @@ function M.open_marks_picker(opts)
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Marks", opts),
+        context = {
+            args = function(_)
+                return {
+                    items = collect_mark_list(opts),
+                }
+            end,
+        },
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
             local mark_position = entry_value.pos or {}
-            local buf = mark_position[1]
             local line_number = mark_position[2]
             local column_number = mark_position[3]
             local filename = assert(entry_value.file)
@@ -110,10 +114,7 @@ function M.open_marks_picker(opts)
                 display_path = utils.NO_NAME
             end
             return util.format_location_entry(
-                filename,
-                line_number or 1,
-                column_number or 1,
-                nil,
+                filename, line_number or 1, column_number or 1, nil,
                 table.concat({ "[", entry_value.mark or "?", "]" })
             )
         end,

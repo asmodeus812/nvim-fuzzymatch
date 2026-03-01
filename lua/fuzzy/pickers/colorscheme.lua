@@ -8,7 +8,6 @@ local util = require("fuzzy.pickers.util")
 local M = {}
 
 local function apply_colorscheme_name(colorscheme_name)
-    assert(type(colorscheme_name) == "string" and #colorscheme_name > 0)
     local ok = pcall(vim.cmd.colorscheme, colorscheme_name)
     assert(ok)
     return true
@@ -30,7 +29,6 @@ function M.open_colorscheme_picker(opts)
     local preview_instance_object = false
     if opts.preview ~= false then
         preview_instance_object = Select.CustomPreview.new(function(entry_value, buffer_id, _)
-            assert(type(entry_value) == "string" and #entry_value > 0)
             if opts.live_preview
                 and entry_value ~= preview_state_table.last then
                 apply_colorscheme_name(entry_value)
@@ -74,14 +72,21 @@ function M.open_colorscheme_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
-            local colorscheme_name_list = vim.fn.getcompletion("", "color") or {}
+        content = function(stream_callback, args)
+            local colorscheme_name_list = args.items
             for _, colorscheme_name in ipairs(colorscheme_name_list) do
                 stream_callback(colorscheme_name)
             end
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Colorschemes", opts),
+        context = {
+            args = function(_)
+                return {
+                    items = vim.fn.getcompletion("", "color") or {},
+                }
+            end,
+        },
         preview = preview_instance_object,
         actions = action_map_table,
     }, util.build_picker_options(opts)))

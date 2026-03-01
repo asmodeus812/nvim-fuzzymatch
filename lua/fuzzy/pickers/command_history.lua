@@ -16,18 +16,24 @@ function M.open_command_history(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
-            local command_history_list = util.collect_history_entries("cmd")
+        content = function(stream_callback, args)
+            local command_history_list = args.items
             for _, history_entry in ipairs(command_history_list) do
                 stream_callback(history_entry)
             end
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Command History", opts),
+        context = {
+            args = function(_)
+                return {
+                    items = util.collect_history_entries("cmd"),
+                }
+            end,
+        },
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                assert(type(entry_value) == "string" and #entry_value > 0)
                 vim.cmd(entry_value)
                 return false
             end)),
