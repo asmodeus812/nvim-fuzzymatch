@@ -85,8 +85,8 @@ function M.compare_tables(t1, t2, visited)
     if next(t1) == nil and next(t2) == nil then return true end
 
     -- Fast path for array-like segments
-    local n1 = rawlen(t1)
-    local n2 = rawlen(t2)
+    local n1 = #t1
+    local n2 = #t2
     if n1 > 0 or n2 > 0 then
         if n1 ~= n2 then return false end
         for i = 1, n1 do
