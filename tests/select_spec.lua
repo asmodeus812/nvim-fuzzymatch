@@ -310,6 +310,44 @@ local function run_prompt_case()
     select:close()
 end
 
+local function run_prompt_sync_results_case()
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = function(query)
+            if query == "sync" then
+                return { "alpha", "beta" }
+            end
+            if query == "sync-pos" then
+                return {
+                    entries = { "gamma", "delta" },
+                    positions = {},
+                }
+            end
+        end,
+        preview = false,
+    })
+
+    select:open()
+    local list_ready = helpers.wait_for(function()
+        return helpers.is_window_valid(select.list_window)
+    end, 1500)
+    helpers.assert_ok(list_ready, "prompt sync list window")
+
+    select:_prompt_input("sync", select._options.prompt_input)
+    helpers.wait_for(function()
+        return select._state.entries and #select._state.entries == 2
+    end, 1500)
+    helpers.eq(select._state.entries[1], "alpha", "prompt sync entries")
+
+    select:_prompt_input("sync-pos", select._options.prompt_input)
+    helpers.wait_for(function()
+        return select._state.entries and #select._state.entries == 2
+    end, 1500)
+    helpers.eq(select._state.entries[1], "gamma", "prompt sync entries+positions")
+
+    select:close()
+end
+
 local function run_preview_case()
     local preview = Select.CustomPreview.new(function(entry)
         return {
@@ -397,6 +435,7 @@ function M.run()
     run_basic_case()
     run_toggle_case()
     run_prompt_case()
+    run_prompt_sync_results_case()
     run_preview_case()
     run_converter_case()
 end

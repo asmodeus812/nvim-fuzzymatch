@@ -202,7 +202,7 @@ function Match:_match_worker()
     local items = self._state.tail or self._state.chunks
     local args = { items, self.pattern, self.transform }
     -- TODO: blocker issue match - https://github.com/vim/vim/issues/19540
-    local results = utils.time_execution(vim.fn.matchfuzzypos, unpack(args))
+    local results, duration = utils.timed_call(vim.fn.matchfuzzypos, unpack(args))
 
     local strings = results[1]
     local positions = results[2]
@@ -226,7 +226,7 @@ function Match:_match_worker()
             self._state.accum[3] = Pool.attach(scores)
         else
             -- merge the new results with the accumulated ones, using double buffering to avoid allocations
-            local result = utils.time_execution(Match.merge,
+            local result, _ = utils.timed_call(Match.merge,
                 self._state.buffer, self._state.accum,
                 { strings, positions, scores }
             )

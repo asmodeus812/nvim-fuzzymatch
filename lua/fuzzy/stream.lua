@@ -2,7 +2,6 @@ local Scheduler = require("fuzzy.scheduler")
 local Async = require("fuzzy.async")
 local Pool = require("fuzzy.pool")
 local utils = require("fuzzy.utils")
-local BASEMSG = "Stream failed with"
 
 --- @class Stream
 --- @field public results string[]|nil The results accumulated so far, this is only valid after the stream has finished, or if the stream is ephemeral and a new stream has not yet started.
@@ -156,7 +155,7 @@ function Stream:_handle_data(data, size)
     if size == self._options.step then
         -- when the size has reached the maximum allowed, flush the buffer, and send it over for processing to
         -- the user provided callback
-        self:_flush_results()
+        utils.timed_call(Stream._flush_results, self)
     end
 
     data = self:_transform_data(data)
@@ -180,7 +179,7 @@ function Stream:_handle_out(code, chunk)
         -- of stdout or stderr, then we need to finally flush it as well, this is to ensure that there is no left over unprocessed data
         -- after the stream has closed
         if self._state.size > 0 then
-            self:_flush_results()
+            utils.timed_call(Stream._flush_results, self)
         end
         self:stop()
     end
@@ -465,27 +464,11 @@ function Stream.new(opts)
         onexit = { opts.onexit, "function", true },
     })
     opts = vim.tbl_deep_extend("force", {
+        onexit = utils.handle_exit,
         ephemeral = true,
         bytes = false,
         lines = true,
         step = 100000,
-        onexit = function(code, msg)
-            if not code or code == 0 then
-                return
-            end
-            if type(msg) ~= "string" then
-                msg = string.format(
-                    "%s code: %d",
-                    BASEMSG, code
-                )
-            else
-                msg = string.format(
-                    "%s: %s and code: %d",
-                    BASEMSG, msg, code
-                )
-            end
-            vim.notify(msg, vim.log.levels.ERROR)
-        end
     }, opts)
 
     local self = setmetatable({

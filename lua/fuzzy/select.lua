@@ -1059,10 +1059,16 @@ end
 --- @param callback function|boolean? Input callback function (query: string|nil)
 function Select:_prompt_input(input, callback)
     if type(callback) == "function" then
-        local ok, status, entries, positions = pcall(callback, input)
-        if not ok or ok == false then
-            vim.notify(status, vim.log.levels.ERROR)
-        elseif entries ~= nil then
+        local ok, result = utils.safe_call(callback, input)
+        local entries, positions = nil, nil
+        if ok and type(result) == "table" then
+            if result.entries ~= nil then
+                entries = result.entries
+                positions = result.positions
+            else
+                entries = result
+            end
+            entries = assert(entries)
             self:list(entries, positions)
             self:list(nil, nil)
         end
@@ -2179,18 +2185,12 @@ function Select:open()
             local prompt_trigger = vim.api.nvim_create_autocmd({ "TextChangedP", "TextChangedI" }, {
                 buffer = prompt_buffer,
                 callback = function(args)
-                    if not args.buf or not vim.api.nvim_buf_is_valid(args.buf) then
-                        self:_prompt_input(nil, opts.prompt_input)
-                        self:close()
-                    elseif self:isopen() then
-                        local query = self:_prompt_getquery()
-                        if query == nil then
-                            self:_prompt_input(nil, opts.prompt_input)
-                            self:close()
-                        elseif self._state.query ~= query then
-                            self:_prompt_input(query, opts.prompt_input)
-                            self._state.query = assert(query)
-                        end
+                    assert(args.buf == prompt_buffer)
+                    local query = self:_prompt_getquery()
+                    if self._state.query ~= query then
+                        self:_prompt_input(query, opts.prompt_input)
+                        if query == nil then self:close() end
+                        self._state.query = query
                     end
                 end
             })
@@ -2336,7 +2336,7 @@ function Select:open()
                     if vim.tbl_contains(vim.v.event.windows, self.list_window) and
                         not self:_is_rendering() and vim.api.nvim_buf_line_count(list_buffer) >= 1
                     then
-                        utils.time_execution(Select._render_list, self, false)
+                        utils.timed_call(Select._render_list, self, false)
                     end
                 end
             })
@@ -2512,6 +2512,7 @@ end
 --- @inlinedoc
 --- @field prompt_list? boolean|fun()|any[] Whether to show the list window or a function to provide initial entries.
 --- @field prompt_input? boolean|fun() Whether to show the input prompt, when function is provided it is used as the input callback.
+--- The callback may return a list of entries directly, or a table with `entries` and optional `positions` for synchronous updates.
 --- @field prompt_headers? table|string|nil Headers to display above the prompt input, can be a string or a table of strings or string/highlight pairs, where each inner table represents a block of header entries.
 --- @field prompt_query? string|nil Initial query to populate the prompt input with. If provided, the prompt input must also be enabled. The query will be set in the prompt input and the input callback will be invoked with this initial query.
 --- @field prompt_decor? table|string Symbol decoration to display in the query prompt window. A table of two items can be provided show around the prompt query, or a single string which by default is interpreted as the prompt prefix. If a table is provided key value pairs are expected of prefix and suffix i.e { prefix = "> ", suffix = "< " }.

@@ -89,13 +89,9 @@ function M.run()
     end)
 
     helpers.run_test_case("utils_time_execution", function()
-        local original_notify = vim.notify
-        local got = nil
-        vim.notify = function(msg) got = msg end
-        local result = utils.time_execution(function() return 7 end)
+        local result, duration = utils.timed_call(function() return 7 end)
         helpers.eq(result, 7, "time_execution result")
-        helpers.assert_ok(type(got) == "string" and #got > 0, "time_execution notify")
-        vim.notify = original_notify
+        helpers.assert_ok(type(duration) == "number" and duration >= 0, "time_execution duration")
     end)
 
     helpers.run_test_case("utils_qf_helpers", function()

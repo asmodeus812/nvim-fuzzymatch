@@ -187,27 +187,6 @@ function M.get_visual_text()
     return table.concat(line_text_list, "\n")
 end
 
---- Measure and log the execution time of a function, including its name and definition location. The function is called with the provided arguments, and any errors during execution are propagated.
---- @param func function The function to measure
---- @param ... any Arguments to pass to the function
---- @return any The result of the function call
-function M.time_execution(func, ...)
-    local start_time = vim.loop.hrtime()
-
-    local func_info = debug.getinfo(func, "nS")
-    local func_name = func_info.name or "anonymous"
-    local func_defined = func_info.short_src .. ":" .. func_info.linedefined
-
-    local ok, result = pcall(func, ...)
-    local end_time = vim.loop.hrtime()
-    local duration_ms = (end_time - start_time) / 1e6
-
-    vim.notify(string.format("[%s] Elapsed time: %.3f ms (defined at %s)",
-        func_name, duration_ms, func_defined))
-    assert(ok, string.format("Execution error: %s", result))
-    return result
-end
-
 --- Print the current stack trace to the Neovim message area, starting from the caller of this function. Each stack frame includes the function name, source file, and line number. Anonymous functions are labeled as "anonymous", and missing information is indicated as "unknown".
 function M.print_stacktrace()
     local level = 2 -- Start from caller of this function
@@ -253,6 +232,25 @@ function M.debounce_callback(wait, callback)
     end
 end
 
+--- Handle exit status of a spawned process by notifying on non-zero exit codes.
+--- @param code number|nil Exit code
+--- @param msg string|nil Optional message
+function M.handle_exit(code, msg)
+    if not code or code == 0 then
+        return
+    end
+    if type(msg) ~= "string" then
+        msg = string.format(
+            "exitcode: %d", code
+        )
+    else
+        msg = string.format(
+            "exitcode: %d, %s", code, msg
+        )
+    end
+    vim.notify(msg, vim.log.levels.ERROR)
+end
+
 --- Safely call a callback function with provided arguments, catching any errors and notifying the user if an error occurs. If the
 --- @param callback function|nil The callback function to call
 --- @param ... any Arguments to pass to the callback function
@@ -269,7 +267,25 @@ function M.safe_call(callback, ...)
     return nil, nil
 end
 
---- Generate a UUID based on a template, from a random seeded set of alpha-numeric symbols and
+--- Measure the execution time of a function. The function is called with the provided arguments.
+--- @param func function The function to measure
+--- @param ... any Arguments to pass to the function
+--- @return any,integer The result of the function call, and duration of the call in milliseconds
+function M.timed_call(func, ...)
+    if func ~= nil and type(func) == "function" then
+        local start = vim.loop.hrtime()
+
+        local ok, result = M.safe_call(func, ...)
+        if not ok then return nil, 0 end
+
+        local _end = vim.loop.hrtime()
+        local duration = (_end - start) / 1e6
+
+        return result, duration
+    end
+    return nil, 0
+end
+
 --- @return string the generated UUID string.
 function M.generate_uuid()
     return random and string.gsub(TEMPLATE, '[xy]', function(c)
