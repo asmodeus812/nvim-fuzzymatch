@@ -21,7 +21,7 @@ function M.open_oldfiles_picker(opts)
     local conv = Select.default_converter
     opts = util.merge_picker_options({
         cwd = nil,
-        max = nil,
+        max = 256,
         stat_file = true,
         filename_only = false,
         path_shorten = nil,
@@ -84,7 +84,7 @@ function M.open_oldfiles_picker(opts)
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry_value)
-            local filename = entry_value.filename or utils.NO_NAME
+            local filename = assert(entry_value.filename)
             return util.format_display_path(filename, opts)
         end,
     }, util.build_picker_options(opts)))

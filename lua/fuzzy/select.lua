@@ -96,7 +96,7 @@ end
 --- This is a previewer that shows the content of a buffer. This implementation uses the native neovim buffer handling to read and display
 --- the buffer contents.
 --- @class Select.BufferPreview
---- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
+--- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields or false
 --- @field ignored string[]|nil A list of ignored file type extensions that should not be previewed by the buffer, usually used for executable file formats and the like
 --- @field buffers table A table of buffers that are held for clean up for the preview window
 Select.BufferPreview = {}
@@ -106,7 +106,7 @@ setmetatable(Select.BufferPreview, { __index = Select.Preview })
 --- This is a previewer that runs a command to generate the preview content. The command can be any executable that produces output on
 --- stdout or/and stderr. The command is run in a terminal job, and the output is streamed to the preview buffer.
 --- @class Select.CommandPreview
---- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
+--- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields or false
 --- @field command string|table The command to run, can be a string or a table where the first element is the executable the rest are the arguments, the last argument is always the filename/resource from the entry.
 --- @field jobs number[] table A table of job IDs that are held for clean up for the preview.
 Select.CommandPreview = {}
@@ -116,6 +116,7 @@ setmetatable(Select.CommandPreview, { __index = Select.Preview })
 --- This is a previewer that uses a user-defined callback to generate the preview content. The callback can return the lines, filetype,
 --- buftype and cursor but it also accepts the buffer and window so the user has full control over the preview generation.
 --- @class Select.CustomPreview
+--- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields or false
 --- @field callback function A function that takes the entry, buffer and window as arguments and returns optionally the lines, filetype, buftype and cursor position.
 --- @field buffers table A table of buffers that are held for clean up for the preview window
 Select.CustomPreview = {}
@@ -615,11 +616,28 @@ local function toggle_range(buffer, start, _end, name, toggled)
     end
 end
 
+--- Asynchronously display a raw content table of lines in a target buffer to the preview window
+--- @param content table table of buffer lines to display
+--- @param window integer Preview window
+--- @param buffer integer Preview buffer
+local function display_default(content, window, buffer)
+    vim.schedule(function()
+        assert(vim.api.nvim_buf_is_valid(buffer))
+        assert(vim.api.nvim_win_is_valid(window))
+        local old_ignore = vim.o.eventignore
+        vim.o.eventignore = "all"
+        populate_buffer(buffer, content)
+        vim.api.nvim_win_set_buf(window, buffer)
+        vim.api.nvim_win_set_cursor(window, { 1, 0 })
+        vim.o.eventignore = old_ignore or ""
+    end)
+end
+
 --- Asynchronously displays the results of the previewer to the preview window.
 --- @param previewer boolean|Select.Preview subclass
 --- @param entry any Entry to preview
 --- @param window integer Preview window
---- @param buffer integer Preview buffer (fallback)
+--- @param buffer integer Preview buffer
 local function display_entry(previewer, entry, window, buffer)
     vim.schedule(function()
         if window == nil or not vim.api.nvim_win_is_valid(window) then
@@ -630,23 +648,19 @@ local function display_entry(previewer, entry, window, buffer)
         local ok, res, msg = pcall(previewer.preview, previewer, entry, window)
         if ok and res == false then
             if buffer ~= nil and vim.api.nvim_buf_is_valid(buffer) then
-                vim.api.nvim_win_set_buf(window, buffer)
-                vim.api.nvim_win_set_cursor(window, { 1, 0 })
-                populate_buffer(buffer, {
-                    msg or "Unable to preview current entry",
-                })
+                display_default({ msg or "Unable to preview current entry" }, window, buffer)
             end
         elseif not ok and res and #res > 0 then
-            vim.notify(res, vim.log.levels.ERROR)
+            error(res, vim.log.levels.ERROR)
         end
-        vim.o.eventignore = old_ignore
+        vim.o.eventignore = old_ignore or ""
     end)
 end
 
 --- Create a new buffer previewer instance, the converter is used to map the entry to a table with bufnr, filename, lnum and col fields. By
 --- default the converter is `entry_mapper`, which tries its best to extract those fields from the entry.
 --- @param ignored? string[]|nil A list of ignored file extensions that must not be previewed by vim, this usually includes executable file formats
---- @param converter? function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
+--- @param converter? function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields or false
 function Select.BufferPreview.new(ignored, converter)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.BufferPreview)
@@ -687,17 +701,18 @@ end
 
 --- Preview the entry by opening it in a buffer, if the entry has a valid bufnr or filename it is used to open the buffer, otherwise
 --- an empty buffer is created. If the filename has an ignored extension the entry is not previewed.
---- @param entry any The entry to preview, this is passed to the converter function to extract the bufnr, filename, lnum and col fields.
+--- @param entry any The entry to preview, this is passed to the converter function to extract the bufnr, filename, lnum and col fields or false
 --- @param window integer The window ID of the preview window where the output should be displayed.
 --- @return boolean, any? Returns false if the entry could not be previewed
 function Select.BufferPreview:preview(entry, window)
     entry = self.converter(entry)
-    if entry == false or not vim.api.nvim_win_is_valid(window) then
+    if entry == false or entry == nil or not vim.api.nvim_win_is_valid(window) then
         return false
     end
-    assert(entry ~= nil)
 
-    local buffer
+    assert(entry ~= nil)
+    local buffer = nil
+
     if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
         buffer = entry.bufnr
     elseif entry.filename and vim.fn.bufexists(entry.filename) ~= 0 then
@@ -759,9 +774,11 @@ end
 
 --- Create a new custom previewer instance, the callback is invoked on each entry that has to be previewed
 --- @param callback? function A function that takes the entry, buffer and window as arguments and returns optionally the lines, filetype, buftype and cursor position.
-function Select.CustomPreview.new(callback)
+--- @param converter? function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields or false
+function Select.CustomPreview.new(callback, converter)
     local obj = Select.Preview.new()
     setmetatable(obj, Select.CustomPreview)
+    obj.converter = converter or Select.noop_converter
     obj.callback = assert(callback)
     obj.buffers = {}
     return obj
@@ -778,7 +795,8 @@ end
 --- @param window integer The window ID of the preview window where the output should be displayed.
 --- @return boolean Returns false if the entry could not be previewed
 function Select.CustomPreview:preview(entry, window)
-    if entry == false or not vim.api.nvim_win_is_valid(window) then
+    entry = self.converter(entry)
+    if entry == false or entry == nil or not vim.api.nvim_win_is_valid(window) then
         return false
     end
     assert(type(entry) == "string" or type(entry) == "table")
@@ -849,11 +867,11 @@ end
 --- @return boolean|nil Returns false if the entry could not be previewed, nil otherwise.
 function Select.CommandPreview:preview(entry, window)
     entry = self.converter(entry)
-    if entry == false or not vim.api.nvim_win_is_valid(window) then
+    if entry == false or entry == nil or not vim.api.nvim_win_is_valid(window) then
         return false
     end
-    assert(entry ~= nil)
 
+    assert(entry ~= nil and entry.filename ~= nil)
     local name = string.format(
         "%s#fuzzy-command-preview-entry",
         tostring(entry.bufnr or entry.filename)
@@ -970,11 +988,11 @@ end
 --- @return string|nil The highlight group for the icon, "SelectDecoratorDefault" if no specific highlight is found
 function Select.IconDecorator:decorate(entry, line)
     entry = self.converter(entry)
-    if not line or entry == false or #line == 0 then
+    if entry == false or entry == nil or not line or #line == 0 then
         return
     end
-    assert(entry ~= nil and entry.filename)
 
+    assert(entry ~= nil and entry.filename ~= nil)
     local icon, icon_highlight = icon_set().get_icon(
         entry.filename, vim.fn.fnamemodify(entry.filename, ':e'),
         { default = true }
@@ -1207,10 +1225,11 @@ function Select:_display_preview()
         and window and vim.api.nvim_win_is_valid(window)
     then
         if #entries == 0 then
-            local buffer = assert(self.preview_buffer)
-            vim.api.nvim_win_set_buf(window, buffer)
-            vim.api.nvim_win_set_cursor(window, { 1, 0 })
-            populate_buffer(buffer, utils.EMPTY_TABLE)
+            display_default(
+                utils.EMPTY_TABLE,
+                self.preview_window,
+                self.preview_buffer
+            )
         else
             local cursor = assert(self._state.cursor)
             local entry = assert(entries[cursor[1]])
@@ -1287,10 +1306,12 @@ function Select:_render_list()
             self:_highlight_list()
             self:_display_toggle()
             self:_display_preview()
-            vim.api.nvim_win_call(
-                self.list_window,
-                vim.cmd.redraw
-            )
+
+            -- TODO:
+            -- vim.api.nvim_win_call(
+            -- self.list_window,
+            -- vim.cmd.redraw
+            -- )
         end
     end)
 
@@ -1603,7 +1624,7 @@ function Select:exec_command(command, mods, callback)
     end
 
     for _, entry in ipairs(result) do
-        if not entry or entry == false then
+        if entry == false or entry == nil then
             goto continue
         end
 
@@ -2179,18 +2200,10 @@ function Select:open()
                 prompt_buffer
             )
 
-            local mode_changed = vim.api.nvim_create_autocmd("ModeChanged", {
-                buffer = prompt_buffer,
-                callback = vim.schedule_wrap(function()
-                    vim.cmd.startinsert()
-                end)
-            })
-
             vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
                 buffer = prompt_buffer,
                 callback = function()
                     pcall(vim.api.nvim_del_autocmd, prompt_trigger)
-                    pcall(vim.api.nvim_del_autocmd, mode_changed)
                     assert(vim.fn.sign_undefine(sign_name) == 0)
                     self:_close_view(false)
                     self:_clean_decorators()
@@ -2387,17 +2400,26 @@ function Select:open()
     end
 end
 
+function Select.noop_converter(entry)
+    if entry == false or entry == nil then
+        return false
+    end
+    return entry
+end
+
 --- Default converter, which converts an entry into a table with col, lnum, bufnr and filename fields. The entry can be a table, number or string. If the entry is a table, it should have col, lnum, bufnr and filename fields. If the entry is a number, it is treated as a buffer number. If the entry is a string, it is treated as a filename. The converter returns a table with col, lnum, bufnr and filename fields. If the entry is invalid, it raises an assertion error.
 --- @param entry any The entry to convert, can be a table, number or string.
---- @return table A table with col, lnum, bufnr and filename fields.
+--- @return table|boolean A table with col, lnum, bufnr and filename fields or false
 function Select.default_converter(entry)
     local col = 1
     local lnum = 1
     local fname = nil
     local bufnr = nil
-    assert(entry ~= nil)
 
     if type(entry) == "table" then
+        if not entry.bufnr or not entry.filename then
+            return false
+        end
         col = entry.col or 1
         lnum = entry.lnum or 1
         bufnr = entry.bufnr or nil
@@ -2406,13 +2428,18 @@ function Select.default_converter(entry)
             fname = utils.get_bufname(bufnr)
         end
     elseif type(entry) == "number" then
-        assert(entry > 0 and vim.api.nvim_buf_is_valid(entry))
+        if entry <= 0 then
+            return false
+        end
         bufnr = entry
         fname = utils.get_bufname(bufnr)
+        assert(vim.api.nvim_buf_is_valid(bufnr))
     elseif type(entry) == "string" then
-        assert(#entry > 0)
+        if #entry == 0 or entry == "" then
+            return false
+        end
         fname = entry
-        bufnr = vim.fn.bufnr(fname, false)
+        bufnr = vim.fn.bufnr(entry, false)
         bufnr = bufnr > 0 and bufnr or nil
     end
 

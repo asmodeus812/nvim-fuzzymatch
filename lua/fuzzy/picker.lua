@@ -178,6 +178,11 @@ function Picker.Converter:unbind()
     self.picker = nil
 end
 
+function Picker:_cancel_picker()
+    self.select:close()
+    self.match:destroy()
+end
+
 function Picker:_close_picker()
     self.select:close()
     self.match:destroy()
@@ -192,6 +197,14 @@ end
 
 function Picker:_hide_picker()
     self.select:hide()
+end
+
+function Picker:_cancel_stage()
+    local stage = self._state.stage
+    if stage and next(stage) then
+        stage.select:close()
+        stage.match:destroy()
+    end
 end
 
 function Picker:_close_stage()
@@ -270,8 +283,8 @@ end
 
 function Picker:_cancel_prompt()
     return Select.action(Select.close_view, function()
-        self:_close_stage()
-        self:_close_picker()
+        self:_cancel_stage()
+        self:_cancel_picker()
     end)
 end
 
@@ -489,8 +502,8 @@ function Picker:_create_stage()
 
     local function _cancel_prompt()
         return Select.action(Select.close_view, function()
-            self:_close_stage()
-            self:_close_picker()
+            self:_cancel_stage()
+            self:_cancel_picker()
         end)
     end
 
@@ -600,7 +613,7 @@ end
 function Picker:_is_open()
     return self.select:isopen() or (
         self._state.stage
-        and self._state.stage.select
+        and assert(self._state.stage.select)
         and self._state.stage.select:isopen()
     )
 end
@@ -608,7 +621,7 @@ end
 function Picker:_is_valid()
     return self.select:isvalid() or (
         self._state.stage
-        and self._state.stage.select
+        and assert(self._state.stage.select)
         and self._state.stage.select:isvalid()
     )
 end
@@ -621,7 +634,8 @@ end
 --- Extract the context of the picker, the context is a table that contains the evaluated values of the context keys provided to the picker at construction time. The context can contain the following keys - `cwd` - string, `env` - table of environment variables, `args` a table of arguments to start the command with - table, and `map`, a function that transforms each entry before it is added to the stream. This is the context after it has been evaluated, meaning that any function values have been called and their return values have been extracted. The context is re-evaluated each time the picker is opened, if the context has changed since the last time it was opened
 --- @return table the evaluated context of the current picker instance
 function Picker:context()
-    return assert(self._state._evaluated_context)
+    local state = assert(self._state)
+    return assert(state._evaluated_context)
 end
 
 --- Return the picker options table.
@@ -643,11 +657,11 @@ function Picker:isvalid()
     return self:_is_valid()
 end
 
---- Close the picker, along with any running stream or matching operations, and also close any running stage, permanently. The picker state will be destroyed upon closing it. To retain the persistent state of the picker at the present moment see and use the `hide` method
-function Picker:close()
-    self:_close_stage()
-    self:_close_picker()
-    Registry.remove(self)
+-- Clear the picker, does desotry the status of the internal state and context, but does not immediately close the picker selection interface, the selection interface will remain open but no visible content at all will be present
+function Picker:clear()
+    self:_clear_stage()
+    self:_clear_picker()
+    Registry.touch(self)
 end
 
 -- Hide the picker, does not destroy any of the internal state or context of the picker or internal interfaces or components, can be used to simply hide away the picker view and restore it later with open. This will retain the picker state as is while it remains hiddden from view.
@@ -655,6 +669,13 @@ function Picker:hide()
     self:_hide_stage()
     self:_hide_picker()
     Registry.touch(self)
+end
+
+--- Close the picker, along with any running stream or matching operations, and also close any running stage, permanently. The picker state will be destroyed upon closing it. To retain the persistent state of the picker at the present moment see and use the `hide` method
+function Picker:close()
+    self:_close_stage()
+    self:_close_picker()
+    Registry.remove(self)
 end
 
 --- Open the picker, if the picker is already open this is a no-op. If the picker was previously opened and then hidden, this will restore the picker to its previous state. If the picker was never opened before, or if the context has changed since the last time it was opened, this will re-evaluate the context, and re-run the content command or function to populate the stream with new results. When the content is a static table of entries, this will simply display them in the list.
@@ -670,8 +691,15 @@ function Picker:open()
     local needs_run = not utils.compare_tables(
         evaluated_context, self._state._evaluated_context
     )
+    if needs_run then
+        -- evaluated context has to be re-initialized with the newly evaluated context, that reflets the need to re-start and
+        -- initialize the picker's running state
+        self._state._evaluated_context = assert(evaluated_context)
+    end
 
-    if not needs_run and self:isvalid() == true then
+    if not needs_run and self:isvalid() then
+        -- in case the picker is not required to run and is still valid simply re-open it that case might happen during a picker
+        -- that is in a hidden state at this moment
         local stage = self._state.stage
         local active = self._state.staging
         if active and stage and stage.select:isvalid() then
@@ -680,18 +708,21 @@ function Picker:open()
             self.select:open()
         end
     else
+        -- needs run would imply that new content will populate the select, that means we can freely clear the picker stage if
+        -- any is present, and the primary stage as well
         if needs_run then
             self:_clear_stage()
             self:_clear_picker()
         end
         self.select:open()
 
-        self._state._evaluated_context = assert(evaluated_context)
         if type(self._state.content) ~= "table" then
             -- when a string or a function is provided the content is expected to be a command that produces output, or a function
             -- that produces output by calling a callback method for each entry in the stream
             assert(type(self._state.content) == "string" or type(self._state.content) == "function")
             if (needs_run or not self.stream.results) and not self:_is_interactive() then
+                -- in case we need to re-run the picker or the stream itself was destroyed, having no-results implies
+                -- that stream requires to be re-started, to obtain results and then fill the select interface
                 self.stream:start(self._state.content, {
                     cwd = evaluated_context.cwd,
                     env = evaluated_context.env,
@@ -700,6 +731,8 @@ function Picker:open()
                     callback = self:_flush_results(),
                 })
             elseif self.stream.results and self.select:isempty() then
+                -- in case there are valid results in the stream, just fill the select interface, having results here
+                -- means the stream was not destroyed and it still persistent.
                 self.select:list(
                     self.stream.results,
                     nil -- no highlights
@@ -718,8 +751,9 @@ function Picker:open()
             assert(type(self._state.content[1]) == "string" or type(self._state.content[1]) == "table")
             assert(not self._state.context.args or not next(self._state.context.args) and not self:_is_interactive())
 
-            -- the content is either going to be a table of strings or a table of tables, either way simply display it directly to
-            -- the select, as there is no async result loading happening at this moment
+            -- the content is either going to be a table of strings or a table of tables, either way simply display it
+            -- directly to the select, as there is no async result loading happening at this moment, also there is no
+            -- computation to be run, we always fill the content in the select
             self.select:list(
                 self._state.content,
                 nil -- no highlights
@@ -792,12 +826,12 @@ function Picker.new(opts)
         decorators = {},
         match_limit = nil,
         match_timer = 75,
-        match_step = 75000,
-        stream_step = 150000,
+        match_step = 62500,
+        stream_step = 125000,
         stream_type = "lines",
         stream_debounce = 0,
         window_size = 0.20,
-        prompt_debounce = 250,
+        prompt_debounce = 150,
         prompt_query = "",
         prompt_decor = {
             prefix = "› ",

@@ -332,7 +332,7 @@ function M.get_bufname(bufnr, bufinfo)
         return bufinfo.name
     end
     local bufname = vim.api.nvim_buf_get_name(bufnr)
-    if #bufname == 0 then
+    if not bufname or #bufname == 0 then
         local is_qf = M.is_quickfix(bufnr, bufinfo)
         if is_qf then
             bufname = is_qf == 1 and "[Quickfix List]" or "[Location List]"
@@ -340,7 +340,6 @@ function M.get_bufname(bufnr, bufinfo)
             bufname = M.NO_NAME
         end
     end
-    assert(#bufname > 0)
     return bufname
 end
 

@@ -70,6 +70,9 @@ function M.run()
 
         Registry.prune(200)
 
+        helpers.wait_for(function()
+            return idle_picker.closed == true
+        end, 1500)
         helpers.assert_ok(idle_picker.closed == true, "idle closed")
         helpers.assert_ok(used_picker.closed ~= true, "used kept")
     end)

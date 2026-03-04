@@ -8,6 +8,25 @@
 local Registry = {}
 Registry.__index = Registry
 
+local function picker_in_use(picker)
+    if not picker then
+        return false
+    end
+    if picker.isopen and picker:isopen() then
+        return true
+    end
+    if picker.isvalid and picker:isvalid() then
+        return true
+    end
+    if picker.stream and picker.stream.running and picker.stream:running() then
+        return true
+    end
+    if picker.match and picker.match.running and picker.match:running() then
+        return true
+    end
+    return false
+end
+
 --- Create a new registry instance.
 --- @param opts table|nil
 ---   opts.max_idle: Maximum idle time in milliseconds before a picker is destroyed
@@ -60,25 +79,6 @@ function Registry.remove(picker)
     end
 end
 
-local function picker_in_use(picker)
-    if not picker then
-        return false
-    end
-    if picker.isopen and picker:isopen() then
-        return true
-    end
-    if picker.isvalid and picker:isvalid() then
-        return true
-    end
-    if picker.stream and picker.stream.running and picker.stream:running() then
-        return true
-    end
-    if picker.match and picker.match.running and picker.match:running() then
-        return true
-    end
-    return false
-end
-
 --- Prune idle hidden pickers.
 --- @param now number
 function Registry.prune(now)
@@ -91,12 +91,14 @@ function Registry.prune(now)
     end
     for picker, meta in pairs(Registry.items) do
         if meta and (now - meta.last_used) > max_idle then
-            if not picker_in_use(picker) then
-                if picker.close then
-                    picker:close()
+            vim.schedule(function()
+                if not picker_in_use(picker) then
+                    if picker.close then
+                        picker:close()
+                    end
+                    Registry.items[picker] = nil
                 end
-                Registry.items[picker] = nil
-            end
+            end)
         end
     end
 end
