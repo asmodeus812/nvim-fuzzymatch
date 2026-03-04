@@ -87,9 +87,6 @@ function M.open_loclist_picker(opts)
         display = function(entry)
             local filename = assert(entry.filename)
             local display_path = util.format_display_path(filename, opts)
-            if not display_path or #display_path == 0 then
-                display_path = utils.NO_NAME
-            end
             return util.format_location_entry(
                 display_path, entry.lnum or 1, entry.col or 1, entry.text,
                 table.concat({ "[", (entry.bufnr or "?"), "]" })

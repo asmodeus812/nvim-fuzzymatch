@@ -352,28 +352,6 @@ local function virtual_content(buffer, ns, line, col, text, lines)
     })
 end
 
---- Create a cache table and prime hash slots once.
---- @param size integer
---- @return table
-local function cache_new(size)
-    local cache = {}
-    for i = 1, math.max(0, size), 1 do
-        cache[-i] = utils.EMPTY_STRING
-    end
-    return cache
-end
-
---- Reset cache content.
---- @param state table Select state
---- @return table
-local function cache_reset(state)
-    local cache = state.display_cache
-    for key, _ in pairs(cache or {}) do
-        cache[key] = nil
-    end
-    return cache
-end
-
 --- Populates a buffer with given lines/items (optional mapping/display).
 --- @param buffer integer Buffer handle
 --- @param items table List items
@@ -750,8 +728,7 @@ function Select.BufferPreview:preview(entry, window)
     local ok, err = pcall(vim.fn.bufload, buffer)
     if ok then
         vim.api.nvim_win_set_buf(window, buffer)
-        ok, err = pcall(vim.api.nvim_win_set_cursor, window, cursor)
-        if not ok and err ~= nil then error(err) end
+        pcall(vim.api.nvim_win_set_cursor, window, cursor)
 
         if not vim.b[buffer].ts_highlight then
             vim.api.nvim_win_call(window, function()
@@ -1248,60 +1225,11 @@ function Select:_display_preview()
     end
 end
 
---- Wrap display callback with index-based cache for visible render proximity.
---- @return function|string|nil wrapped display
-function Select:_display_wrap()
-    local display = self._options.display
-    if type(display) ~= "function" then
-        return display
-    end
-
-    return function(entry, index)
-        if type(index) ~= "number" then
-            return display(entry)
-        end
-
-        local key = -index
-        local state = self._state
-        local cache = state.display_cache
-        local cached = cache[key] or nil
-        if cached and cached ~= nil then
-            return cached
-        end
-
-        local value = display(entry)
-        cache[key] = value
-        return value
-    end
-end
-
---- Clamp cached entries to the specified absolute index range.
-function Select:_display_clamp()
-    local entries = self._state.entries
-    local cursor = self._state.cursor
-    if entries and cursor then
-        local height = vim.api.nvim_win_get_height(self.list_window)
-        local start = math.max(1, cursor[1] - (height * 2))
-        local _end = math.min(#entries, cursor[1] + (height * 2))
-        local cache = self._state.display_cache
-        for key, _ in pairs(cache or {}) do
-            local index = -key
-            if index < start or index > _end then
-                cache[key] = nil
-            end
-        end
-    end
-end
-
 --- Internal: schedules a UI render of list+related features.
 function Select:_render_list()
     local executor = Async.wrap(function()
         local entries = self._state.entries or {}
         cursor_clamp(self._state.cursor, #entries)
-
-        if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
-            self:_display_clamp()
-        end
 
         if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
             self:_populate_list()
@@ -1313,11 +1241,10 @@ function Select:_render_list()
             self:_display_toggle()
             self:_display_preview()
 
-            -- TODO:
-            -- vim.api.nvim_win_call(
-            -- self.list_window,
-            -- vim.cmd.redraw
-            -- )
+            vim.api.nvim_win_call(
+                self.list_window,
+                vim.cmd.redraw
+            )
         end
     end)
 
@@ -1336,7 +1263,6 @@ end
 
 --- Resets the state variables for a Select instance.
 function Select:_reset_state()
-    cache_reset(self._state)
     self._state.streaming = false
     self._state.positions = nil
     self._state.entries = nil
@@ -2064,7 +1990,6 @@ function Select:list(entries, positions)
         positions = { positions, { "table", "nil" }, true },
     }
     if entries ~= nil then
-        cache_reset(self._state)
         self._state.positions = positions
         self._state.entries = entries
         self._state.streaming = true
@@ -2417,7 +2342,7 @@ function Select.default_converter(entry)
     local bufnr = nil
 
     if type(entry) == "table" then
-        if not entry.bufnr or not entry.filename then
+        if not entry.bufnr and not entry.filename then
             return false
         end
         col = entry.col or 1
@@ -2428,7 +2353,7 @@ function Select.default_converter(entry)
             fname = utils.get_bufname(bufnr)
         end
     elseif type(entry) == "number" then
-        if entry <= 0 then
+        if entry == -1 or entry == 0 then
             return false
         end
         bufnr = entry
@@ -2633,13 +2558,6 @@ function Select.new(opts)
         },
     }, Select)
 
-    local ratio = opts.window_ratio
-    local height = compute_height(ratio, 1)
-    local size = math.floor(height) * 2
-    local cache_size = math.max(8, size)
-
-    self._state.display_cache = cache_new(cache_size)
-    self._options.display = self:_display_wrap()
     return self
 end
 

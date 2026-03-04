@@ -158,11 +158,10 @@ function Stream:_handle_data(data, size)
         utils.timed_call(Stream._flush_results, self)
     end
 
-    data = self:_transform_data(data)
-    if data ~= nil and self._state.buffer then
+    if self._state.buffer then
         -- keep accumulating non blank lines into the buffer, eventually the buffer size will be enough to be
         -- flushed, see above
-        self._state.buffer[self._state.size + 1] = data
+        self._state.buffer[self._state.size + 1] = self:_transform_data(data)
         self._state.size = self._state.size + 1
     end
 end
@@ -183,7 +182,7 @@ function Stream:_handle_out(code, chunk)
         end
         self:stop()
     end
-    utils.safe_call(callback)
+    utils.safe_call(callback, nil, nil)
     utils.safe_call(onexit, code, chunk)
 end
 
@@ -255,13 +254,9 @@ function Stream:_handle_stdout(e, c)
         Scheduler.add(self._state.streamer)
     end
 
-    if self:_is_streaming() then
-        -- await for the current stream chunk to finish, only after that continue with the new one that has been just registered, this
-        -- ensures that while still async, we have a correct order of execution.
+    if self:_is_streaming() and self._state.streamer then
         self._state.streamer:await(streamer)
     else
-        -- no stream was running, meaning that the preivous chunk has already completed work by the time a new one arrived, or simply that
-        -- none was ever started in the first place yet
         streamer()
     end
 end
@@ -274,7 +269,7 @@ function Stream:_handle_exit(e, c)
         Scheduler.add(self._state.streamer)
     end
 
-    if self:_is_streaming() then
+    if self:_is_streaming() and self._state.streamer then
         self._state.streamer:await(streamer)
     else
         streamer()
@@ -285,7 +280,7 @@ function Stream:_is_streaming()
     if self._state.streamer then
         return self._state.streamer:is_running()
     end
-    return false
+    return self._state.handle ~= nil
 end
 
 function Stream:_stop_streaming()

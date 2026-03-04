@@ -29,11 +29,8 @@ function M.open_tabs_picker(opts)
                 end
                 local window_list = vim.api.nvim_tabpage_list_wins(tabpage)
                 local buf = window_list[1] and vim.api.nvim_win_get_buf(window_list[1])
-                local file_path = buf and utils.get_bufname(buf) or utils.NO_NAME
-                stream_callback({
-                    tabpage = tabpage,
-                    file_path = file_path,
-                })
+                local filename = buf and buf > 0 and utils.get_bufname(buf) or utils.NO_NAME
+                stream_callback({ tabpage = tabpage, filename = filename })
                 ::continue::
             end
             stream_callback(nil)
@@ -59,9 +56,9 @@ function M.open_tabs_picker(opts)
             local tabpage = assert(entry_value.tabpage)
             assert(vim.api.nvim_tabpage_is_valid(tabpage))
             local tabpage_index = vim.api.nvim_tabpage_get_number(tabpage)
-            local file_path = assert(entry_value.file_path)
-            file_path = util.format_display_path(file_path, opts)
-            return table.concat({ "[", tabpage_index, "] ", file_path })
+            local filename = assert(entry_value.filename)
+            filename = util.format_display_path(filename, opts)
+            return table.concat({ "[", tabpage_index, "] ", filename })
         end,
     }, util.build_picker_options(opts)))
 

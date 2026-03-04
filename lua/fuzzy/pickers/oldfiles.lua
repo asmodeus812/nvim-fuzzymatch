@@ -59,9 +59,9 @@ function M.open_oldfiles_picker(opts)
                             seen_file_map[file_path] = true
                             seen_file_count = seen_file_count + 1
                             stream_callback({
-                                filename = file_path,
                                 size = stat.size,
                                 mtime = stat.mtime,
+                                filename = file_path,
                             })
                             if opts.max and seen_file_count >= opts.max then
                                 stream_callback(nil)

@@ -236,6 +236,7 @@ function M.with_cwd(dir_path, callback)
 end
 
 function M.run_test_case(name, callback)
+    print(string.format("running: %s", tostring(name)))
     M.reset_state()
     local ok, err = pcall(callback)
     M.reset_state()

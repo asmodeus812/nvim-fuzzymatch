@@ -202,7 +202,7 @@ function Match:_match_worker()
     local items = self._state.tail or self._state.chunks
     local args = { items, self.pattern, self.transform }
     -- TODO: blocker issue match - https://github.com/vim/vim/issues/19540
-    local results, duration = utils.timed_call(vim.fn.matchfuzzypos, unpack(args))
+    local results, _ = utils.timed_call(vim.fn.matchfuzzypos, unpack(args))
 
     local strings = results[1]
     local positions = results[2]
@@ -362,14 +362,17 @@ function Match:match(list, pattern, callback, transform)
             Match._match_worker
         ))
     )
+
+    -- run one cycle immediately now
+    if not vim.in_fast_event() then
+        self:_match_worker()
+    end
 end
 
--- Merges two sorted lists into a single sorted list, both input lists must be sorted in descending order by score, in the first place,
--- then they are merged into the source list also sorted in descending order
---- @param source (string[]|integer[]|number[])[]
-function Match.merge(source, left, right)
+-- Merges two sorted lists into a single sorted list, both input lists must be sorted in descending order by score, in the first place, then they are merged into the source list also sorted in descending order
+function Match.merge(dest, left, right)
     vim.validate({
-        source = { source, "table" },
+        dest = { dest, "table" },
         left = { left, "table" },
         right = { right, "table" },
     })
@@ -380,6 +383,14 @@ function Match.merge(source, left, right)
     local results_pointer = 1
     local final_size = #left[1] + #right[1]
 
+    -- ensure destination has capacity for all merged results
+    for sub_index = 1, 3 do
+        utils.resize_table(
+            dest[sub_index],
+            final_size, nil
+        )
+    end
+
     -- merge until we reach the end of either left or right
     while results_pointer <= final_size do
         local left_score = left_pointer <= #left[1] and left[3][left_pointer] or nil
@@ -387,27 +398,23 @@ function Match.merge(source, left, right)
 
         if left_score ~= nil and (right_score == nil or left_score > right_score) then
             for sub_index = 1, 3 do
-                source[sub_index][results_pointer] = left[sub_index][left_pointer]
+                dest[sub_index][results_pointer] = left[sub_index][left_pointer]
             end
             left_pointer = left_pointer + 1
         else
             for sub_index = 1, 3 do
-                source[sub_index][results_pointer] = right[sub_index][right_pointer]
+                dest[sub_index][results_pointer] = right[sub_index][right_pointer]
             end
             right_pointer = right_pointer + 1
         end
         results_pointer = results_pointer + 1
     end
 
-    -- ensure source has exact capacity to hold all items from left and right
     for sub_index = 1, 3 do
-        utils.resize_table(
-            source[sub_index],
-            final_size, nil
-        )
+        assert(#dest[sub_index] == final_size)
     end
 
-    return source
+    return dest
 end
 
 --- @class MatchOptions

@@ -17,8 +17,13 @@ function M.run()
     end)
 
     helpers.run_test_case("util_build_picker_headers", function()
-        local headers = util.build_picker_headers("Title", { cwd = "/tmp", cwd_prompt = true })
+        local headers = assert(util.build_picker_headers("Title", { cwd = "/tmp" }))
         helpers.assert_ok(type(headers) == "table" and #headers >= 1, "headers table")
+        local cwd_block = headers[2]
+        helpers.assert_ok(type(cwd_block) == "table", "cwd block")
+        local cwd_entry = cwd_block[1]
+        helpers.assert_ok(type(cwd_entry) == "function", "cwd header fn")
+        helpers.eq(cwd_entry(), "/tmp", "cwd header text")
     end)
 
     helpers.run_test_case("util_sanitize_display_text", function()

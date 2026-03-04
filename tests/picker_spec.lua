@@ -2,6 +2,7 @@
 local Picker = require("fuzzy.picker")
 local Select = require("fuzzy.select")
 local helpers = require("script.test_utils")
+local util = require("fuzzy.pickers.util")
 
 local M = { name = "picker" }
 
@@ -67,6 +68,56 @@ local function get_last_args(picker)
     }
 end
 
+local function get_header_text(prompt_buffer)
+    local namespaces = vim.api.nvim_get_namespaces()
+    local ns = namespaces["list_header_namespace"]
+    helpers.assert_ok(type(ns) == "number", "header namespace")
+    local marks = vim.api.nvim_buf_get_extmarks(
+        prompt_buffer,
+        ns,
+        0,
+        -1,
+        { details = true }
+    )
+    for _, mark in ipairs(marks or {}) do
+        local details = mark[4]
+        local virt_lines = details and details.virt_lines
+        if virt_lines and virt_lines[1] then
+            local line = {}
+            for _, chunk in ipairs(virt_lines[1]) do
+                line[#line + 1] = chunk[1]
+            end
+            return table.concat(line)
+        end
+    end
+    return nil
+end
+
+local function get_status_text(prompt_buffer)
+    local namespaces = vim.api.nvim_get_namespaces()
+    local ns = namespaces["list_status_namespace"]
+    helpers.assert_ok(type(ns) == "number", "status namespace")
+    local marks = vim.api.nvim_buf_get_extmarks(
+        prompt_buffer,
+        ns,
+        0,
+        -1,
+        { details = true }
+    )
+    for _, mark in ipairs(marks or {}) do
+        local details = mark[4]
+        local virt_text = details and details.virt_text
+        if virt_text and virt_text[1] then
+            local line = {}
+            for _, chunk in ipairs(virt_text) do
+                line[#line + 1] = chunk[1]
+            end
+            return table.concat(line)
+        end
+    end
+    return nil
+end
+
 local function run_rerun_case(name, open_picker, mutate, assert_args)
     helpers.run_test_case(name, function()
         with_stream_count(function()
@@ -129,9 +180,18 @@ function M.run()
         return picker.select:query():find("gam", 1, true) ~= nil
     end, 1500)
 
+    helpers.wait_for(function()
+        local status = get_status_text(picker.select.prompt_buffer)
+        return status and status:find("1/3", 1, true) ~= nil
+    end, 1500)
+
     helpers.type_query(picker, "<c-u>")
     helpers.wait_for(function()
         return picker.select:query() == ""
+    end, 1500)
+    helpers.wait_for(function()
+        local status = get_status_text(picker.select.prompt_buffer)
+        return status and status:find("3/3", 1, true) ~= nil
     end, 1500)
 
     picker:close()
@@ -167,6 +227,200 @@ function M.run()
 
     stream_picker:close()
 
+    helpers.run_test_case("picker_stream_slow_query_match", function()
+        local chunks = {
+            { "beta", "omicron", "lambda" },
+            { "delta", "zeta", "omicron" },
+            { "eta", "theta", "iota" },
+        }
+        local expected = {
+            beta = true,
+            delta = true,
+            zeta = true,
+            eta = true,
+            theta = true,
+            iota = true,
+        }
+        local Async = require("fuzzy.async")
+        local state = { sent = 0 }
+
+        local function wait_ms(ms)
+            local done = false
+            vim.defer_fn(function()
+                done = true
+            end, ms)
+            while not done do
+                Async.yield()
+            end
+        end
+
+        local function wait_for_entries(picker, min_count)
+            helpers.wait_for(function()
+                local entries = helpers.get_entries(picker)
+                return entries and #entries >= min_count
+            end, 1500)
+        end
+
+        local picker = Picker.new({
+            content = function(cb)
+                wait_ms(25)
+                for _, entry in ipairs(chunks[1]) do
+                    cb(entry)
+                end
+                state.sent = 1
+                wait_ms(50)
+
+                for _, entry in ipairs(chunks[2]) do
+                    cb(entry)
+                end
+                state.sent = 2
+                wait_ms(50)
+
+                for _, entry in ipairs(chunks[3]) do
+                    cb(entry)
+                end
+                state.sent = 3
+                cb(nil)
+            end,
+            preview = false,
+            prompt_debounce = 0,
+            stream_debounce = 0,
+            stream_step = 3,
+            prompt_query = "ta",
+            actions = {
+                ["<cr>"] = Select.default_select,
+            },
+        })
+
+        picker:open()
+        helpers.type_query(picker, "ta")
+        helpers.wait_for(function()
+            return picker.select:query() == "ta"
+        end, 1500)
+
+        helpers.wait_for(function()
+            return state.sent >= 1
+        end, 1500)
+        wait_for_entries(picker, 1)
+
+        helpers.wait_for(function()
+            return state.sent >= 2
+        end, 1500)
+        wait_for_entries(picker, 3)
+
+        helpers.wait_for(function()
+            return state.sent >= 3
+        end, 1500)
+        wait_for_entries(picker, 6)
+
+        helpers.wait_for_stream(picker)
+
+        local entries = helpers.get_entries(picker) or {}
+        helpers.eq(#entries, 6, "ta matches")
+        for _, entry in ipairs(entries) do
+            helpers.assert_ok(
+                type(entry) == "string" and expected[entry] == true,
+                "entry matches expected set"
+            )
+        end
+        picker:close()
+    end)
+
+    helpers.run_test_case("picker_stream_query_change_resets", function()
+        local chunks = {
+            { "beta", "omicron", "lambda" },
+            { "delta", "zeta", "omicron" },
+            { "eta", "theta", "iota" },
+        }
+        local Async = require("fuzzy.async")
+        local state = { sent = 0, allow_start = false, allow_chunk3 = false }
+
+        local function wait_ms(ms)
+            local done = false
+            vim.defer_fn(function()
+                done = true
+            end, ms)
+            while not done do
+                Async.yield()
+            end
+        end
+
+        local picker = Picker.new({
+            content = function(cb)
+                while not state.allow_start do
+                    Async.yield()
+                end
+                wait_ms(10)
+                for _, entry in ipairs(chunks[1]) do
+                    cb(entry)
+                end
+                state.sent = 1
+                wait_ms(50)
+
+                for _, entry in ipairs(chunks[2]) do
+                    cb(entry)
+                end
+                state.sent = 2
+                while not state.allow_chunk3 do
+                    Async.yield()
+                end
+                wait_ms(10)
+
+                for _, entry in ipairs(chunks[3]) do
+                    cb(entry)
+                end
+                state.sent = 3
+                cb(nil)
+            end,
+            preview = false,
+            prompt_debounce = 0,
+            stream_debounce = 0,
+            stream_step = 3,
+            prompt_query = "ta",
+            actions = {
+                ["<cr>"] = Select.default_select,
+            },
+        })
+
+        picker:open()
+        helpers.type_query(picker, "ta")
+        helpers.wait_for(function()
+            return picker.select:query() == "ta"
+        end, 1500)
+        state.allow_start = true
+
+        helpers.wait_for(function()
+            return state.sent >= 2
+        end, 1500)
+        helpers.wait_for_match(picker, 1500)
+        helpers.wait_for(function()
+            local entries = helpers.get_entries(picker)
+            return entries and #entries >= 1
+        end, 1500)
+
+        helpers.type_query(picker, "th")
+        helpers.wait_for(function()
+            return picker.select:query() == "th"
+        end, 1500)
+        state.allow_chunk3 = true
+
+        helpers.wait_for_stream(picker)
+        helpers.wait_for_match(picker, 1500)
+        helpers.wait_for(function()
+            local entries = helpers.get_entries(picker) or {}
+            if #entries < 1 then
+                return false
+            end
+            for _, entry in ipairs(entries) do
+                if entry ~= "theta" then
+                    return false
+                end
+            end
+            return true
+        end, 1500, "th match from later chunk")
+        picker:close()
+    end)
+
     helpers.run_test_case("interactive_no_open_rerun", function()
         with_stream_count(function()
             local interactive_picker = Picker.new({
@@ -194,6 +448,105 @@ function M.run()
             helpers.eq(interactive_picker._test_stream_count(), 0, "interactive reopen should not start stream")
             interactive_picker:close()
         end)
+    end)
+
+    helpers.run_test_case("picker_cwd_header", function()
+        local cwd = "/tmp/fuzzy-header-a"
+        local header_opts = {
+            cwd = function()
+                return cwd
+            end,
+        }
+        local picker = Picker.new({
+            content = { "alpha" },
+            headers = util.build_picker_headers("Picker", header_opts),
+            preview = false,
+            prompt_debounce = 0,
+        })
+        picker:open()
+        helpers.wait_for(function()
+            return helpers.is_window_valid(picker.select.prompt_window)
+        end, 1500)
+        local header = get_header_text(picker.select.prompt_buffer)
+        helpers.assert_ok(header and header:find("fuzzy-header-a", 1, true), "header cwd a")
+
+        picker:hide()
+        cwd = "/tmp/fuzzy-header-b"
+        picker:open()
+        helpers.wait_for(function()
+            return helpers.is_window_valid(picker.select.prompt_window)
+        end, 1500)
+        header = get_header_text(picker.select.prompt_buffer)
+        helpers.assert_ok(header and header:find("fuzzy-header-b", 1, true), "header cwd b")
+        picker:close()
+    end)
+
+    helpers.run_test_case("picker_header_actions", function()
+        local picker = Picker.new({
+            content = { "alpha" },
+            headers = { { "Picker" } },
+            preview = false,
+            prompt_debounce = 0,
+            actions = {
+                ["<c-x>"] = { Select.noop_select, "close" },
+                ["<c-y>"] = { Select.noop_select, "yank" },
+            },
+        })
+        picker:open()
+        helpers.wait_for(function()
+            return helpers.is_window_valid(picker.select.prompt_window)
+        end, 1500)
+        local header = get_header_text(picker.select.prompt_buffer) or ""
+        helpers.assert_ok(header:find("Picker", 1, true), "header title")
+        helpers.assert_ok(header:find("<c-x>", 1, true), "header action key")
+        helpers.assert_ok(header:find("close", 1, true), "header action close")
+        helpers.assert_ok(header:find("<c-y>", 1, true), "header action key yank")
+        helpers.assert_ok(header:find("yank", 1, true), "header action yank")
+        picker:close()
+    end)
+
+    helpers.run_test_case("picker_header_custom_blocks", function()
+        local picker = Picker.new({
+            content = { "alpha" },
+            headers = {
+                { "Alpha" },
+                { function() return "Beta" end },
+                { { "Gamma", "SelectHeaderDefault" } },
+            },
+            preview = false,
+            prompt_debounce = 0,
+        })
+        picker:open()
+        helpers.wait_for(function()
+            return helpers.is_window_valid(picker.select.prompt_window)
+        end, 1500)
+        local header = get_header_text(picker.select.prompt_buffer) or ""
+        helpers.assert_ok(header:find("Alpha", 1, true), "header alpha")
+        helpers.assert_ok(header:find("Beta", 1, true), "header beta")
+        helpers.assert_ok(header:find("Gamma", 1, true), "header gamma")
+        picker:close()
+    end)
+
+    helpers.run_test_case("picker_header_cwd_truncate", function()
+        local long_cwd = "/home/user/projects/very/long/path/for/fuzzymatch"
+        local picker = Picker.new({
+            content = { "alpha" },
+            headers = util.build_picker_headers("Picker", {
+                cwd = function()
+                    return long_cwd
+                end,
+            }),
+            preview = false,
+            prompt_debounce = 0,
+        })
+        picker:open()
+        helpers.wait_for(function()
+            return helpers.is_window_valid(picker.select.prompt_window)
+        end, 1500)
+        local header = get_header_text(picker.select.prompt_buffer) or ""
+        helpers.assert_ok(header:find("/.../", 1, true), "header cwd ellipsis")
+        helpers.assert_ok(header:find("fuzzymatch", 1, true), "header cwd tail")
+        picker:close()
     end)
 
     run_rerun_case("rerun_buffers", function()

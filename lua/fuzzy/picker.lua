@@ -13,8 +13,7 @@ local path = require("fuzzy.path")
 --- @field private _options PickerOptions
 --- @field private _state table
 --- @field private _state.context table
---- @field private _state.match Match
---- @field private _state.select Select
+--- @field private _state.matcher table
 --- @field private _state.display function|string|nil
 --- @field private _state.content string|function|table
 --- @field private _state.staging boolean
@@ -181,18 +180,22 @@ end
 function Picker:_cancel_picker()
     self.select:close()
     self.match:destroy()
+    self.stream:stop()
+    self:_running_match(nil)
 end
 
 function Picker:_close_picker()
     self.select:close()
     self.match:destroy()
     self.stream:destroy()
+    self:_running_match(nil)
 end
 
 function Picker:_clear_picker()
     self.select:clear()
     self.match:destroy()
     self.stream:destroy()
+    self:_running_match(nil)
 end
 
 function Picker:_hide_picker()
@@ -301,6 +304,7 @@ function Picker:_input_prompt()
     return utils.debounce_callback(self._options.prompt_debounce, function(query)
         self.select:move_top()
         self.select:toggle_clear()
+
         if query == nil then
             self:_close_stage()
             self:_close_picker()
@@ -323,23 +327,7 @@ function Picker:_input_prompt()
                     args = self:_interactive_args(
                         evaluated_context, query
                     ),
-                    callback = function(_, all)
-                        if all == nil then
-                            if not self.stream.results or #self.stream.results == 0 then
-                                self.select:list(
-                                    utils.EMPTY_TABLE,
-                                    utils.EMPTY_TABLE
-                                )
-                                self.select:status("0/0")
-                            end
-                            self.select:list(nil, nil)
-                        else
-                            self.select:list(all, nil)
-                            self.select:status(string.format(
-                                "%d/%d", #all, #all
-                            ))
-                        end
-                    end
+                    callback = self:_flush_interactive(),
                 })
             else
                 -- when there is no query we just render no results, there is nothing yet running, the stream is not
@@ -385,65 +373,16 @@ function Picker:_input_prompt()
                             "%d/%d", #matching[1], #data
                         ))
                     end
-                end, self._state.match)
+                    self:_running_match(nil)
+                end, self._state.matcher)
             else
-                -- just render all the results as they are, when there is no query, nothing can be matched against, so we
-                -- dump all the results into the list
+                -- just render all the results as they are, when there is no query, nothing can be matched against, so we dump all the
+                -- results into the list
+                self:_running_match(nil)
                 self.select:list(data, nil)
                 self.select:list(nil, nil)
                 self.select:status(string.format(
                     "%d/%d", #data, #data
-                ))
-            end
-        end
-    end)
-end
-
-function Picker:_flush_results()
-    -- no need to debounce much here, however there might be cases where the stream buffer fills up too quickly if the step is small or if
-    -- the executable is way too fast, debouncing the stream flush can still be useful, to avoid re-starting the matcher too often
-    return utils.debounce_callback(self._options.stream_debounce, function(_, all)
-        if all == nil then
-            -- streaming is done, so we need to make sure that the renderer is notified about it
-            if not self.stream.results or #self.stream.results == 0 then
-                self.select:list(
-                    utils.EMPTY_TABLE,
-                    utils.EMPTY_TABLE
-                )
-                self.select:status("0/0")
-            end
-            self.select:list(nil, nil)
-        else
-            local query = self.select:query()
-            if #all > 0 and type(query) == "string" and #query > 0 then
-                -- when there is a query we need to match against it
-                self.match:match(all, query, function(matching)
-                    if matching == nil then
-                        if not self.match.results or #self.match.results == 0 or #self.match.results[1] == 0 then
-                            self.select:list(
-                                utils.EMPTY_TABLE,
-                                utils.EMPTY_TABLE
-                            )
-                            self.select:status("0/0")
-                        end
-                        self.select:list(nil, nil)
-                    else
-                        -- render the new matching results, which would update the list view
-                        self.select:list(
-                            matching[1],
-                            matching[2]
-                        )
-                        self.select:status(string.format(
-                            "%d/%d", #matching[1], #all
-                        ))
-                    end
-                end, self._state.match)
-            else
-                -- when there is no query yet, we just have to render all the results as they are, empty query means that
-                -- we can certainly show all results, that the stream produced so far.
-                self.select:list(all, nil)
-                self.select:status(string.format(
-                    "%d/%d", #all, #all
                 ))
             end
         end
@@ -460,7 +399,7 @@ function Picker:_create_stage()
             if query == nil then
                 self:_close_stage()
                 self:_close_picker()
-            elseif self.stream.results then
+            elseif self.stream.results ~= nil then
                 if #self.stream.results > 0 and type(query) == "string" and #query > 0 then
                     stage.match:match(self.stream.results, query, function(matching)
                         if matching == nil then
@@ -483,7 +422,7 @@ function Picker:_create_stage()
                                 #self.stream.results
                             ))
                         end
-                    end, self._state.match)
+                    end, self._state.matcher)
                 else
                     stage.select:list(
                         self.stream.results,
@@ -535,7 +474,7 @@ function Picker:_create_stage()
                     and assert(a[1]) or assert(a)
             end, picker_options.actions or {}),
             prompt_input = _input_prompt(),
-            prompt_headers = self:_generate_headers(
+            prompt_headers = self:_compute_headers(
                 picker_options.headers, stage_actions
             ),
             prompt_decor = picker_options.prompt_decor,
@@ -580,7 +519,7 @@ function Picker:_toggle_stage()
     end
 end
 
-function Picker:_generate_headers(headers, actions)
+function Picker:_compute_headers(headers, actions)
     local action_headers = {}
     -- generate the labels for the picker actions, if any exist
     for key, action in pairs(actions or self._options.actions) do
@@ -608,6 +547,166 @@ function Picker:_generate_headers(headers, actions)
     headers = headers or self._options.headers
     headers = headers and vim.fn.deepcopy(headers)
     return vim.list_extend(headers, action_headers)
+end
+
+function Picker:_running_match(matching, query)
+    local state = assert(self._state)
+    if matching == nil and state.matching then
+        local match_state = state.matching
+        local function release_table(tbl)
+            for i, value in ipairs(tbl) do
+                if i == 1 then
+                    utils.fill_table(
+                        value,
+                        utils.EMPTY_STRING
+                    )
+                elseif i == 2 then
+                    utils.fill_table(
+                        value,
+                        utils.EMPTY_TABLE
+                    )
+                else
+                    utils.fill_table(
+                        value, 0
+                    )
+                end
+                Pool._return(value)
+            end
+        end
+
+        if match_state.buffer then
+            release_table(match_state.buffer)
+            match_state.buffer = nil
+        end
+        if match_state.accum then
+            release_table(match_state.accum)
+            match_state.accum = nil
+        end
+        match_state.query = nil
+        state.matching = nil
+        return matching
+    elseif matching ~= nil then
+        if not state.matching then
+            state.matching = {
+                accum = nil,
+                buffer = nil,
+                query = query,
+            }
+        end
+        if state.matching.query ~= query then
+            self:_running_match(nil)
+            state.matching = {}
+        end
+        local match_state = state.matching
+        match_state.query = assert(query)
+
+        if not match_state.accum or #match_state.accum == 0 then
+            match_state.accum = {
+                Pool.obtain(#matching[1]),
+                Pool.obtain(#matching[2]),
+                Pool.obtain(#matching[3]),
+            }
+            for i = 1, 3, 1 do
+                utils.resize_table(
+                    match_state.accum[i],
+                    #matching[i], nil
+                )
+                for j = 1, #matching[i], 1 do
+                    match_state.accum[i][j] = matching[i][j]
+                end
+            end
+        else
+            if not match_state.buffer then
+                match_state.buffer = {
+                    Pool.obtain(#matching[1]),
+                    Pool.obtain(#matching[2]),
+                    Pool.obtain(#matching[3]),
+                }
+            end
+            local result, _ = utils.timed_call(Match.merge,
+                match_state.buffer, match_state.accum, matching
+            )
+            match_state.buffer = match_state.accum
+            match_state.accum = assert(result)
+            assert(#result[1] == #result[2])
+            assert(#result[2] == #result[3])
+        end
+        return assert(match_state.accum)
+    end
+    return matching
+end
+
+function Picker:_flush_interactive()
+    -- no need to debounce much here, however there might be cases where the stream buffer fills up too quickly if the step is small or if
+    -- the executable is way too fast, debouncing the stream flush can still be useful, to avoid re-starting the matcher too often
+    return utils.debounce_callback(self._options.stream_debounce, function(buf, all)
+        if buf == nil and all == nil then
+            if not self.stream.results or #self.stream.results == 0 then
+                self.select:list(
+                    utils.EMPTY_TABLE,
+                    utils.EMPTY_TABLE
+                )
+                self.select:status("0/0")
+            end
+            self.select:list(nil, nil)
+        else
+            self.select:list(all, nil)
+            self.select:status(string.format(
+                "%d/%d", #all, #all
+            ))
+        end
+    end)
+end
+
+function Picker:_flush_direct()
+    -- no need to debounce much here, however there might be cases where the stream buffer fills up too quickly if the step is small or if
+    -- the executable is way too fast, debouncing the stream flush can still be useful, to avoid re-starting the matcher too often
+    return utils.debounce_callback(self._options.stream_debounce, function(buf, all)
+        if buf == nil and all == nil then
+            -- streaming is done, so we need to make sure that the renderer is notified about it
+            if not self.stream.results or #self.stream.results == 0 then
+                self.select:list(
+                    utils.EMPTY_TABLE,
+                    utils.EMPTY_TABLE
+                )
+                self.select:status("0/0")
+            end
+            self.select:list(nil, nil)
+        else
+            local query = self.select:query()
+            if buf and #buf > 0 and type(query) == "string" and #query > 0 then
+                -- when matching while the stream is running, can afford to accumulate results over time as the streaming chunks come in
+                -- that would prevent re-matching on the entire stream - `all` entries every time a new chunk is delivered, using the
+                -- running_match, are accumulated matched stream chunks.
+                self.match:match(buf, query, function(matching)
+                    if matching == nil then
+                        if not self.match.results or #self.match.results == 0 or #self.match.results[1] == 0 then
+                            self.select:list(
+                                utils.EMPTY_TABLE,
+                                utils.EMPTY_TABLE
+                            )
+                            self.select:status("0/0")
+                        end
+                        self.select:list(nil, nil)
+                    else
+                        matching = self:_running_match(matching, query)
+                        self.select:list(matching[1], matching[2])
+                        self.select:status(string.format(
+                            "%d/%d", #matching[1], #all
+                        ))
+                    end
+                end, self._state.matcher)
+            else
+                -- when there is no query yet, we just have to render all the results as they are, empty query means that
+                -- we can certainly show all results, that the stream produced so far.
+                self.select:list(all, nil)
+                self.select:status(string.format(
+                    "%d/%d", #all, #all
+                ))
+                self:_running_match(nil)
+            end
+        end
+    end)
 end
 
 function Picker:_is_open()
@@ -728,7 +827,7 @@ function Picker:open()
                     env = evaluated_context.env,
                     args = evaluated_context.args,
                     transform = evaluated_context.map,
-                    callback = self:_flush_results(),
+                    callback = self:_flush_direct(),
                 })
             elseif self.stream.results and self.select:isempty() then
                 -- in case there are valid results in the stream, just fill the select interface, having results here
@@ -825,9 +924,9 @@ function Picker.new(opts)
         display = nil,
         decorators = {},
         match_limit = nil,
-        match_timer = 75,
-        match_step = 62500,
-        stream_step = 125000,
+        match_timer = 30,
+        match_step = 75000,
+        stream_step = 150000,
         stream_type = "lines",
         stream_debounce = 0,
         window_size = 0.20,
@@ -841,22 +940,23 @@ function Picker.new(opts)
 
     local is_lines = opts.stream_type == "lines"
     if type(opts.display) == "function" then
-        opts.match = { text_cb = opts.display }
+        opts.matcher = { text_cb = opts.display }
     elseif type(opts.display) == "string" then
-        opts.match = { key = opts.display }
+        opts.matcher = { key = opts.display }
     end
 
     local self = setmetatable({
         match = nil,
         stream = nil,
         select = nil,
+        results = {},
         _options = opts,
         _state = {
             staging = false,
-            match = opts.match,
             display = opts.display,
             content = opts.content,
             context = opts.context,
+            matcher = opts.matcher,
         },
     }, Picker)
 
@@ -904,7 +1004,7 @@ function Picker.new(opts)
                 and assert(a[1]) or assert(a)
         end, opts.actions),
         prompt_input = self:_input_prompt(),
-        prompt_headers = self:_generate_headers(),
+        prompt_headers = self:_compute_headers(),
         prompt_query = opts.prompt_query,
         prompt_decor = opts.prompt_decor,
         window_ratio = opts.window_size,

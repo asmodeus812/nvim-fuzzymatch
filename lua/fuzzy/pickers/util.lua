@@ -1,6 +1,5 @@
 local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
-local utils = require("fuzzy.utils")
 
 local M = {}
 
@@ -75,26 +74,23 @@ function M.build_picker_headers(picker_title, picker_options)
         return nil
     end
     local header_blocks = { { picker_title } }
-    if picker_options and picker_options.cwd and picker_options.cwd_prompt then
-        local cwd = M.resolve_working_directory(picker_options.cwd)
-        if cwd and #cwd > 0 then
-            local header_text = cwd
-            if picker_options.cwd_prompt_shorten_len then
-                header_text = vim.fn.pathshorten(
-                    header_text,
-                    picker_options.cwd_prompt_shorten_val or 1
-                )
-                if #header_text > picker_options.cwd_prompt_shorten_len then
-                    header_text = header_text:sub(
-                        #header_text - picker_options.cwd_prompt_shorten_len + 1
-                    )
-                end
-            end
-            table.insert(header_blocks, { header_text })
-        end
-    elseif picker_options and picker_options.cwd then
+    if picker_options and picker_options.cwd then
+        local max_len = 32
         table.insert(header_blocks, {
-            M.resolve_working_directory(picker_options.cwd)
+            function()
+                local cwd = M.resolve_working_directory(picker_options.cwd)
+                if #cwd <= max_len then
+                    return cwd
+                end
+                local ellipsis = "/.../"
+                local tail_len = math.max(8, max_len - #ellipsis - 8)
+                local head_len = math.max(1, max_len - #ellipsis - tail_len)
+                return table.concat({
+                    assert(cwd):sub(1, head_len),
+                    ellipsis,
+                    assert(cwd):sub(#cwd - tail_len + 1),
+                })
+            end
         })
     end
     return header_blocks

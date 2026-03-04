@@ -308,12 +308,12 @@ function M.open_git_bcommits(opts)
             end,
             args = function(picker)
                 local buf = vim.api.nvim_get_current_buf()
-                local buf_path = utils.get_bufname(buf) or utils.NO_NAME
-                buf_path = vim.fs.normalize(assert(buf_path))
+                local path = utils.get_bufname(buf)
+                path = vim.fs.normalize(assert(path))
 
                 local cwd = resolve_picker_cwd(picker) or ""
-                local rel_path = vim.fs.relpath(buf_path, cwd)
-                rel_path = rel_path or buf_path
+                local rel_path = vim.fs.relpath(path, cwd)
+                rel_path = rel_path or path
 
                 return {
                     "log",

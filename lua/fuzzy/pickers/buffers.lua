@@ -161,9 +161,7 @@ function M.open_buffers_picker(opts)
     local prefix_decorator = Select.Decorator.new()
     function prefix_decorator:decorate(entry_value)
         local buf = entry_value.bufnr
-        local buffer_info = entry_value.buffer_info
-        local buf_info = buffer_info or utils.get_bufinfo(buf)
-        local info = buf_info.info
+        local info = entry_value.buffer_info.info
 
         local hidden_flag = info.hidden == 1 and "h"
             or info.loaded and "a" or " "
@@ -214,18 +212,16 @@ function M.open_buffers_picker(opts)
             end
             for _, buf in ipairs(buf_list) do
                 local buffer_info = utils.get_bufinfo(buf)
-                local buffer_name_value = utils.get_bufname(buf, buffer_info)
-                if buffer_name_value
-                    and #buffer_name_value > 0
+                local buffer_name = utils.get_bufname(buf, buffer_info)
+                if buffer_name and #buffer_name > 0
                     and not util.is_under_directory(
-                        cwd,
-                        buffer_name_value
-                    ) then
+                        cwd, buffer_name)
+                then
                     goto continue
                 end
                 stream_callback({
                     bufnr = buf,
-                    filename = buffer_name_value,
+                    filename = buffer_name,
                     buffer_info = buffer_info,
                 })
                 ::continue::

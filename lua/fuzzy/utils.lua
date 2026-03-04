@@ -84,22 +84,22 @@ function M.compare_tables(t1, t2, visited)
     -- Check if both are empty tables
     if next(t1) == nil and next(t2) == nil then return true end
 
-    -- Fast path for array-like segments
+    -- Fast path for array-like segments (1..#t)
     local n1 = #t1
     local n2 = #t2
-    if n1 > 0 or n2 > 0 then
-        if n1 ~= n2 then return false end
-        for i = 1, n1 do
-            if not M.compare_tables(t1[i], t2[i], visited) then
-                return false
-            end
+    if n1 ~= n2 then return false end
+    for i = 1, n1 do
+        if not M.compare_tables(t1[i], t2[i], visited) then
+            return false
         end
     end
 
     -- Recursively compare all key-value pairs
     for k, v1 in pairs(t1) do
-        -- Skip array part already compared
-        if type(k) ~= "number" or k < 1 or k > n1 or k % 1 ~= 0 then
+        if type(k) ~= "number"
+            or k < 1
+            or k > n1
+            or k % 1 ~= 0 then
             local v2 = t2[k]
             if v2 == nil then return false end
             if not M.compare_tables(v1, v2, visited) then
@@ -108,9 +108,12 @@ function M.compare_tables(t1, t2, visited)
         end
     end
 
-    -- Check for extra keys in t2 (excluding array part already compared)
+    -- Check for extra keys in t2
     for k in pairs(t2) do
-        if type(k) ~= "number" or k < 1 or k > n2 or k % 1 ~= 0 then
+        if type(k) ~= "number"
+            or k < 1
+            or k > n2
+            or k % 1 ~= 0 then
             if t1[k] == nil then return false end
         end
     end
@@ -220,15 +223,31 @@ function M.debounce_callback(wait, callback)
         return callback
     end
     local debounce_timer = nil
+    local version = 0
     return function(...)
+        version = version + 1
+        local current_version = version
         if debounce_timer and not debounce_timer:is_closing() then
+            debounce_timer:stop()
             debounce_timer:close()
             debounce_timer = nil
         end
         local args = M.table_pack(...)
-        debounce_timer = vim.defer_fn(function()
+        debounce_timer = assert(vim.loop.new_timer())
+        debounce_timer:start(wait, 0, vim.schedule_wrap(function()
+            if current_version ~= version then
+                if debounce_timer and not debounce_timer:is_closing() then
+                    debounce_timer:close()
+                    debounce_timer = nil
+                end
+                return
+            end
             callback(M.table_unpack(args))
-        end, wait)
+            if debounce_timer and not debounce_timer:is_closing() then
+                debounce_timer:close()
+                debounce_timer = nil
+            end
+        end))
     end
 end
 

@@ -4,9 +4,6 @@ local util = require("fuzzy.pickers.util")
 
 --- @class FilesPickerOptions
 --- @field cwd? string|fun(): string Working directory for the scan
---- @field cwd_prompt? boolean Show cwd in the header
---- @field cwd_prompt_shorten_val? integer Pathshorten value
---- @field cwd_prompt_shorten_len? integer Max cwd header length
 --- @field hidden? boolean Include hidden files
 --- @field follow? boolean Follow symlinks
 --- @field no_ignore? boolean Disable ignore files
@@ -75,9 +72,6 @@ end
 function M.open_files_picker(opts)
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
-        cwd_prompt = true,
-        cwd_prompt_shorten_val = 1,
-        cwd_prompt_shorten_len = 32,
         hidden = true,
         follow = false,
         no_ignore = false,

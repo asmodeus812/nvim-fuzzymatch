@@ -109,10 +109,6 @@ function M.open_marks_picker(opts)
             local line_number = mark_position[2]
             local column_number = mark_position[3]
             local filename = assert(entry_value.file)
-            local display_path = util.format_display_path(filename, opts)
-            if not display_path or #display_path == 0 then
-                display_path = utils.NO_NAME
-            end
             return util.format_location_entry(
                 filename, line_number or 1, column_number or 1, nil,
                 table.concat({ "[", entry_value.mark or "?", "]" })
