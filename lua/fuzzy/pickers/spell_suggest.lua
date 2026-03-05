@@ -9,54 +9,54 @@ local util = require("fuzzy.pickers.util")
 
 local M = {}
 
-local function find_word_bounds(line_text_value, cursor_col_number)
-    local search_start_number = 0
+local function find_word_bounds(line_text, cursor_col)
+    local start = 0
     while true do
         local match_result_list = vim.fn.matchstrpos(
-            line_text_value,
+            line_text,
             "\\k\\+",
-            search_start_number
+            start
         )
         assert(
             match_result_list
             and match_result_list[2] ~= nil
             and match_result_list[2] >= 0
         )
-        local match_start_number = match_result_list[2]
-        local match_end_number = match_result_list[3]
-        if cursor_col_number >= match_start_number
-            and cursor_col_number < match_end_number then
-            return match_start_number, match_end_number
+        local match_start = match_result_list[2]
+        local match_end = match_result_list[3]
+        if cursor_col >= match_start
+            and cursor_col < match_end then
+            return match_start, match_end
         end
-        search_start_number = match_end_number
+        start = match_end
     end
 end
 
-local function replace_cursor_word(word_text_value)
-    if type(word_text_value) ~= "string" or #word_text_value == 0 then
+local function replace_cursor_word(word)
+    if type(word) ~= "string" or #word == 0 then
         return
     end
-    local cursor_position_list = vim.api.nvim_win_get_cursor(0)
-    local cursor_row_number = cursor_position_list[1]
-    local cursor_col_number = cursor_position_list[2]
-    local line_text_value = vim.api.nvim_buf_get_lines(
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    local row = cursor[1]
+    local col = cursor[2]
+    local line = vim.api.nvim_buf_get_lines(
         0,
-        cursor_row_number - 1,
-        cursor_row_number,
+        row - 1,
+        row,
         false
     )[1] or ""
-    local start_col_number, end_col_number = find_word_bounds(
-        line_text_value,
-        cursor_col_number
+    local start_col, end_col = find_word_bounds(
+        line,
+        col
     )
-    assert(start_col_number ~= nil and end_col_number ~= nil)
+    assert(start_col ~= nil and end_col ~= nil)
     vim.api.nvim_buf_set_text(
         0,
-        cursor_row_number - 1,
-        start_col_number,
-        cursor_row_number - 1,
-        end_col_number,
-        { word_text_value }
+        row - 1,
+        start_col,
+        row - 1,
+        end_col,
+        { word }
     )
 end
 
@@ -117,7 +117,13 @@ function M.open_spell_suggest(opts)
                 end
             ),
         },
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 5,
+        match_step = 1000,
+        stream_step = 2000,
+        stream_debounce = 0,
+        prompt_debounce = 20,
+    }))
 
     picker:open()
     return picker

@@ -91,7 +91,7 @@ local function build_git_picker(opts, config)
         actions = actions,
         decorators = config.decorators,
         display = config.display,
-    }, util.build_picker_options(opts)))
+    }, opts))
     if config.bind then
         config.bind(picker)
     end

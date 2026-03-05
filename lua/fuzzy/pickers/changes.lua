@@ -48,9 +48,8 @@ function M.open_changes_picker(opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
-            local entries = args.items
             local filename = args.filename
-            for _, entry in ipairs(entries) do
+            for _, entry in ipairs(args.items) do
                 local change_entry = vim.tbl_extend("force", {}, entry, {
                     bufnr = args.buf,
                     filename = filename,
@@ -80,7 +79,13 @@ function M.open_changes_picker(opts)
                 nil, entry.lnum or 1, entry.col or 1
             )
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 5,
+        match_step = 2000,
+        stream_step = 4000,
+        stream_debounce = 0,
+        prompt_debounce = 25,
+    }))
 
     picker:open()
     return picker

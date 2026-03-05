@@ -78,39 +78,62 @@ function M.run()
         end)
     end)
 
-    helpers.run_test_case("vimdoc_preview", function()
-        helpers.with_mock(vim.fn, "api_info", function()
-            return {
-                functions = {
-                    {
-                        name = "nvim_buf_get_lines",
-                        since = 9,
-                        return_type = "Array",
-                        method = false,
-                        parameters = { { "Buffer", "buffer" }, { "Integer", "start" } },
+    helpers.run_test_case("vimdoc_help_content", function()
+        local original_rtp = vim.o.runtimepath
+        local original_helplang = vim.o.helplang
+        local dir_path = helpers.create_temp_dir()
+        local doc_dir = vim.fs.joinpath(dir_path, "doc")
+        vim.uv.fs_mkdir(doc_dir, 448)
+        helpers.write_file(vim.fs.joinpath(doc_dir, "help.txt"), {
+            "*nvim_buf_get_lines*",
+            "vimdoc preview content",
+        })
+        helpers.write_file(vim.fs.joinpath(doc_dir, "tags"), {
+            "nvim_buf_get_lines\thelp.txt\t/^nvim_buf_get_lines$/",
+        })
+        vim.o.runtimepath = dir_path
+        vim.o.helplang = "en"
+        local ok, err = pcall(function()
+            helpers.with_mock(vim.fn, "api_info", function()
+                return {
+                    functions = {
+                        {
+                            name = "nvim_buf_get_lines",
+                            since = 9,
+                            return_type = "Array",
+                            method = false,
+                            parameters = { { "Buffer", "buffer" }, { "Integer", "start" } },
+                        },
                     },
-                },
-            }
-        end, function()
-            local api_picker = require("fuzzy.pickers.vimdoc")
-            local picker = api_picker.open_vimdoc_picker({
-                preview = true,
-                prompt_debounce = 0,
-            })
-            helpers.wait_for_entries(picker)
-            helpers.wait_for(function()
-                local preview_buf = picker.select.preview_window
-                    and vim.api.nvim_win_get_buf(picker.select.preview_window) or nil
-                local lines = helpers.get_buffer_lines(preview_buf)
-                for _, line in ipairs(lines or {}) do
-                    if line:find("Signature:", 1, true) then
-                        return true
+                }
+            end, function()
+                local api_picker = require("fuzzy.pickers.vimdoc")
+                local picker = api_picker.open_vimdoc_picker({
+                    preview = false,
+                    prompt_debounce = 0,
+                })
+                helpers.wait_for_entries(picker)
+                picker.select._options.mappings["<cr>"](picker.select)
+                helpers.wait_for(function()
+                    local buf = vim.api.nvim_get_current_buf()
+                    if vim.bo[buf].filetype ~= "help" then
+                        return false
                     end
-                end
-                return false
-            end, 1500)
-            picker:close()
+                    local lines = helpers.get_buffer_lines(buf)
+                    for _, line in ipairs(lines or {}) do
+                        if line:find("vimdoc preview content", 1, true) then
+                            return true
+                        end
+                    end
+                    return false
+                end, 1500)
+            end)
         end)
+        vim.o.runtimepath = original_rtp
+        vim.o.helplang = original_helplang
+        if not ok then
+            error(err)
+        end
     end)
 
     helpers.run_test_case("vimdoc_action", function()
@@ -129,10 +152,16 @@ function M.run()
                 })
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
-                local action = picker.select._options.mappings["<cr>"]
-                action(picker.select)
-                helpers.assert_ok(#calls > 0, "help cmd")
-                helpers.close_picker(picker)
+                local map = picker.select._options.mappings
+                map["<cr>"](picker.select)
+                local saw_help = false
+                for _, call in ipairs(calls) do
+                    local arg = call.args and call.args[1] or nil
+                    if type(arg) == "table" and arg.cmd == "help" then
+                        saw_help = true
+                    end
+                end
+                helpers.assert_ok(saw_help, "help cmd")
             end)
         end)
     end)

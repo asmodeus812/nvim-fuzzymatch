@@ -19,8 +19,7 @@ function M.open_btags_picker(opts)
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
             local current_buffer_name = args.bufname
-            local entries = args.items
-            for _, tag_entry in ipairs(entries) do
+            for _, tag_entry in ipairs(args.items) do
                 if tag_entry and tag_entry.filename == current_buffer_name then
                     stream(tag_entry)
                 end
@@ -47,14 +46,20 @@ function M.open_btags_picker(opts)
             end)),
         },
         display = function(entry)
-            local name_text = entry.name or ""
-            local kind_text = entry.kind or ""
-            if #kind_text > 0 then
-                kind_text = table.concat({ " [", kind_text, "]" })
+            local name = entry.name or ""
+            local kind = entry.kind or ""
+            if #kind > 0 then
+                kind = " [" .. kind .. "]"
             end
-            return table.concat({ name_text, kind_text })
+            return name .. kind
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 5,
+        match_step = 2000,
+        stream_step = 4000,
+        stream_debounce = 0,
+        prompt_debounce = 25,
+    }))
 
     picker:open()
     return picker

@@ -197,7 +197,7 @@ function M.open_grep_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(convert, opts),
         decorators = decorators,
-    }, util.build_picker_options(opts)))
+    }, opts))
 
     converter:bind(picker)
     picker:open()

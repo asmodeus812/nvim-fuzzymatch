@@ -247,7 +247,13 @@ function M.open_buffers_picker(opts)
             local buffer_name = entry.filename or utils.NO_NAME
             return util.format_display_path(buffer_name, opts)
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 10,
+        match_step = 5000,
+        stream_step = 10000,
+        stream_debounce = 0,
+        prompt_debounce = 30,
+    }))
 
     picker:open()
     return picker

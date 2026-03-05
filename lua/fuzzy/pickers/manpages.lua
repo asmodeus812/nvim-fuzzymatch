@@ -50,8 +50,7 @@ function M.open_manpages_picker(opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
-            local items = args.items
-            for _, manpage in ipairs(items) do
+            for _, manpage in ipairs(args.items) do
                 stream(manpage)
             end
             stream(nil)
@@ -71,7 +70,7 @@ function M.open_manpages_picker(opts)
                 return false
             end)),
         },
-    }, util.build_picker_options(opts)))
+    }, opts))
 
     picker:open()
     return picker

@@ -135,7 +135,13 @@ function M.open_lines_picker(opts)
             assert(ok ~= false and text ~= nil)
             return ok and #text > 0 and text[1] or ""
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 10,
+        match_step = 10000,
+        stream_step = 20000,
+        stream_debounce = 0,
+        prompt_debounce = 30,
+    }))
 
     picker:open()
     return picker

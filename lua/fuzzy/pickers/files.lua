@@ -14,55 +14,55 @@ local util = require("fuzzy.pickers.util")
 local M = {}
 
 local function build_files_command(opts)
-    local command_name_text = util.pick_first_command({ "rg", "fd", "find" })
-    if not command_name_text then
+    local cmd = util.pick_first_command({ "rg", "fd", "find" })
+    if not cmd then
         return nil, nil
     end
 
-    if command_name_text == "rg" then
-        local command_argument_list = {
+    if cmd == "rg" then
+        local args = {
             "--files",
             "--color=never",
         }
         if opts.hidden then
-            table.insert(command_argument_list, "--hidden")
+            table.insert(args, "--hidden")
         end
         if opts.follow then
-            table.insert(command_argument_list, "--follow")
+            table.insert(args, "--follow")
         end
         if opts.no_ignore then
-            table.insert(command_argument_list, "--no-ignore")
+            table.insert(args, "--no-ignore")
         end
         if opts.no_ignore_vcs then
-            table.insert(command_argument_list, "--no-ignore-vcs")
+            table.insert(args, "--no-ignore-vcs")
         end
-        return command_name_text, command_argument_list
-    elseif command_name_text == "fd" then
-        local command_argument_list = {
+        return cmd, args
+    elseif cmd == "fd" then
+        local args = {
             "--type", "f",
             "--color", "never",
         }
         if opts.hidden then
-            table.insert(command_argument_list, "--hidden")
+            table.insert(args, "--hidden")
         end
         if opts.follow then
-            table.insert(command_argument_list, "--follow")
+            table.insert(args, "--follow")
         end
         if opts.no_ignore then
-            table.insert(command_argument_list, "--no-ignore")
+            table.insert(args, "--no-ignore")
         end
         if opts.no_ignore_vcs then
-            table.insert(command_argument_list, "--no-ignore-vcs")
+            table.insert(args, "--no-ignore-vcs")
         end
-        return command_name_text, command_argument_list
+        return cmd, args
     else
-        local command_argument_list = { ".", "-type", "f" }
+        local args = { ".", "-type", "f" }
         if opts.hidden == false then
-            table.insert(command_argument_list, "-not")
-            table.insert(command_argument_list, "-path")
-            table.insert(command_argument_list, "*/.*")
+            table.insert(args, "-not")
+            table.insert(args, "-path")
+            table.insert(args, "*/.*")
         end
-        return command_name_text, command_argument_list
+        return cmd, args
     end
 end
 
@@ -121,7 +121,7 @@ function M.open_files_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
-    }, util.build_picker_options(opts)))
+    }, opts))
 
     converter:bind(picker)
     picker:open()

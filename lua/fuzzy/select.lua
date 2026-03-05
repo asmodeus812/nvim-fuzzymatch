@@ -335,6 +335,9 @@ end
 --- @param text table|nil Virtual text chunk
 --- @param lines table|nil Virtual line chunks
 local function virtual_content(buffer, ns, line, col, text, lines)
+    if buffer == nil or not vim.api.nvim_buf_is_valid(buffer) then
+        return
+    end
     vim.api.nvim_buf_clear_namespace(buffer, ns, 0, 1)
     vim.api.nvim_buf_set_extmark(buffer, ns, line, col, {
         priority = 1000,
@@ -1239,13 +1242,13 @@ function Select:_render_list()
         end
 
         if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
-            local win = self.list_window
             self:_decorate_list()
             self:_highlight_list()
             self:_display_toggle()
             self:_display_preview()
 
-            if vim.api.nvim__redraw then
+            local win = self.list_window
+            if vim.api.nvim__redraw and win and vim.api.nvim_win_is_valid(win) then
                 vim.api.nvim__redraw({
                     win = win,
                     valid = true,

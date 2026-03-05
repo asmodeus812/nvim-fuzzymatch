@@ -11,15 +11,15 @@ local M = {}
 
 local function collect_command_names(opts)
     local items = {}
-    local command_name_map = {}
+    local seen = {}
 
     if opts.include_builtin then
         local ok, builtin_command_map = pcall(vim.api.nvim_get_commands, { builtin = true })
         if ok and builtin_command_map then
-            for command_name in pairs(builtin_command_map) do
-                if not command_name_map[command_name] then
-                    command_name_map[command_name] = true
-                    items[#items + 1] = command_name
+            for name in pairs(builtin_command_map) do
+                if not seen[name] then
+                    seen[name] = true
+                    items[#items + 1] = name
                 end
             end
         end
@@ -28,10 +28,10 @@ local function collect_command_names(opts)
     if opts.include_user then
         local ok, user_command_map = pcall(vim.api.nvim_get_commands, {})
         if ok and user_command_map then
-            for command_name in pairs(user_command_map) do
-                if not command_name_map[command_name] then
-                    command_name_map[command_name] = true
-                    items[#items + 1] = command_name
+            for name in pairs(user_command_map) do
+                if not seen[name] then
+                    seen[name] = true
+                    items[#items + 1] = name
                 end
             end
         end
@@ -53,9 +53,8 @@ function M.open_commands_picker(opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
-            local items = args.items
-            for _, command_name in ipairs(items) do
-                stream(command_name)
+            for _, name in ipairs(args.items) do
+                stream(name)
             end
             stream(nil)
         end,
@@ -74,7 +73,13 @@ function M.open_commands_picker(opts)
                 return false
             end)),
         },
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 5,
+        match_step = 2000,
+        stream_step = 4000,
+        stream_debounce = 0,
+        prompt_debounce = 25,
+    }))
 
     picker:open()
     return picker

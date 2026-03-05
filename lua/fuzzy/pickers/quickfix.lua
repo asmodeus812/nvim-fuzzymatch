@@ -53,12 +53,10 @@ function M.open_quickfix_picker(opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args, cwd)
-            local qf_items = args.items
-            for _, entry in ipairs(qf_items) do
+            for _, entry in ipairs(args.items) do
                 local filename = entry.filename
                 if not filename or #filename == 0 then
-                    local buf = entry.bufnr
-                    filename = utils.get_bufname(buf)
+                    filename = utils.get_bufname(entry.bufnr)
                 end
                 if cwd and #cwd > 0 and filename and #filename > 0
                     and not util.is_under_directory(cwd, filename)
@@ -91,7 +89,13 @@ function M.open_quickfix_picker(opts)
                 table.concat({ "[", (entry.bufnr or "?"), "]" })
             )
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 10,
+        match_step = 10000,
+        stream_step = 20000,
+        stream_debounce = 0,
+        prompt_debounce = 30,
+    }))
 
     picker:open()
     return picker

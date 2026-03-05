@@ -17,8 +17,7 @@ function M.open_helptags_picker(opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
-            local items = args.items
-            for _, helptag in ipairs(items) do
+            for _, helptag in ipairs(args.items) do
                 stream(helptag)
             end
             stream(nil)
@@ -38,7 +37,13 @@ function M.open_helptags_picker(opts)
                 return false
             end)),
         },
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 10,
+        match_step = 5000,
+        stream_step = 10000,
+        stream_debounce = 0,
+        prompt_debounce = 30,
+    }))
 
     picker:open()
     return picker

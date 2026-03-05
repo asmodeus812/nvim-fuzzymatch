@@ -22,8 +22,7 @@ function M.open_tabs_picker(opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
-            local items = args.items
-            for _, tabpage in ipairs(items) do
+            for _, tabpage in ipairs(args.items) do
                 if not vim.api.nvim_tabpage_is_valid(tabpage) then
                     goto continue
                 end
@@ -46,21 +45,24 @@ function M.open_tabs_picker(opts)
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
-                local tabpage = entry.tabpage
-                assert(vim.api.nvim_tabpage_is_valid(tabpage))
-                vim.api.nvim_set_current_tabpage(tabpage)
+                assert(vim.api.nvim_tabpage_is_valid(entry.tabpage))
+                vim.api.nvim_set_current_tabpage(entry.tabpage)
                 return false
             end)),
         },
         display = function(entry)
-            local tabpage = assert(entry.tabpage)
-            assert(vim.api.nvim_tabpage_is_valid(tabpage))
-            local tabpage_index = vim.api.nvim_tabpage_get_number(tabpage)
-            local filename = assert(entry.filename)
-            filename = util.format_display_path(filename, opts)
-            return table.concat({ "[", tabpage_index, "] ", filename })
+            assert(vim.api.nvim_tabpage_is_valid(entry.tabpage))
+            local index = vim.api.nvim_tabpage_get_number(entry.tabpage)
+            local filename = util.format_display_path(entry.filename, opts)
+            return table.concat({ "[", index, "] ", filename })
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 5,
+        match_step = 1000,
+        stream_step = 2000,
+        stream_debounce = 0,
+        prompt_debounce = 20,
+    }))
 
     picker:open()
     return picker

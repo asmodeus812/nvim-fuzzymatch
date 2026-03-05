@@ -850,18 +850,17 @@ Options and behavior:
 
 ## Help
 
-Help pickers are intentionally simple and defer most work to Neovim’s help system and previewers.
+Help pickers are intentionally simple and defer most work to Neovim’s help system.
 
 ### Helptags
 
-Lists helptags. Each entry is a help tag identifier; the preview uses the help system to show the relevant section
-without loading more content into the picker itself.
+Lists helptags. Each entry is a help tag identifier.
 
 ```lua
 local helptags_picker = require("fuzzy.pickers.helptags")
 
 helptags_picker.open_helptags_picker({
-    preview = true,
+    preview = false,
 })
 ```
 
@@ -873,7 +872,7 @@ Lists manpages. Entries are collected from `apropos -k .` (fallback: `man -k .`)
 local manpages_picker = require("fuzzy.pickers.manpages")
 
 manpages_picker.open_manpages_picker({
-    preview = true,
+    preview = false,
 })
 ```
 

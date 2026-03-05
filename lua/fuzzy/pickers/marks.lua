@@ -47,14 +47,13 @@ function M.open_marks_picker(opts)
     }, opts)
 
     local conv = function(entry)
-        local mark_position = entry.pos or {}
-        local buf = mark_position[1]
-        local line_number = mark_position[2]
-        local column_number = mark_position[3]
-        local filename = assert(entry.file)
+        local pos = entry.pos or {}
+        local buf = pos[1]
+        local line_number = pos[2]
+        local column_number = pos[3]
         return {
             bufnr = buf,
-            filename = filename,
+            filename = assert(entry.file),
             lnum = line_number or 1,
             col = column_number or 1,
         }
@@ -72,8 +71,7 @@ function M.open_marks_picker(opts)
     end
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
-            local entries = args.items
-            for _, entry in ipairs(entries) do
+            for _, entry in ipairs(args.items) do
                 if opts.marks ~= nil
                     and entry.mark
                     and not entry.mark:match(opts.marks)
@@ -82,9 +80,7 @@ function M.open_marks_picker(opts)
                 end
                 local filename = entry.file
                 if not filename or #filename == 0 then
-                    local mark_position = entry.pos or {}
-                    local buf = mark_position[1]
-                    filename = utils.get_bufname(buf)
+                    filename = utils.get_bufname((entry.pos or {})[1])
                 end
                 stream(vim.tbl_extend("force", {}, entry, {
                     file = filename or utils.NO_NAME,
@@ -105,16 +101,19 @@ function M.open_marks_picker(opts)
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry)
-            local mark_position = entry.pos or {}
-            local line_number = mark_position[2]
-            local column_number = mark_position[3]
-            local filename = assert(entry.file)
+            local pos = entry.pos or {}
             return util.format_location_entry(
-                filename, line_number or 1, column_number or 1, nil,
+                assert(entry.file), pos[2] or 1, pos[3] or 1, nil,
                 table.concat({ "[", entry.mark or "?", "]" })
             )
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 5,
+        match_step = 2000,
+        stream_step = 4000,
+        stream_debounce = 0,
+        prompt_debounce = 25,
+    }))
 
     picker:open()
     return picker

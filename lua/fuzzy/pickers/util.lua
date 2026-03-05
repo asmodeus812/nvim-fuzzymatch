@@ -29,12 +29,12 @@ function M.command_is_available(command_name)
 end
 
 --- Open Pick first command picker.
---- @param command_candidate_list string[]|nil Command candidates
+--- @param commands string[]|nil Command candidates
 --- @return string|nil
-function M.pick_first_command(command_candidate_list)
-    for _, command_name in ipairs(command_candidate_list or {}) do
-        if M.command_is_available(command_name) then
-            return command_name
+function M.pick_first_command(commands)
+    for _, name in ipairs(commands or {}) do
+        if M.command_is_available(name) then
+            return name
         end
     end
     return nil
@@ -241,13 +241,6 @@ function M.build_default_actions(converter_callback, picker_options)
         action_map = vim.tbl_deep_extend("force", action_map, picker_options.actions)
     end
     return action_map
-end
-
---- Open Build picker options picker.
---- @param picker_options table|nil
---- @return table
-function M.build_picker_options(picker_options)
-    return picker_options or {}
 end
 
 --- Open Build versioned env list picker.

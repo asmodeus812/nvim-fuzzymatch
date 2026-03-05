@@ -34,11 +34,10 @@ function M.open_registers_picker(opts)
 
     if opts.preview == true then
         opts.preview = Select.CustomPreview.new(function(entry, _, _)
-            local regcontents = entry and entry.regcontents or nil
+            local regcontents = entry and entry.regcontents
             if regcontents == nil then
-                local name = entry and entry.name or nil
-                local info = name and vim.fn.getreginfo(name) or nil
-                regcontents = info and info.regcontents or nil
+                local info = vim.fn.getreginfo(entry.name)
+                regcontents = info and info.regcontents
             end
             if type(regcontents) ~= "table" or #regcontents == 0 then
                 regcontents = { "" }
@@ -51,8 +50,7 @@ function M.open_registers_picker(opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
-            local items = args.items
-            for _, register_entry in ipairs(items) do
+            for _, register_entry in ipairs(args.items) do
                 local name = register_entry.name
                 if opts.filter ~= nil and name
                     and not name:match(opts.filter)
@@ -96,11 +94,10 @@ function M.open_registers_picker(opts)
         preview = opts.preview,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
-                local name = entry and entry.name or nil
-                local regcontents = entry and entry.regcontents or nil
-                local regtype = entry and entry.regtype or nil
+                local regcontents = entry.regcontents
+                local regtype = entry.regtype
                 if regcontents == nil then
-                    local info = assert(vim.fn.getreginfo(name))
+                    local info = assert(vim.fn.getreginfo(entry.name))
                     regcontents = info.regcontents
                     regtype = info.regtype
                 end
@@ -109,11 +106,15 @@ function M.open_registers_picker(opts)
             end)),
         },
         display = function(entry)
-            local name = entry and entry.name or nil
-            local preview = entry and entry.preview or ""
-            return table.concat({ "[", name, "] ", preview })
+            return table.concat({ "[", entry.name, "] ", entry.preview or "" })
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 5,
+        match_step = 1000,
+        stream_step = 2000,
+        stream_debounce = 0,
+        prompt_debounce = 20,
+    }))
 
     picker:open()
     return picker

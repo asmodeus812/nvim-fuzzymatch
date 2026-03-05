@@ -47,12 +47,10 @@ function M.open_jumps_picker(opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
-            local entries = args.items
-            for _, entry in ipairs(entries) do
+            for _, entry in ipairs(args.items) do
                 local filename = entry.filename
                 if not filename or #filename == 0 then
-                    local buf = entry.bufnr
-                    filename = utils.get_bufname(buf)
+                    filename = utils.get_bufname(entry.bufnr)
                 end
                 stream(vim.tbl_extend("force", {}, entry, {
                     filename = filename or utils.NO_NAME,
@@ -73,8 +71,7 @@ function M.open_jumps_picker(opts)
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
         display = function(entry)
-            local filename = assert(entry.filename)
-            local display_path = util.format_display_path(filename, opts)
+            local display_path = util.format_display_path(entry.filename, opts)
             if not display_path or #display_path == 0 then
                 display_path = utils.NO_NAME
             end
@@ -83,7 +80,13 @@ function M.open_jumps_picker(opts)
                 table.concat({ "[", (entry.nr or "?"), "]" })
             )
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 5,
+        match_step = 2000,
+        stream_step = 4000,
+        stream_debounce = 0,
+        prompt_debounce = 25,
+    }))
 
     picker:open()
     return picker

@@ -351,7 +351,10 @@ function Picker:_input_prompt()
             -- when there is a query we need to match against it, in this scenario the picker is non-interactive, there are
             -- two options, either it was configured to use a stream or a user provided table of entries - strings, or other
             -- tables
-            local data = assert(self.stream.results or self._state.content)
+            local data = self.stream.results or self._state.content
+            if type(data) ~= "table" then
+                return
+            end
             if #data > 0 and type(query) == "string" and #query > 0 then
                 self.match:match(data, query, function(matching)
                     if matching == nil then

@@ -87,7 +87,13 @@ function M.open_oldfiles_picker(opts)
             local filename = assert(entry.filename)
             return util.format_display_path(filename, opts)
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 10,
+        match_step = 5000,
+        stream_step = 10000,
+        stream_debounce = 0,
+        prompt_debounce = 30,
+    }))
 
     picker:open()
     return picker

@@ -37,10 +37,16 @@ function M.run()
                 })
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
-                local action = picker.select._options.mappings["<cr>"]
-                action(picker.select)
-                helpers.assert_ok(#calls > 0, "help cmd")
-                helpers.close_picker(picker)
+                local map = picker.select._options.mappings
+                map["<cr>"](picker.select)
+                local saw_help = false
+                for _, call in ipairs(calls) do
+                    local arg = call.args and call.args[1] or nil
+                    if type(arg) == "table" and arg.cmd == "help" then
+                        saw_help = true
+                    end
+                end
+                helpers.assert_ok(saw_help, "help cmd")
             end)
         end)
     end)

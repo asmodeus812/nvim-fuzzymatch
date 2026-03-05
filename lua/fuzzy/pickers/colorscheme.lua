@@ -59,8 +59,7 @@ function M.open_colorscheme_picker(opts)
 
     picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
-            local items = args.items
-            for _, colorscheme_name in ipairs(items) do
+            for _, colorscheme_name in ipairs(args.items) do
                 stream(colorscheme_name)
             end
             stream(nil)
@@ -75,7 +74,13 @@ function M.open_colorscheme_picker(opts)
         },
         preview = opts.preview,
         actions = actions,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 5,
+        match_step = 1000,
+        stream_step = 2000,
+        stream_debounce = 0,
+        prompt_debounce = 20,
+    }))
 
     picker:open()
     return picker

@@ -188,8 +188,7 @@ function M.open_vimdoc_picker(opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream, args)
-            local entries = args.items
-            for _, entry in ipairs(entries) do
+            for _, entry in ipairs(args.items) do
                 stream(entry)
             end
             stream(nil)
@@ -210,7 +209,13 @@ function M.open_vimdoc_picker(opts)
             end)),
         },
         display = display_entry,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 10,
+        match_step = 5000,
+        stream_step = 10000,
+        stream_debounce = 0,
+        prompt_debounce = 30,
+    }))
 
     picker:open()
     return picker

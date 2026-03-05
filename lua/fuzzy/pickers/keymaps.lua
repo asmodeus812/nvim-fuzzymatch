@@ -67,41 +67,43 @@ function M.open_keymaps_picker(opts)
         preview = false,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
-                local right_hand_side_text = entry.rhs or ""
-                if #right_hand_side_text > 0 then
-                    vim.fn.setreg('\"', right_hand_side_text)
+                local rhs = entry.rhs or ""
+                if #rhs > 0 then
+                    vim.fn.setreg('\"', rhs)
                 end
                 return false
             end)),
         },
         display = function(entry)
-            local prefix_text = (entry.buffer == 1) and "[b]" or "[g]"
-            local mode_text = entry.mode or "?"
-            local right_hand_side_text = entry.rhs or ""
-            if opts.max_text
-                and #right_hand_side_text > opts.max_text then
-                right_hand_side_text = right_hand_side_text:sub(
-                    1,
-                    opts.max_text
-                )
+            local prefix = entry.buffer == 1 and "[b]" or "[g]"
+            local mode = entry.mode or "?"
+            local rhs = entry.rhs or ""
+            if opts.max_text and #rhs > opts.max_text then
+                rhs = rhs:sub(1, opts.max_text)
             end
-            local description_text = entry.desc or ""
-            if #description_text > 0 then
-                description_text = table.concat({ " - ", description_text })
+            local desc = entry.desc or ""
+            if #desc > 0 then
+                desc = " - " .. desc
             end
-            local left_hand_side_text = entry.lhs or ""
+            local lhs = entry.lhs or ""
             return table.concat({
-                prefix_text,
+                prefix,
                 " ",
-                mode_text,
+                mode,
                 " ",
-                left_hand_side_text,
+                lhs,
                 " -> ",
-                right_hand_side_text,
-                description_text,
+                rhs,
+                desc,
             })
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 10,
+        match_step = 5000,
+        stream_step = 10000,
+        stream_debounce = 0,
+        prompt_debounce = 30,
+    }))
 
     picker:open()
     return picker

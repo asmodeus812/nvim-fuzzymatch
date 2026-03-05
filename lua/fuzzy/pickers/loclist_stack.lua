@@ -45,7 +45,13 @@ function M.open_loclist_stack(opts)
             assert(entry and entry.text)
             return entry.text
         end,
-    }, util.build_picker_options(opts)))
+    }, opts, {
+        match_timer = 5,
+        match_step = 2000,
+        stream_step = 4000,
+        stream_debounce = 0,
+        prompt_debounce = 20,
+    }))
 
     picker:open()
     return picker
