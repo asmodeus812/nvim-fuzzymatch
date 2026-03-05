@@ -10,7 +10,7 @@ local util = require("fuzzy.pickers.util")
 local M = {}
 
 local function collect_command_names(opts)
-    local command_name_list = {}
+    local items = {}
     local command_name_map = {}
 
     if opts.include_builtin then
@@ -19,7 +19,7 @@ local function collect_command_names(opts)
             for command_name in pairs(builtin_command_map) do
                 if not command_name_map[command_name] then
                     command_name_map[command_name] = true
-                    command_name_list[#command_name_list + 1] = command_name
+                    items[#items + 1] = command_name
                 end
             end
         end
@@ -31,14 +31,14 @@ local function collect_command_names(opts)
             for command_name in pairs(user_command_map) do
                 if not command_name_map[command_name] then
                     command_name_map[command_name] = true
-                    command_name_list[#command_name_list + 1] = command_name
+                    items[#items + 1] = command_name
                 end
             end
         end
     end
 
-    table.sort(command_name_list)
-    return command_name_list
+    table.sort(items)
+    return items
 end
 
 --- Open Commands picker.
@@ -52,12 +52,12 @@ function M.open_commands_picker(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
-            local command_name_list = args.items
-            for _, command_name in ipairs(command_name_list) do
-                stream_callback(command_name)
+        content = function(stream, args)
+            local items = args.items
+            for _, command_name in ipairs(items) do
+                stream(command_name)
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Commands", opts),
         context = {
@@ -69,8 +69,8 @@ function M.open_commands_picker(opts)
         },
         preview = false,
         actions = {
-            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                vim.cmd(entry_value)
+            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+                vim.cmd(entry)
                 return false
             end)),
         },

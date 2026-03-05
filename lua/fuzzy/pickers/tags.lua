@@ -16,12 +16,12 @@ function M.open_tags_picker(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
-            local tag_name_list = args.items
-            for _, tag_name in ipairs(tag_name_list) do
-                stream_callback(tag_name)
+        content = function(stream, args)
+            local items = args.items
+            for _, tag_name in ipairs(items) do
+                stream(tag_name)
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Tags", opts),
         context = {
@@ -33,8 +33,8 @@ function M.open_tags_picker(opts)
         },
         preview = false,
         actions = {
-            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                vim.cmd({ cmd = "tag", args = { entry_value } })
+            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+                vim.cmd({ cmd = "tag", args = { entry } })
                 return false
             end)),
         },

@@ -24,14 +24,14 @@ function M.open_changes_picker(opts)
         icons = true,
     }, opts)
 
-    local conv = function(entry_value)
-        local current_buf = assert(entry_value.bufnr)
-        local current_buffer_name = assert(entry_value.filename)
+    local conv = function(entry)
+        local current_buf = assert(entry.bufnr)
+        local current_buffer_name = assert(entry.filename)
         return {
             bufnr = current_buf,
             filename = current_buffer_name,
-            lnum = entry_value.lnum or 1,
-            col = entry_value.col or 1,
+            lnum = entry.lnum or 1,
+            col = entry.col or 1,
         }
     end
 
@@ -47,18 +47,18 @@ function M.open_changes_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
-            local change_entry_list = args.items
+        content = function(stream, args)
+            local entries = args.items
             local filename = args.filename
-            for _, entry_value in ipairs(change_entry_list) do
-                local change_entry = vim.tbl_extend("force", {}, entry_value, {
+            for _, entry in ipairs(entries) do
+                local change_entry = vim.tbl_extend("force", {}, entry, {
                     bufnr = args.buf,
                     filename = filename,
                     tick = args.tick,
                 })
-                stream_callback(change_entry)
+                stream(change_entry)
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Changes", opts),
         context = {
@@ -75,9 +75,9 @@ function M.open_changes_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
-        display = function(entry_value)
+        display = function(entry)
             return util.format_location_entry(
-                nil, entry_value.lnum or 1, entry_value.col or 1
+                nil, entry.lnum or 1, entry.col or 1
             )
         end,
     }, util.build_picker_options(opts)))

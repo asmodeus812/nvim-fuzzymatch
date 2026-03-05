@@ -155,16 +155,16 @@ function M.open_grep_picker(opts)
         Picker.grep_converter,
         Picker.cwd_visitor
     )
-    local converter_cb = converter:get()
+    local convert = converter:get()
     if opts.preview == true then
-        opts.preview = Select.BufferPreview.new(nil, converter_cb)
+        opts.preview = Select.BufferPreview.new(nil, convert)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
 
     local decorators = {}
     if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(converter_cb) }
+        decorators = { Select.IconDecorator.new(convert) }
     end
 
     local env = nil
@@ -195,7 +195,7 @@ function M.open_grep_picker(opts)
             end,
         },
         preview = opts.preview,
-        actions = util.build_default_actions(converter_cb, opts),
+        actions = util.build_default_actions(convert, opts),
         decorators = decorators,
     }, util.build_picker_options(opts)))
 

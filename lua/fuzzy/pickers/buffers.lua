@@ -159,9 +159,9 @@ function M.open_buffers_picker(opts)
     end
 
     local prefix_decorator = Select.Decorator.new()
-    function prefix_decorator:decorate(entry_value)
-        local buf = entry_value.bufnr
-        local info = entry_value.buffer_info.info
+    function prefix_decorator:decorate(entry)
+        local buf = entry.bufnr
+        local info = entry.buffer_info.info
 
         local hidden_flag = info.hidden == 1 and "h"
             or info.loaded and "a" or " "
@@ -188,7 +188,7 @@ function M.open_buffers_picker(opts)
 
     table.insert(decorators, prefix_decorator)
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args, cwd)
+        content = function(stream, args, cwd)
             local included_buffer_map
             local buf_list = args.buffers_list or {}
 
@@ -219,14 +219,14 @@ function M.open_buffers_picker(opts)
                 then
                     goto continue
                 end
-                stream_callback({
+                stream({
                     bufnr = buf,
                     filename = buffer_name,
                     buffer_info = buffer_info,
                 })
                 ::continue::
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Buffers", opts),
         context = {
@@ -242,8 +242,8 @@ function M.open_buffers_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(Picker.default_converter, opts),
         decorators = decorators,
-        display = function(entry_value)
-            local buffer_name = entry_value.filename or utils.NO_NAME
+        display = function(entry)
+            local buffer_name = entry.filename or utils.NO_NAME
             return util.format_display_path(buffer_name, opts)
         end,
     }, util.build_picker_options(opts)))

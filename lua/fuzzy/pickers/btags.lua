@@ -17,15 +17,15 @@ function M.open_btags_picker(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
+        content = function(stream, args)
             local current_buffer_name = args.bufname
-            local tag_entry_list = args.items
-            for _, tag_entry in ipairs(tag_entry_list) do
+            local entries = args.items
+            for _, tag_entry in ipairs(entries) do
                 if tag_entry and tag_entry.filename == current_buffer_name then
-                    stream_callback(tag_entry)
+                    stream(tag_entry)
                 end
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Buffer Tags", opts),
         context = {
@@ -40,15 +40,15 @@ function M.open_btags_picker(opts)
         },
         preview = false,
         actions = {
-            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                assert(entry_value and entry_value.name)
-                vim.cmd({ cmd = "tag", args = { entry_value.name } })
+            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+                assert(entry and entry.name)
+                vim.cmd({ cmd = "tag", args = { entry.name } })
                 return false
             end)),
         },
-        display = function(entry_value)
-            local name_text = entry_value.name or ""
-            local kind_text = entry_value.kind or ""
+        display = function(entry)
+            local name_text = entry.name or ""
+            local kind_text = entry.kind or ""
             if #kind_text > 0 then
                 kind_text = table.concat({ " [", kind_text, "]" })
             end

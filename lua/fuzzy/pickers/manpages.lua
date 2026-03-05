@@ -8,7 +8,7 @@ local util = require("fuzzy.pickers.util")
 local M = {}
 
 local function parse_manpage_entries(raw_output)
-    local entry_list = {}
+    local entries = {}
     local entry_map = {}
     for line in tostring(raw_output or ""):gmatch("[^\r\n]+") do
         local name, section = line:match("^%s*([^%s%(,]+)[^%(]*%(([^%)]+)%)")
@@ -20,10 +20,10 @@ local function parse_manpage_entries(raw_output)
         end
         if entry and #entry > 0 and not entry_map[entry] then
             entry_map[entry] = true
-            entry_list[#entry_list + 1] = entry
+            entries[#entries + 1] = entry
         end
     end
-    return entry_list
+    return entries
 end
 
 local function collect_manpage_entries()
@@ -49,12 +49,12 @@ function M.open_manpages_picker(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
-            local manpage_list = args.items
-            for _, manpage in ipairs(manpage_list) do
-                stream_callback(manpage)
+        content = function(stream, args)
+            local items = args.items
+            for _, manpage in ipairs(items) do
+                stream(manpage)
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Manpages", opts),
         context = {
@@ -66,8 +66,8 @@ function M.open_manpages_picker(opts)
         },
         preview = false,
         actions = {
-            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                vim.cmd({ cmd = "Man", args = { entry_value } })
+            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+                vim.cmd({ cmd = "Man", args = { entry } })
                 return false
             end)),
         },

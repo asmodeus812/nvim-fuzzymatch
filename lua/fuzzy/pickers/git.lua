@@ -100,14 +100,14 @@ local function build_git_picker(opts, config)
 end
 
 local function parse_git_status_entry(entry)
-    local _, _, file_path = entry:find("^..%s+(.+)$")
-    assert(file_path ~= nil and #file_path > 0)
-    local arrow_position = file_path:find("%s+->%s+")
+    local _, _, filename = entry:find("^..%s+(.+)$")
+    assert(filename ~= nil and #filename > 0)
+    local arrow_position = filename:find("%s+->%s+")
     if arrow_position then
-        file_path = file_path:sub(arrow_position + 4)
+        filename = filename:sub(arrow_position + 4)
     end
     return {
-        filename = file_path,
+        filename = filename,
         lnum = 1,
         col = 1,
     }
@@ -134,17 +134,17 @@ function M.open_git_files(opts)
         Picker.default_converter,
         Picker.cwd_visitor
     )
-    local converter_cb = converter:get()
+    local convert = converter:get()
 
     if opts.preview == true then
-        opts.preview = Select.BufferPreview.new(nil, converter_cb)
+        opts.preview = Select.BufferPreview.new(nil, convert)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
 
     local decorators = {}
     if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(converter_cb) }
+        decorators = { Select.IconDecorator.new(convert) }
     end
 
     local tick_counter = 0
@@ -172,7 +172,7 @@ function M.open_git_files(opts)
         },
         preview = opts.preview,
         decorators = decorators,
-        actions = util.build_default_actions(converter_cb, opts),
+        actions = util.build_default_actions(convert, opts),
         bind = function(instance)
             converter:bind(instance)
         end,
@@ -200,17 +200,17 @@ function M.open_git_status(opts)
         parse_git_status_entry,
         Picker.cwd_visitor
     )
-    local converter_cb = converter:get()
+    local convert = converter:get()
 
     if opts.preview == true then
-        opts.preview = Select.BufferPreview.new(nil, converter_cb)
+        opts.preview = Select.BufferPreview.new(nil, convert)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
 
     local decorators = {}
     if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(converter_cb) }
+        decorators = { Select.IconDecorator.new(convert) }
     end
 
     local tick_counter = 0
@@ -236,9 +236,9 @@ function M.open_git_status(opts)
         },
         preview = opts.preview,
         decorators = decorators,
-        actions = util.build_default_actions(converter_cb, opts),
-        display = function(entry_value)
-            return entry_value
+        actions = util.build_default_actions(convert, opts),
+        display = function(entry)
+            return entry
         end,
         bind = function(instance)
             converter:bind(instance)

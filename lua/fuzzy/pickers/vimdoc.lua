@@ -83,17 +83,17 @@ local function collect_api_entries(opts)
         return {}
     end
 
-    local entry_list = {}
+    local entries = {}
     local seen = {}
     for _, fn_meta in ipairs(functions) do
         local entry = make_entry(fn_meta)
         if entry and pass_filters(entry, opts) and not seen[entry.name] then
             seen[entry.name] = true
-            entry_list[#entry_list + 1] = entry
+            entries[#entries + 1] = entry
         end
     end
 
-    table.sort(entry_list, function(left, right)
+    table.sort(entries, function(left, right)
         if opts.sort_by == "since" then
             if left.since ~= right.since then
                 return left.since > right.since
@@ -101,11 +101,11 @@ local function collect_api_entries(opts)
         end
         return left.name < right.name
     end)
-    return entry_list
+    return entries
 end
 
-local function open_api_help(entry_value)
-    local tag = entry_value.tag
+local function open_api_help(entry)
+    local tag = entry.tag
     if type(tag) ~= "string" or #tag == 0 then
         return false
     end
@@ -187,12 +187,12 @@ function M.open_vimdoc_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
-            local entry_list = args.items
-            for _, entry in ipairs(entry_list) do
-                stream_callback(entry)
+        content = function(stream, args)
+            local entries = args.items
+            for _, entry in ipairs(entries) do
+                stream(entry)
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Vimdoc", opts),
         context = {
@@ -204,8 +204,8 @@ function M.open_vimdoc_picker(opts)
         },
         preview = opts.preview,
         actions = {
-            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                open_api_help(entry_value)
+            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+                open_api_help(entry)
                 return false
             end)),
         },

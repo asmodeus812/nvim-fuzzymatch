@@ -16,20 +16,20 @@ local utils = require("fuzzy.utils")
 local M = {}
 
 local function collect_mark_list(opts)
-    local mark_entry_list = {}
+    local entries = {}
     if opts.include_local ~= false then
         local buffer_mark_list = vim.fn.getmarklist(0) or {}
         for _, mark_entry in ipairs(buffer_mark_list) do
-            table.insert(mark_entry_list, mark_entry)
+            table.insert(entries, mark_entry)
         end
     end
     if opts.include_global ~= false then
         local global_mark_list = vim.fn.getmarklist() or {}
         for _, mark_entry in ipairs(global_mark_list) do
-            table.insert(mark_entry_list, mark_entry)
+            table.insert(entries, mark_entry)
         end
     end
-    return mark_entry_list
+    return entries
 end
 
 --- Open Marks picker.
@@ -46,12 +46,12 @@ function M.open_marks_picker(opts)
         icons = true,
     }, opts)
 
-    local conv = function(entry_value)
-        local mark_position = entry_value.pos or {}
+    local conv = function(entry)
+        local mark_position = entry.pos or {}
         local buf = mark_position[1]
         local line_number = mark_position[2]
         local column_number = mark_position[3]
-        local filename = assert(entry_value.file)
+        local filename = assert(entry.file)
         return {
             bufnr = buf,
             filename = filename,
@@ -71,27 +71,27 @@ function M.open_marks_picker(opts)
         decorators = { Select.IconDecorator.new(conv) }
     end
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
-            local mark_entry_list = args.items
-            for _, entry_value in ipairs(mark_entry_list) do
+        content = function(stream, args)
+            local entries = args.items
+            for _, entry in ipairs(entries) do
                 if opts.marks ~= nil
-                    and entry_value.mark
-                    and not entry_value.mark:match(opts.marks)
+                    and entry.mark
+                    and not entry.mark:match(opts.marks)
                 then
                     goto continue
                 end
-                local filename = entry_value.file
+                local filename = entry.file
                 if not filename or #filename == 0 then
-                    local mark_position = entry_value.pos or {}
+                    local mark_position = entry.pos or {}
                     local buf = mark_position[1]
                     filename = utils.get_bufname(buf)
                 end
-                stream_callback(vim.tbl_extend("force", {}, entry_value, {
+                stream(vim.tbl_extend("force", {}, entry, {
                     file = filename or utils.NO_NAME,
                 }))
                 ::continue::
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Marks", opts),
         context = {
@@ -104,14 +104,14 @@ function M.open_marks_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
-        display = function(entry_value)
-            local mark_position = entry_value.pos or {}
+        display = function(entry)
+            local mark_position = entry.pos or {}
             local line_number = mark_position[2]
             local column_number = mark_position[3]
-            local filename = assert(entry_value.file)
+            local filename = assert(entry.file)
             return util.format_location_entry(
                 filename, line_number or 1, column_number or 1, nil,
-                table.concat({ "[", entry_value.mark or "?", "]" })
+                table.concat({ "[", entry.mark or "?", "]" })
             )
         end,
     }, util.build_picker_options(opts)))

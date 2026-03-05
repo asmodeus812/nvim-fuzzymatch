@@ -46,32 +46,32 @@ function M.open_oldfiles_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args, cwd)
+        content = function(stream, args, cwd)
             local oldfiles = args.items
             local seen_file_map = {}
             local seen_file_count = 0
-            for _, file_path in ipairs(oldfiles) do
-                if file_path and #file_path > 0 then
-                    if not seen_file_map[file_path] and (not cwd or util.is_under_directory(cwd, file_path))
+            for _, filename in ipairs(oldfiles) do
+                if filename and #filename > 0 then
+                    if not seen_file_map[filename] and (not cwd or util.is_under_directory(cwd, filename))
                     then
-                        local stat = vim.loop.fs_stat(file_path)
+                        local stat = vim.loop.fs_stat(filename)
                         if stat and stat.type == "file" then
-                            seen_file_map[file_path] = true
+                            seen_file_map[filename] = true
                             seen_file_count = seen_file_count + 1
-                            stream_callback({
+                            stream({
                                 size = stat.size,
                                 mtime = stat.mtime,
-                                filename = file_path,
+                                filename = filename,
                             })
                             if opts.max and seen_file_count >= opts.max then
-                                stream_callback(nil)
+                                stream(nil)
                                 return
                             end
                         end
                     end
                 end
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Oldfiles", opts),
         context = {
@@ -83,8 +83,8 @@ function M.open_oldfiles_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
-        display = function(entry_value)
-            local filename = assert(entry_value.filename)
+        display = function(entry)
+            local filename = assert(entry.filename)
             return util.format_display_path(filename, opts)
         end,
     }, util.build_picker_options(opts)))

@@ -43,8 +43,8 @@ function M.open_colorscheme_picker(opts)
 
     local picker = nil
     local actions = {
-        ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-            apply_colorscheme_name(entry_value)
+        ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+            apply_colorscheme_name(entry)
             return false
         end)),
         ["<esc>"] = Select.action(Select.close_view, function()
@@ -58,12 +58,12 @@ function M.open_colorscheme_picker(opts)
     }
 
     picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
-            local colorscheme_name_list = args.items
-            for _, colorscheme_name in ipairs(colorscheme_name_list) do
-                stream_callback(colorscheme_name)
+        content = function(stream, args)
+            local items = args.items
+            for _, colorscheme_name in ipairs(items) do
+                stream(colorscheme_name)
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Colorschemes", opts),
         context = {

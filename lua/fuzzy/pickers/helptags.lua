@@ -16,12 +16,12 @@ function M.open_helptags_picker(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
-            local helptag_list = args.items
-            for _, helptag in ipairs(helptag_list) do
-                stream_callback(helptag)
+        content = function(stream, args)
+            local items = args.items
+            for _, helptag in ipairs(items) do
+                stream(helptag)
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Helptags", opts),
         context = {
@@ -33,8 +33,8 @@ function M.open_helptags_picker(opts)
         },
         preview = false,
         actions = {
-            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                vim.cmd({ cmd = "help", args = { entry_value } })
+            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+                vim.cmd({ cmd = "help", args = { entry } })
                 return false
             end)),
         },

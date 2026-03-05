@@ -27,12 +27,12 @@ function M.open_loclist_picker(opts)
         icons = true,
     }, opts)
 
-    local converter_cb = function(entry_value)
+    local convert = function(entry)
         return {
-            bufnr = entry_value.bufnr,
-            filename = assert(entry_value.filename),
-            lnum = entry_value.lnum or 1,
-            col = entry_value.col or 1,
+            bufnr = entry.bufnr,
+            filename = assert(entry.filename),
+            lnum = entry.lnum or 1,
+            col = entry.col or 1,
         }
     end
 
@@ -41,23 +41,23 @@ function M.open_loclist_picker(opts)
     end
 
     if opts.preview == true then
-        opts.preview = Select.BufferPreview.new(nil, converter_cb)
+        opts.preview = Select.BufferPreview.new(nil, convert)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
 
     local decorators = {}
     if opts.icons ~= false then
-        decorators = { Select.IconDecorator.new(converter_cb) }
+        decorators = { Select.IconDecorator.new(convert) }
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args, cwd)
+        content = function(stream, args, cwd)
             local loc_items = args.items
-            for _, entry_value in ipairs(loc_items) do
-                local filename = entry_value.filename
+            for _, entry in ipairs(loc_items) do
+                local filename = entry.filename
                 if not filename or #filename == 0 then
-                    local buf = entry_value.bufnr
+                    local buf = entry.bufnr
                     filename = utils.get_bufname(buf)
                 end
                 if cwd and #cwd > 0 and filename and #filename > 0
@@ -65,12 +65,12 @@ function M.open_loclist_picker(opts)
                 then
                     goto continue
                 end
-                stream_callback(vim.tbl_extend("force", {}, entry_value, {
+                stream(vim.tbl_extend("force", {}, entry, {
                     filename = filename or utils.NO_NAME,
                 }))
                 ::continue::
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Loclist", opts),
         context = {
@@ -82,7 +82,7 @@ function M.open_loclist_picker(opts)
             end
         },
         preview = opts.preview,
-        actions = util.build_default_actions(converter_cb, opts),
+        actions = util.build_default_actions(convert, opts),
         decorators = decorators,
         display = function(entry)
             local filename = assert(entry.filename)

@@ -45,7 +45,7 @@ function M.open_lines_picker(opts)
         preview = false,
     }, opts)
 
-    local converter_cb = function(entry)
+    local convert = function(entry)
         return {
             bufnr = entry.bufnr,
             lnum = entry.lnum or 1,
@@ -59,11 +59,11 @@ function M.open_lines_picker(opts)
 
     local decorator = Select.Decorator.new()
     function decorator:decorate(entry)
-        local file_path = assert(entry.filename)
-        if not file_path or #file_path == 0 then
-            file_path = utils.NO_NAME
+        local filename = assert(entry.filename)
+        if not filename or #filename == 0 then
+            filename = utils.NO_NAME
         end
-        local display_path = util.format_display_path(file_path, opts)
+        local display_path = util.format_display_path(filename, opts)
         return {
             display_path,
             tostring(entry.lnum)
@@ -74,13 +74,13 @@ function M.open_lines_picker(opts)
     end
 
     if opts.preview == true then
-        opts.preview = Select.BufferPreview.new(nil, converter_cb)
+        opts.preview = Select.BufferPreview.new(nil, convert)
     elseif opts.preview == false or opts.preview == nil then
         opts.preview = false
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args, cwd)
+        content = function(stream, args, cwd)
             local buffers = args.buffers
             local current_buf = args.current_buf
             for _, buf in ipairs(buffers) do
@@ -103,13 +103,13 @@ function M.open_lines_picker(opts)
                     end
                     util.stream_line_numbers(
                         buf,
-                        stream_callback,
+                        stream,
                         { filename = buffer_name }
                     )
                 end
                 ::continue::
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Lines", opts),
         context = {
@@ -122,7 +122,7 @@ function M.open_lines_picker(opts)
             end,
         },
         preview = opts.preview,
-        actions = util.build_default_actions(converter_cb, opts),
+        actions = util.build_default_actions(convert, opts),
         decorators = { decorator },
         display = function(entry)
             assert(entry.bufnr and entry.lnum)

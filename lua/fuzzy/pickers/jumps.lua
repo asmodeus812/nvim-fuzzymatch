@@ -24,13 +24,13 @@ function M.open_jumps_picker(opts)
         icons = true,
     }, opts)
 
-    local conv = function(entry_value)
-        local filename = assert(entry_value.filename)
+    local conv = function(entry)
+        local filename = assert(entry.filename)
         return {
             filename = filename,
-            lnum = entry_value.lnum or 1,
-            col = entry_value.col or 1,
-            bufnr = entry_value.bufnr,
+            lnum = entry.lnum or 1,
+            col = entry.col or 1,
+            bufnr = entry.bufnr,
         }
     end
 
@@ -46,19 +46,19 @@ function M.open_jumps_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
-            local jump_entry_list = args.items
-            for _, entry_value in ipairs(jump_entry_list) do
-                local filename = entry_value.filename
+        content = function(stream, args)
+            local entries = args.items
+            for _, entry in ipairs(entries) do
+                local filename = entry.filename
                 if not filename or #filename == 0 then
-                    local buf = entry_value.bufnr
+                    local buf = entry.bufnr
                     filename = utils.get_bufname(buf)
                 end
-                stream_callback(vim.tbl_extend("force", {}, entry_value, {
+                stream(vim.tbl_extend("force", {}, entry, {
                     filename = filename or utils.NO_NAME,
                 }))
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Jumps", opts),
         context = {
@@ -72,15 +72,15 @@ function M.open_jumps_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
-        display = function(entry_value)
-            local filename = assert(entry_value.filename)
+        display = function(entry)
+            local filename = assert(entry.filename)
             local display_path = util.format_display_path(filename, opts)
             if not display_path or #display_path == 0 then
                 display_path = utils.NO_NAME
             end
             return util.format_location_entry(
-                display_path, entry_value.lnum or 1, entry_value.col or 1, nil,
-                table.concat({ "[", (entry_value.nr or "?"), "]" })
+                display_path, entry.lnum or 1, entry.col or 1, nil,
+                table.concat({ "[", (entry.nr or "?"), "]" })
             )
         end,
     }, util.build_picker_options(opts)))

@@ -100,11 +100,11 @@ function M.open_spell_suggest(opts)
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback)
+        content = function(stream)
             for _, item in ipairs(items) do
-                stream_callback(item)
+                stream(item)
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = headers,
         preview = false,

@@ -9,18 +9,18 @@ local util = require("fuzzy.pickers.util")
 local M = {}
 
 local function collect_register_list()
-    local register_name_list = {
+    local names = {
         '"',
         "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
         "-", "+", "*", ".", ":", "%", "#", "=", "/", "_",
     }
     for code_point = string.byte("a"), string.byte("z") do
-        table.insert(register_name_list, string.char(code_point))
+        table.insert(names, string.char(code_point))
     end
     for code_point = string.byte("A"), string.byte("Z") do
-        table.insert(register_name_list, string.char(code_point))
+        table.insert(names, string.char(code_point))
     end
-    return register_name_list
+    return names
 end
 
 --- Open Registers picker.
@@ -33,12 +33,12 @@ function M.open_registers_picker(opts)
     }, opts)
 
     if opts.preview == true then
-        opts.preview = Select.CustomPreview.new(function(entry_value, _, _)
-            local regcontents = entry_value and entry_value.regcontents or nil
+        opts.preview = Select.CustomPreview.new(function(entry, _, _)
+            local regcontents = entry and entry.regcontents or nil
             if regcontents == nil then
-                local register_name = entry_value and entry_value.name or nil
-                local register_info = register_name and vim.fn.getreginfo(register_name) or nil
-                regcontents = register_info and register_info.regcontents or nil
+                local name = entry and entry.name or nil
+                local info = name and vim.fn.getreginfo(name) or nil
+                regcontents = info and info.regcontents or nil
             end
             if type(regcontents) ~= "table" or #regcontents == 0 then
                 regcontents = { "" }
@@ -50,68 +50,68 @@ function M.open_registers_picker(opts)
     end
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
-            local register_list = args.items
-            for _, register_entry in ipairs(register_list) do
-                local register_name = register_entry.name
-                if opts.filter ~= nil and register_name
-                    and not register_name:match(opts.filter)
+        content = function(stream, args)
+            local items = args.items
+            for _, register_entry in ipairs(items) do
+                local name = register_entry.name
+                if opts.filter ~= nil and name
+                    and not name:match(opts.filter)
                 then
                     goto continue
                 end
-                local register_info = vim.fn.getreginfo(register_name)
-                local register_preview = ""
-                if register_info and register_info.regcontents then
-                    register_preview = table.concat(register_info.regcontents, "\\n")
-                    register_preview = register_preview:gsub("\\r?\\n", " ")
+                local info = vim.fn.getreginfo(name)
+                local preview = ""
+                if info and info.regcontents then
+                    preview = table.concat(info.regcontents, "\\n")
+                    preview = preview:gsub("\\r?\\n", " ")
                 end
                 local width = 80
-                if #register_preview > width then
-                    register_preview = table.concat({
-                        register_preview:sub(1, width - 3),
+                if #preview > width then
+                    preview = table.concat({
+                        preview:sub(1, width - 3),
                         "..."
                     })
                 end
-                stream_callback({
-                    name = register_name,
-                    preview = register_preview,
-                    regcontents = register_info and register_info.regcontents or nil,
-                    regtype = register_info and register_info.regtype or nil,
+                stream({
+                    name = name,
+                    preview = preview,
+                    regcontents = info and info.regcontents or nil,
+                    regtype = info and info.regtype or nil,
                 })
                 ::continue::
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Registers", opts),
         context = {
             args = function(_)
                 local items = {} -- collect the registers items
-                local register_name_list = collect_register_list()
-                for _, register_name in ipairs(register_name_list) do
-                    items[#items + 1] = vim.fn["fuzzymatch#getregsig"](register_name)
+                local names = collect_register_list()
+                for _, name in ipairs(names) do
+                    items[#items + 1] = vim.fn["fuzzymatch#getregsig"](name)
                 end
                 return { items = items }
             end,
         },
         preview = opts.preview,
         actions = {
-            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                local register_name = entry_value and entry_value.name or nil
-                local regcontents = entry_value and entry_value.regcontents or nil
-                local regtype = entry_value and entry_value.regtype or nil
+            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+                local name = entry and entry.name or nil
+                local regcontents = entry and entry.regcontents or nil
+                local regtype = entry and entry.regtype or nil
                 if regcontents == nil then
-                    local register_info = assert(vim.fn.getreginfo(register_name))
-                    regcontents = register_info.regcontents
-                    regtype = register_info.regtype
+                    local info = assert(vim.fn.getreginfo(name))
+                    regcontents = info.regcontents
+                    regtype = info.regtype
                 end
                 vim.fn.setreg('"', assert(regcontents), regtype)
                 return false
             end)),
         },
-        display = function(entry_value)
-            local register_name = entry_value and entry_value.name or nil
-            local register_preview = entry_value and entry_value.preview or ""
-            return table.concat({ "[", register_name, "] ", register_preview })
+        display = function(entry)
+            local name = entry and entry.name or nil
+            local preview = entry and entry.preview or ""
+            return table.concat({ "[", name, "] ", preview })
         end,
     }, util.build_picker_options(opts)))
 

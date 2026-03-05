@@ -153,30 +153,30 @@ end
 
 --- Open Check if path is under directory picker.
 --- @param root_directory string|nil
---- @param file_path string|nil
+--- @param path string|nil
 --- @return boolean
-function M.is_under_directory(root_directory, file_path)
+function M.is_under_directory(root_directory, path)
     if not root_directory or #root_directory == 0 then
         return true
     end
-    if not file_path or #file_path == 0 then
+    if not path or #path == 0 then
         return false
     end
     root_directory = vim.fs.normalize(root_directory)
-    file_path = vim.fs.normalize(file_path)
+    path = vim.fs.normalize(path)
     if root_directory == "" then
         return true
     end
-    if root_directory == file_path then
+    if root_directory == path then
         return true
     end
     if root_directory:byte(-1) == string.byte("/") then
-        return vim.startswith(file_path, root_directory)
+        return vim.startswith(path, root_directory)
     end
-    if not vim.startswith(file_path, root_directory) then
+    if not vim.startswith(path, root_directory) then
         return false
     end
-    local next_char = file_path:byte(#root_directory + 1)
+    local next_char = path:byte(#root_directory + 1)
     return next_char == nil or next_char == string.byte("/")
 end
 
@@ -292,40 +292,40 @@ end
 --- @param history_type string
 --- @return string[]
 function M.collect_history_entries(history_type)
-    local history_entry_list = {}
+    local entries = {}
     local history_count = vim.fn.histnr(history_type)
     for index = history_count, 1, -1 do
         local history_entry = vim.fn.histget(history_type, index)
         if history_entry and #history_entry > 0 then
-            history_entry_list[#history_entry_list + 1] = history_entry
+            entries[#entries + 1] = history_entry
         end
     end
-    return history_entry_list
+    return entries
 end
 
 --- Open Parse stack entries picker.
 --- @param history_text string
 --- @return table
 function M.parse_stack_entries(history_text)
-    local history_entry_list = {}
+    local entries = {}
     for _, line_text in ipairs(vim.split(history_text or "", "\n")) do
         local list_number = line_text:match("list%s+(%d+)")
         if list_number then
-            history_entry_list[#history_entry_list + 1] = {
+            entries[#entries + 1] = {
                 number = tonumber(list_number),
                 text = line_text,
             }
         end
     end
-    return history_entry_list
+    return entries
 end
 
 --- Open Stream buffer lines picker.
 --- @param buf integer
 --- @param chunk_size integer
---- @param stream_callback fun(entry: table): nil
+--- @param stream fun(entry: table): nil
 --- @return nil
-function M.stream_buffer_lines(buf, chunk_size, stream_callback)
+function M.stream_buffer_lines(buf, chunk_size, stream)
     local total_line_count = vim.api.nvim_buf_line_count(buf)
     local start_index = 0
     while start_index < total_line_count do
@@ -337,7 +337,7 @@ function M.stream_buffer_lines(buf, chunk_size, stream_callback)
             false
         )
         for offset, line_text in ipairs(line_chunk) do
-            stream_callback({
+            stream({
                 bufnr = buf,
                 lnum = start_index + offset,
                 text = line_text,
@@ -349,10 +349,10 @@ end
 
 --- Open Stream line numbers picker.
 --- @param buf integer
---- @param stream_callback fun(entry: table): nil
+--- @param stream fun(entry: table): nil
 --- @param extra_fields? table|nil Additional fields to merge into each emitted entry
 --- @return nil
-function M.stream_line_numbers(buf, stream_callback, extra_fields)
+function M.stream_line_numbers(buf, stream, extra_fields)
     local total_line_count = vim.api.nvim_buf_line_count(buf)
     for line_number = 1, total_line_count do
         local entry = {
@@ -362,7 +362,7 @@ function M.stream_line_numbers(buf, stream_callback, extra_fields)
         if type(extra_fields) == "table" then
             entry = vim.tbl_extend("force", entry, extra_fields)
         end
-        stream_callback(entry)
+        stream(entry)
     end
 end
 

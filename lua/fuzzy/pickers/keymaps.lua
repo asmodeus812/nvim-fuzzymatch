@@ -21,14 +21,14 @@ function M.open_keymaps_picker(opts)
     }, opts)
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream_callback, args)
+        content = function(stream, args)
             for _, mode_entry in ipairs(args.items) do
                 local mode_name = mode_entry.mode
                 local global_keymap_list = vim.api.nvim_get_keymap(mode_name) or {}
                 for _, keymap_entry in ipairs(global_keymap_list) do
                     keymap_entry.mode = mode_name
                     keymap_entry.buffer = 0
-                    stream_callback(keymap_entry)
+                    stream(keymap_entry)
                 end
 
                 if args.include_buffer then
@@ -36,11 +36,11 @@ function M.open_keymaps_picker(opts)
                     for _, keymap_entry in ipairs(buffer_keymap_list) do
                         keymap_entry.mode = mode_name
                         keymap_entry.buffer = 1
-                        stream_callback(keymap_entry)
+                        stream(keymap_entry)
                     end
                 end
             end
-            stream_callback(nil)
+            stream(nil)
         end,
         headers = util.build_picker_headers("Keymaps", opts),
         context = {
@@ -66,18 +66,18 @@ function M.open_keymaps_picker(opts)
         },
         preview = false,
         actions = {
-            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
-                local right_hand_side_text = entry_value.rhs or ""
+            ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry)
+                local right_hand_side_text = entry.rhs or ""
                 if #right_hand_side_text > 0 then
                     vim.fn.setreg('\"', right_hand_side_text)
                 end
                 return false
             end)),
         },
-        display = function(entry_value)
-            local prefix_text = (entry_value.buffer == 1) and "[b]" or "[g]"
-            local mode_text = entry_value.mode or "?"
-            local right_hand_side_text = entry_value.rhs or ""
+        display = function(entry)
+            local prefix_text = (entry.buffer == 1) and "[b]" or "[g]"
+            local mode_text = entry.mode or "?"
+            local right_hand_side_text = entry.rhs or ""
             if opts.max_text
                 and #right_hand_side_text > opts.max_text then
                 right_hand_side_text = right_hand_side_text:sub(
@@ -85,11 +85,11 @@ function M.open_keymaps_picker(opts)
                     opts.max_text
                 )
             end
-            local description_text = entry_value.desc or ""
+            local description_text = entry.desc or ""
             if #description_text > 0 then
                 description_text = table.concat({ " - ", description_text })
             end
-            local left_hand_side_text = entry_value.lhs or ""
+            local left_hand_side_text = entry.lhs or ""
             return table.concat({
                 prefix_text,
                 " ",
