@@ -101,6 +101,7 @@ function M.open_files_picker(opts)
     if opts.icons ~= false then
         decorators = { Select.IconDecorator.new(conv) }
     end
+    local highlighters = { Select.LineHighlighter.new("Directory") }
 
     local tick_counter = 0
     local cmd, args = build_files_command(opts)
@@ -121,6 +122,7 @@ function M.open_files_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
+        highlighters = highlighters,
     }, opts))
 
     converter:bind(picker)

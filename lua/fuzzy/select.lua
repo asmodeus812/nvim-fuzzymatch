@@ -1,5 +1,7 @@
 local LIST_HIGHLIGHT_NAMESPACE = vim.api.nvim_create_namespace("list_highlight_namespace")
 local LIST_DECORATED_NAMESPACE = vim.api.nvim_create_namespace("list_decorated_namespace")
+local LIST_TEXTLINE_NAMESPACE = vim.api.nvim_create_namespace("list_textline_namespace")
+
 local LIST_STATUS_NAMESPACE = vim.api.nvim_create_namespace("list_status_namespace")
 local LIST_TOGGLE_NAMESPACE = vim.api.nvim_create_namespace("list_toggle_namespace")
 local LIST_HEADER_NAMESPACE = vim.api.nvim_create_namespace("list_header_namespace")
@@ -33,6 +35,10 @@ Select.Preview.__index = Select.Preview
 --- @class Select.Decorator
 Select.Decorator = {}
 Select.Decorator.__index = Select.Decorator
+
+--- @class Select.Highlighter
+Select.Highlighter = {}
+Select.Highlighter.__index = Select.Highlighter
 
 --- This is a decorator that resolves file or directory icons for entries. This implementation uses the nvim-web-devicons to find the correct icon based on the file extension
 --- @class Select.IconDecorator
@@ -109,6 +115,29 @@ function Select.Decorator:clean()
 end
 
 function Select.Decorator:decorate(_, _)
+    error("must be implemented by sub-classing")
+end
+
+function Select.Highlighter.new()
+    local obj = {}
+    setmetatable(obj, Select.Highlighter)
+    return obj
+end
+
+function Select.Highlighter:init()
+    -- default empty implementation
+end
+
+function Select.Highlighter:clean()
+    -- default empty implementation
+end
+
+--- @param entry any The entry to highlight
+--- @param line string The line content to highlight
+--- @return integer start 0-based start column
+--- @return integer length Length of highlight, -1 for entire line
+--- @return string hl Highlight group name
+function Select.Highlighter:highlight(entry, line)
     error("must be implemented by sub-classing")
 end
 
@@ -466,11 +495,7 @@ end
 --- @param entries table Entry data
 --- @param positions table Positions to highlight (list of [start,len,...])
 --- @param display function|string|nil Display/formatter
-local function highlight_range(buffer, start, _end, entries, positions, display)
-    vim.api.nvim_buf_clear_namespace(buffer,
-        LIST_HIGHLIGHT_NAMESPACE, 0, -1
-    )
-
+local function highlight_range(buffer, start, _end, entries, positions, display, extmark_ids)
     if _end == 0 then return end
     assert(start <= _end and start > 0)
 
@@ -492,17 +517,23 @@ local function highlight_range(buffer, start, _end, entries, positions, display)
         local decor = decors ~= nil and #decors > 0 and decors[#decors]
         local offset = (decor and #decor >= 4 and decor[4].end_col + 1 or 0)
 
+        local line_ids = extmark_ids[index] or {}
+        extmark_ids[index] = line_ids
+        local mark_index = 0
+
         for i = 1, #matches, 2 do
             local byte_start, byte_end = compute_offsets(
                 line_mapper(entry, display, target),
                 matches[i + 0], matches[i + 1]
             )
-            vim.api.nvim_buf_set_extmark(
+            mark_index = mark_index + 1
+            local id = vim.api.nvim_buf_set_extmark(
                 buffer,
                 LIST_HIGHLIGHT_NAMESPACE,
                 index - 1,
                 offset + byte_start,
                 {
+                    id = line_ids[mark_index],
                     strict = false,
                     hl_eol = false,
                     invalidate = true,
@@ -515,9 +546,97 @@ local function highlight_range(buffer, start, _end, entries, positions, display)
                     end_col = offset + byte_end
                 }
             )
+            line_ids[mark_index] = id
+        end
+
+        if #line_ids > mark_index then
+            for i = mark_index + 1, #line_ids do
+                local id = line_ids[i]
+                if id then
+                    pcall(
+                        vim.api.nvim_buf_del_extmark,
+                        buffer,
+                        LIST_HIGHLIGHT_NAMESPACE,
+                        id
+                    )
+                end
+                line_ids[i] = nil
+            end
         end
     end
     Async.yield()
+end
+
+--- Applies custom highlighters to the visible portion of the buffer.
+--- @param buffer integer Buffer handle
+--- @param start integer First (1-based)
+--- @param _end integer Last (1-based)
+--- @param entries table Entry data
+--- @param highlighters table List of highlighters
+--- @param display function|string|nil Display/formatter
+local function highlight_line(buffer, start, _end, entries, highlighters, display, extmark_ids)
+    if _end == 0 then return end
+    assert(start <= _end and start > 0)
+
+    for target = start, _end, 1 do
+        local entry = entries[target]
+        local index = (target - start) + 1
+
+        local decors = vim.api.nvim_buf_get_extmarks(
+            buffer, LIST_DECORATED_NAMESPACE,
+            { index - 1, 0 }, { index - 1, -1 },
+            detailed_extmark_opts
+        )
+
+        local decor = decors ~= nil and #decors > 0 and decors[#decors]
+        local offset = (decor and #decor >= 4 and decor[4].end_col + 1 or 0)
+
+        local line = line_mapper(entry, display, target)
+        local line_ids = extmark_ids[index] or {}
+        extmark_ids[index] = line_ids
+
+        for hindex, highlighter in ipairs(highlighters or {}) do
+            local col, len, hl = highlighter:highlight(entry, line)
+            assert(type(col) == "number")
+            assert(type(len) == "number")
+            assert(type(hl) == "string")
+            local id = vim.api.nvim_buf_set_extmark(
+                buffer,
+                LIST_TEXTLINE_NAMESPACE,
+                index - 1,
+                offset + col,
+                {
+                    strict = false,
+                    hl_eol = false,
+                    invalidate = true,
+                    ephemeral = false,
+                    undo_restore = false,
+                    right_gravity = true,
+                    end_right_gravity = true,
+                    hl_group = hl,
+                    id = line_ids[hindex],
+                    end_line = index - 1,
+                    end_col = offset + col + len
+                }
+            )
+            line_ids[hindex] = id
+        end
+
+        if #line_ids > #highlighters then
+            for i = #highlighters + 1, #line_ids do
+                local id = line_ids[i]
+                if id then
+                    pcall(
+                        vim.api.nvim_buf_del_extmark,
+                        buffer,
+                        LIST_TEXTLINE_NAMESPACE,
+                        id
+                    )
+                end
+                line_ids[i] = nil
+            end
+        end
+    end
 end
 
 --- Applies decorators as extmarks to the visible portion of the buffer.
@@ -527,11 +646,7 @@ end
 --- @param entries table The entry data
 --- @param decorators table List of decorators
 --- @param display function|string|nil Display/formatter
-local function decorate_range(buffer, start, _end, entries, decorators, display)
-    vim.api.nvim_buf_clear_namespace(buffer,
-        LIST_DECORATED_NAMESPACE, 0, -1
-    )
-
+local function decorate_range(buffer, start, _end, entries, decorators, display, extmark_ids)
     if _end == 0 then return end
     assert(start <= _end and start > 0)
 
@@ -556,11 +671,13 @@ local function decorate_range(buffer, start, _end, entries, decorators, display)
                 index - 1, 0, index - 1, 0, { decor }
             )
 
+            local line_ids = extmark_ids[index] or {}
+            extmark_ids[index] = line_ids
             local offset = 0
             for position, highlight in ipairs(highlights) do
                 local decor_item = content[position]
                 local end_col = offset + #decor_item
-                vim.api.nvim_buf_set_extmark(
+                local id = vim.api.nvim_buf_set_extmark(
                     buffer,
                     LIST_DECORATED_NAMESPACE,
                     index - 1,
@@ -576,9 +693,26 @@ local function decorate_range(buffer, start, _end, entries, decorators, display)
                         right_gravity = true,
                         end_right_gravity = true,
                         hl_group = highlight,
+                        id = line_ids[position],
                     }
                 )
+                line_ids[position] = id
                 offset = end_col + 1
+            end
+
+            if #line_ids > #highlights then
+                for i = #highlights + 1, #line_ids do
+                    local id = line_ids[i]
+                    if id then
+                        pcall(
+                            vim.api.nvim_buf_del_extmark,
+                            buffer,
+                            LIST_DECORATED_NAMESPACE,
+                            id
+                        )
+                    end
+                    line_ids[i] = nil
+                end
             end
         end
     end
@@ -1005,6 +1139,36 @@ function Select.IconDecorator:decorate(entry, line)
     return assert(icon), icon_highlight or "SelectDecoratorDefault"
 end
 
+--- This is a highlighter that highlights the entire line with a single highlight group.
+--- @class Select.LineHighlighter
+--- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
+--- @field hl_group string Highlight group to apply to the full line.
+Select.LineHighlighter = {}
+Select.LineHighlighter.__index = Select.LineHighlighter
+setmetatable(Select.LineHighlighter, { __index = Select.Highlighter })
+
+--- Create a new line highlighter instance that highlights the entire line.
+--- @param highlight string Highlight group to apply to the full line.
+--- @param converter? function|nil Optional entry converter (consistent with other types).
+function Select.LineHighlighter.new(highlight, converter)
+    local obj = Select.Highlighter.new()
+    setmetatable(obj, Select.LineHighlighter)
+    obj.hl_group = highlight or "SelectLineHighlight"
+    obj.converter = converter or Select.default_converter
+    return obj
+end
+
+--- Highlight the entire line.
+--- @param entry any The entry to highlight
+--- @param line string The line content to highlight
+--- @return integer start 0-based start column
+--- @return integer length Length of highlight, -1 for entire line
+--- @return string hl Highlight group name
+function Select.LineHighlighter:highlight(entry, line)
+    assert(entry and line and #line > 0)
+    return 0, #line, self.hl_group
+end
+
 --- Create a new combine decorator instance, the decorators are run in order and their results are flattened into text/highlight arrays.
 --- @param decorators Select.Decorator[] A list of decorators to run, the result of which non-nil decorator will be added to the combined result
 --- @param highlight? string|nil Default highlight group to use when a decorator does not return highlights
@@ -1327,17 +1491,32 @@ end
 --- Internal: applies search highlights to list entries.
 function Select:_highlight_list()
     local entries = self._state.entries
+    local cursor = assert(self._state.cursor)
+    local position = vim.api.nvim_win_get_cursor(self.list_window)
+    local height = vim.api.nvim_win_get_height(self.list_window)
+
+    local highlighters = self._options.highlighters
+    if entries and #entries >= 0 and highlighters and #highlighters > 0 then
+        highlight_line(
+            self.list_buffer,
+            math.max(1, cursor[1] - (position[1] - 1)),
+            math.min(#entries, cursor[1] + (height - position[1])),
+            entries, highlighters,
+            self._options.display,
+            self._state.extmarks.highlighters
+        )
+    end
+
     local positions = self._state.positions
     if entries and #entries >= 0 and positions and #positions == #entries then
-        local position = vim.api.nvim_win_get_cursor(self.list_window)
-        local height = vim.api.nvim_win_get_height(self.list_window)
-        local cursor = assert(self._state.cursor)
         highlight_range(
             self.list_buffer,
             math.max(1, cursor[1] - (position[1] - 1)),
             math.min(#entries, cursor[1] + (height - position[1])),
             entries, positions,
-            self._options.display)
+            self._options.display,
+            self._state.extmarks.matches
+        )
     end
 end
 
@@ -1354,7 +1533,9 @@ function Select:_decorate_list()
             math.max(1, cursor[1] - (position[1] - 1)),
             math.min(#entries, cursor[1] + (height - position[1])),
             entries, decorators,
-            self._options.display)
+            self._options.display,
+            self._state.extmarks.decorators
+        )
     end
 end
 
@@ -1399,15 +1580,14 @@ function Select:_render_list()
             self:_highlight_list()
             self:_display_toggle()
             self:_display_preview()
+        end
 
-            local win = self.list_window
-            if vim.api.nvim__redraw and win and vim.api.nvim_win_is_valid(win) then
-                vim.api.nvim__redraw({
-                    win = win,
-                    valid = true,
-                    flush = true,
-                })
-            end
+        if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
+            return vim.api.nvim__redraw and vim.api.nvim__redraw({
+                win = self.list_window,
+                valid = true,
+                flush = true,
+            })
         end
     end)
 
@@ -1430,6 +1610,11 @@ function Select:_reset_state()
     self._state.positions = nil
     self._state.entries = nil
     self._state.query = ""
+    self._state.extmarks = {
+        highlighters = {},
+        decorators = {},
+        matches = {},
+    }
     self._state.toggled = {
         all = false,
         entries = {}
@@ -1466,6 +1651,24 @@ function Select:_clean_decorators()
     for _, decor in ipairs(self._options.decorators or {}) do
         if type(decor) == "table" and decor.clean then
             decor:clean()
+        end
+    end
+end
+
+--- Calls :init() on all highlighter tables (if present).
+function Select:_init_highlighters()
+    for _, highlighter in ipairs(self._options.highlighters or {}) do
+        if type(highlighter) == "table" and highlighter.init then
+            highlighter:init()
+        end
+    end
+end
+
+--- Calls :clean() on all highlighter tables (if present).
+function Select:_clean_highlighters()
+    for _, highlighter in ipairs(self._options.highlighters or {}) do
+        if type(highlighter) == "table" and highlighter.clean then
+            highlighter:clean()
         end
     end
 end
@@ -1509,6 +1712,7 @@ function Select:_clear_view(force)
         if self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer) then
             vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_DECORATED_NAMESPACE, 0, -1)
             vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_HIGHLIGHT_NAMESPACE, 0, -1)
+            vim.api.nvim_buf_clear_namespace(self.list_buffer, LIST_TEXTLINE_NAMESPACE, 0, -1)
             populate_buffer(self.list_buffer, utils.EMPTY_TABLE)
         end
         if self.preview_buffer and vim.api.nvim_buf_is_valid(self.preview_buffer) then
@@ -1528,6 +1732,7 @@ function Select:_clear_view(force)
 
         if force == true then
             self:_clean_decorators()
+            self:_clean_highlighters()
             self:_clean_preview()
         end
         self:_reset_state()
@@ -1565,6 +1770,7 @@ function Select:_close_view(force)
 
         if force == true then
             self:_clean_decorators()
+            self:_clean_highlighters()
             self:_clean_preview()
             self:_destroy_view()
         end
@@ -2254,6 +2460,7 @@ function Select:open()
     local opts = assert(self._options)
     if not self:isvalid() then
         self:_init_decorators()
+        self:_init_highlighters()
         self:_init_preview()
     end
 
@@ -2295,6 +2502,7 @@ function Select:open()
                     assert(vim.fn.sign_undefine(sign_name) == 0)
                     self:_close_view(false)
                     self:_clean_decorators()
+                    self:_clean_highlighters()
                     self:_clean_preview()
                     return true
                 end,
@@ -2391,6 +2599,7 @@ function Select:open()
                     assert(vim.fn.sign_undefine(sign_name) == 0)
                     self:_close_view(false)
                     self:_clean_decorators()
+                    self:_clean_highlighters()
                     self:_clean_preview()
                     return true
                 end,
@@ -2614,6 +2823,7 @@ end
 --- @field preview? Select.Preview|boolean|nil Preview instance or boolean indicating whether to show the preview window. If an instance is provided, it will be used to render the preview. The preview instance must be a subclass of Select.Preview. Preview instances must implement the `preview` method.
 --- @field display? string|fun(entry: any): string|string|nil Function or string to format the display of entries in the list. If a function is provided, it will be called with each entry and should return a string to display. If a string is provided, it will be used as the property name to extract from each entry for display.
 --- @field decorators? Select.Decorator[]|nil List of decorators to apply to entries in the list. Each decorator should be a table with a `decorate` function that takes an entry and returns a decorated string along with optional highlight group information.
+--- @field highlighters? Select.Highlighter[]|nil List of highlighters to apply to list entries. Each highlighter should be a table with a `highlight` function.
 
 --- Creates a new Select instance with the given options.
 --- @param opts? SelectOptions|nil The options to configure the selection interface.
@@ -2635,6 +2845,7 @@ function Select.new(opts)
         display = { opts.display, { "function", "string", "nil" }, true },
         preview = { opts.preview, { "table", "boolean" }, true },
         decorators = { opts.decorators, "table", true },
+        highlighters = { opts.highlighters, "table", true },
         mappings = { opts.mappings, "table", true },
     })
 
@@ -2669,6 +2880,7 @@ function Select.new(opts)
         },
         list_offset = 2,
         decorators = {},
+        highlighters = {},
         preview = nil,
         display = nil,
         mappings = {
@@ -2713,6 +2925,11 @@ function Select.new(opts)
             toggled = {
                 all = false,
                 entries = {}
+            },
+            extmarks = {
+                highlighters = {},
+                decorators = {},
+                matches = {},
             },
             entries = nil,
             positions = nil,

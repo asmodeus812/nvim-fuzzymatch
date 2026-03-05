@@ -978,6 +978,61 @@ local function run_wrap_decorator_case()
     helpers.eq(thls[2], "Number", "trunc table hl 2")
 end
 
+local function run_extmark_composite_case()
+    local decor = Select.Decorator.new()
+    function decor:decorate()
+        return { "A" }, { "String" }
+    end
+
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = false,
+        decorators = { decor },
+        highlighters = { Select.LineHighlighter.new("Directory") },
+    })
+
+    select:open()
+    local entries = {}
+    local positions = {}
+    for i = 1, 50 do
+        entries[i] = string.format("item-%02d", i)
+        positions[i] = { 0, 1 }
+    end
+    select:list(entries, positions)
+
+    local ns_line = vim.api.nvim_get_namespaces()["list_txtline_namespace"]
+    local ns_match = vim.api.nvim_get_namespaces()["list_highlight_namespace"]
+    local ns_decor = vim.api.nvim_get_namespaces()["list_decorated_namespace"]
+    helpers.assert_ok(ns_line ~= nil, "line namespace exists")
+    helpers.assert_ok(ns_match ~= nil, "match namespace exists")
+    helpers.assert_ok(ns_decor ~= nil, "decorator namespace exists")
+
+    local height = vim.api.nvim_win_get_height(select.list_window)
+    local function mark_count(ns)
+        local extmarks = vim.api.nvim_buf_get_extmarks(
+            select.list_buffer,
+            ns,
+            { 0, 0 },
+            { -1, -1 },
+            { details = true }
+        )
+        return extmarks and #extmarks or 0
+    end
+
+    helpers.wait_for(function()
+        return mark_count(ns_line) == height
+            and mark_count(ns_match) == height
+            and mark_count(ns_decor) == height
+    end, 1500)
+
+    helpers.eq(mark_count(ns_line), height, "line highlights match visible lines")
+    helpers.eq(mark_count(ns_match), height, "match highlights match visible lines")
+    helpers.eq(mark_count(ns_decor), height, "decorator highlights match visible lines")
+
+    select:close()
+end
+
 local function run_converter_case()
     local first_conv = Select.first(function(entry)
         return entry.value
@@ -1025,6 +1080,7 @@ function M.run()
     run_command_preview_case()
     run_decorator_case()
     run_wrap_decorator_case()
+    run_extmark_composite_case()
     run_converter_case()
 end
 

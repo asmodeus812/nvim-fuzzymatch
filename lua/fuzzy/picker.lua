@@ -472,6 +472,7 @@ function Picker:_create_stage()
             display = picker_options.display,
             preview = picker_options.preview,
             decorators = picker_options.decorators,
+            highlighters = picker_options.highlighters,
             mappings = vim.tbl_map(function(a)
                 return a ~= nil and type(a) == "table"
                     and assert(a[1]) or assert(a)
@@ -875,6 +876,7 @@ end
 --- @field content string|function|table the content to use for the picker, can be a command string, a function that takes a callback (plus optional args/cwd/env) and calls it for each entry, or a table of entries. If a string or function is provided the content is streamed, if a table is provided the content is static, and the picker can not be interactive. When a table or function is provided the entries can be either strings or tables, when tables are used the display option must be provided to extract a valid matching string from the table. The display function will be used for both displaying in the list and matching the entries against the user query, internally.
 --- @field context? table a table of context to pass to the content function, can contain the following keys - `cwd` - string, `env` - table of environment variables, `args` a table of arguments to start the command with - table, and `map`, a function that transforms each entry before it is added to the stream. The mapper function is useful when the content function produces complex entries, that need to be transformed into useable entries for the picker components downstream. It is independent of the display function, which is used to extract a string from the entry (at which point it may already mapped with the mapper function) for displaying and matching. The mapper function is used to transform the stream entries before they are added to the stream itself. Return nil or false from this function to skip an entry from being added to the stream, `interactive` - boolean|string|number|nil whether the command is interactive, meaning that it will restart the stream on every query change, if a string is provided it is used as a placeholder in the `args` list to replace with the query, if number, the query is inserted at <index> position in `args`, if nil or false the picker is non-interactive, during an interactive mode the matching is done in the second stage, that can be entered with <c-g>. `tick` - integer>0 to signal source changes without mutating args/env.
 --- @field decorators? Select.Decorator[]|nil a list of decorators to use for decorating the entries in the list, each decorator must be a child class derived from Select.Decorator.
+--- @field highlighters? Select.Highlighter[]|nil a list of highlighters to use for highlighting entries in the list, each highlighter must be a child class derived from Select.Highlighter.
 --- @field preview? Select.Preview|boolean|nil a previewer to use for previewing the currently selected entry, can be a user provided previewer, must be an instance of a sub-class of Select.Preview.
 --- @field actions? table<string, boolean|table<fun(select: Select): any, string|function>|fun(select: Select): any> a table of actions to use for the picker, where the key is the keybinding to trigger the action, and the value is either a function to call when the action is triggered, or a tuple of a function and a string or function, where the string or function is used as the label for the action in the header. If a function is provided as the second value of the tuple, it will be called with the picker instance as its only argument, and should return a string to use as the label. Some default actions are provided, that can be used directly, like `Select.select_entry`, `Select.send_quickfix`, etc.
 --- @field display? string|fun(entry: any): string|string|nil Function or string to format the display of entries in the list. If a function is provided, it will be called with each entry and should return a string to display. If a string is provided, it will be used as the property name to extract from each entry for display.
@@ -903,6 +905,7 @@ function Picker.new(opts)
         display = { opts.display, { "function", "string", "nil" }, true },
         preview = { opts.preview, { "table", "boolean", "nil" }, true },
         decorators = { opts.decorators, "table", true },
+        highlighters = { opts.highlighters, "table", true },
         match_limit = { opts.match_limit, { "number", "nil" }, true },
         match_timer = { opts.match_timer, "number", true },
         match_step = { opts.match_step, "number", true },
@@ -928,6 +931,7 @@ function Picker.new(opts)
         preview = nil,
         display = nil,
         decorators = {},
+        highlighters = {},
         match_limit = nil,
         match_timer = 30,
         match_step = 75000,
@@ -1004,6 +1008,7 @@ function Picker.new(opts)
         preview = opts.preview,
         display = opts.display,
         decorators = opts.decorators,
+        highlighters = opts.highlighters,
         mappings = vim.tbl_map(function(a)
             return a ~= nil and type(a) == "table"
                 and assert(a[1]) or assert(a)

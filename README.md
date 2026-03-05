@@ -613,6 +613,7 @@ SelectHeaderDefault - default highlight for the actual raw header text
 SelectHeaderPadding - default highlight for the header elements padding
 SelectHeaderDelimiter - default highlight for the header block delimiter
 SelectDecoratorDefault - default highlight for the decorated text in the list
+SelectLineHighlight - default highlight for line highlighters
 
 PickerHeaderActionKey - default highlight for the picker action key in selection interface header
 PickerHeaderActionLabel - default highlight for the picker action label in selection interface header
@@ -746,6 +747,7 @@ preview is available or not.
 | `actions`    | `table?`                 | Key mappings for actions in the picker interface. Specify as `[key] = callback` OR `["key"] = { callback, label }` OR `["key"] = false` to disable the action for that key. Labels (optional) can be `string` or `function`.                                                  |
 | `preview`    | `Select.Preview,boolean` | Configures whether entries generate a preview. Set `false` for none, Or provide an instance of a class sub-classing off of `Select.Preview` such as - `Select.BufferPreview`.                                                                                                 |
 | `decorators` | `Select.Decorator[]`     | Table of decorators for the entries. The decoration providers are instances of `Select.Decorators` and by default the Select module provides several built in ones like Select.IconDecorator.                                                                                 |
+| `highlighters` | `Select.Highlighter[]` | Table of highlighters for the entries. Highlighters add highlights to list lines in the picker interface, and are instances of `Select.Highlighter` implementations.                                                                                                        |
 
 ### Advanced options
 
@@ -809,6 +811,12 @@ usage of each option, along with any relevant details or examples.
   override the decorate function which receives the current raw entry as provided by the stream along with the display line for the same
   entry, the function can return a single string, a tuple of string and a highlight group, a table of strings, and a table of highlight groups
   or simply `false` to skip the decoration. The string represents the decoration added to the line and the highlight of the decoration.
+
+- **highlighters**: A table of selection list entry highlighters. Highlighters are responsible for highlighting parts of the list line after
+  decorations are applied. They must be sub-classes of `Select.Highlighter` and implement `highlight(entry, line)` which returns a triplet
+  of `start_col, length, hl_group` (two numbers and a highlight group string). The highlight start is automatically offset by any decorator
+  text. A return of `0, -1, "Group"` highlights the entire line. The built-in `Select.LineHighlighter` provides this behavior with a
+  configurable highlight group.
 
 #### Advanced options
 

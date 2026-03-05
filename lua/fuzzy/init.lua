@@ -51,6 +51,7 @@ function M.setup(opts)
     vim.api.nvim_set_hl(0, "SelectHeaderPadding", { link = "NonText", default = false })
     vim.api.nvim_set_hl(0, "SelectHeaderDelimiter", { link = "Ignore", default = false })
     vim.api.nvim_set_hl(0, "SelectDecoratorDefault", { link = "Normal", default = false })
+    vim.api.nvim_set_hl(0, "SelectLineHighlight", { link = "Visual", default = false })
 
     vim.api.nvim_set_hl(0, "PickerHeaderActionKey", { link = "ErrorMsg", default = false })
     vim.api.nvim_set_hl(0, "PickerHeaderActionLabel", { link = "MoreMsg", default = false })
