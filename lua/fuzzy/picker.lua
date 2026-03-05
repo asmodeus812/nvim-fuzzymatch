@@ -550,6 +550,7 @@ function Picker:_compute_headers(headers, actions)
 end
 
 function Picker:_running_match(matching, query)
+    -- Maintain a running accumulator of match results while a stream is active; it is a {matches, positions, scores} triplet that grows per chunk, resets on query change, and is released when matching is nil.
     local state = assert(self._state)
     if matching == nil and state.matching then
         local match_state = state.matching
@@ -637,10 +638,10 @@ function Picker:_running_match(matching, query)
 end
 
 function Picker:_flush_interactive()
-    -- no need to debounce much here, however there might be cases where the stream buffer fills up too quickly if the step is small or if
-    -- the executable is way too fast, debouncing the stream flush can still be useful, to avoid re-starting the matcher too often
+    -- Interactive stream flush: stream is the source of truth (no fuzzy match), render accumulated results and status, debounce to coalesce very fast flushes.
     return utils.debounce_callback(self._options.stream_debounce, function(buf, all)
         if buf == nil and all == nil then
+            -- Stream finished: if it produced nothing, explicitly render an empty list, then signal completion.
             if not self.stream.results or #self.stream.results == 0 then
                 self.select:list(
                     utils.EMPTY_TABLE,
@@ -648,8 +649,10 @@ function Picker:_flush_interactive()
                 )
                 self.select:status("0/0")
             end
+            -- Final nil list marks end of streaming: Select stops incremental updates and treats the list as stable until new data arrives (or re-open).
             self.select:list(nil, nil)
         else
+            -- Streaming in progress: show all accumulated results so far.
             self.select:list(all, nil)
             self.select:status(string.format(
                 "%d/%d", #all, #all
@@ -659,11 +662,10 @@ function Picker:_flush_interactive()
 end
 
 function Picker:_flush_direct()
-    -- no need to debounce much here, however there might be cases where the stream buffer fills up too quickly if the step is small or if
-    -- the executable is way too fast, debouncing the stream flush can still be useful, to avoid re-starting the matcher too often
+    -- Direct stream flush (non-interactive): match per chunk and merge into accumulator when query is present, render all results when empty, debounce to coalesce rapid flushes.
     return utils.debounce_callback(self._options.stream_debounce, function(buf, all)
         if buf == nil and all == nil then
-            -- streaming is done, so we need to make sure that the renderer is notified about it
+            -- Stream finished: if it produced nothing, explicitly render an empty list, then signal completion.
             if not self.stream.results or #self.stream.results == 0 then
                 self.select:list(
                     utils.EMPTY_TABLE,
@@ -671,13 +673,13 @@ function Picker:_flush_direct()
                 )
                 self.select:status("0/0")
             end
+            -- Final nil list marks end of streaming: Select stops incremental updates and treats the list as stable until new data arrives (or re-open).
             self.select:list(nil, nil)
         else
+            -- Query snapshot at flush time; if it changes later, _running_match will reset.
             local query = self.select:query()
             if buf and #buf > 0 and type(query) == "string" and #query > 0 then
-                -- when matching while the stream is running, can afford to accumulate results over time as the streaming chunks come in
-                -- that would prevent re-matching on the entire stream - `all` entries every time a new chunk is delivered, using the
-                -- running_match, are accumulated matched stream chunks.
+                -- Match only current chunk (buf), merge into accumulator; avoids re-matching full stream (all) per stream flush.
                 self.match:match(buf, query, function(matching)
                     if matching == nil then
                         if not self.match.results or #self.match.results == 0 or #self.match.results[1] == 0 then
@@ -689,6 +691,7 @@ function Picker:_flush_direct()
                         end
                         self.select:list(nil, nil)
                     else
+                        -- Merge new matches into the accumulator and render.
                         matching = self:_running_match(matching, query)
                         self.select:list(matching[1], matching[2])
                         self.select:status(string.format(
@@ -697,8 +700,7 @@ function Picker:_flush_direct()
                     end
                 end, self._state.matcher)
             else
-                -- when there is no query yet, we just have to render all the results as they are, empty query means that
-                -- we can certainly show all results, that the stream produced so far.
+                -- No query: render all results as-is and reset any running accumulator.
                 self.select:list(all, nil)
                 self.select:status(string.format(
                     "%d/%d", #all, #all
@@ -750,7 +752,7 @@ function Picker:isopen()
     return self:_is_open()
 end
 
---- Check whether the primary picker or a running stage is valid. The picker is considered valid when any of the primary components of the selection interfacece are valid themselves
+--- Check whether the primary picker or a running stage is valid. The picker is considered valid when any of the primary components of the selection interface are valid themselves.
 --- @return boolean whether the picker or any running stage is open
 function Picker:isvalid()
     return self:_is_valid()

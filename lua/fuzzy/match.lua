@@ -43,8 +43,7 @@ end
 function Match:_populate_chunks()
     local size = 0
     if assert(self.list) and #self.list > 0 then
-        -- each time we are called we fill the chunks with the next step of items from the source list, the chynks aer always
-        -- the  same size except for the last one which can be smaller.
+        -- each time we are called we fill the chunks with the next step of items from the source list, the chunks are always the  same size except for the last one which can be smaller.
         local iteration_limit = self._state.offset + self._options.step
         local start_index = self._state.offset + 1
         local destination = self._state.chunks
@@ -187,7 +186,7 @@ function Match:_bind_method(method)
 end
 
 function Match:_match_worker()
-    -- verify we are still running and there is something to process
+    -- One matching cycle: pull next chunk, run matchfuzzypos, merge into accumulator, invoke callback with accumulated results (or nil when done).
     if not self:running() or not self:_populate_chunks() then
         local callback = self.callback
         -- stop processing, make sure to clean up the timer, and context
@@ -292,7 +291,7 @@ end
 --- Starts a new match operation on the given list with the specified pattern and callback
 --- @param list? string[] The list of strings to match against.
 --- @param pattern? string The pattern to match.
---- @param callback? fun(results: (string[]|integer[]|number[])[]|nil) The callback function to be called on each match iteration.
+--- @param callback? fun(results: (string[]|integer[]|number[])[]|nil) The callback called with accumulated results each cycle, and nil when done.
 --- @param transform? table A table of transformation rules to apply to the strings before matching, if items are of type table, using matchfuzzypos options, key or/and text_cb
 function Match:match(list, pattern, callback, transform)
     vim.validate({

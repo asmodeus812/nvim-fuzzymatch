@@ -741,7 +741,7 @@ preview is available or not.
 | Field        | Type                     | Description                                                                                                                                                                                                                                                                   |
 | ------------ | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `content`    | `string,function,table`  | The content for the picker. Can be a string (command), function (generates entries dynamically), or table (static entries). Tables make the picker non-interactive by default. Functions/tables can contain strings or tables (requires a `display` function for extracting). |
-| `context`    | `table?`                 | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), `map` (function to transform entries from the content stream), and `interactive` (boolean, string, or number to configure interactivity).                                    |
+| `context`    | `table?`                 | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), `map` (function to transform entries from the content stream), and `interactive` (boolean, string, or number to configure interactivity). The evaluated context is deep-compared on open; keep `args` lightweight and limited to changing source state so reruns happen only when intended.                                    |
 | `display`    | `function,string,nil`    | Custom function for displaying entries. If `nil`, the entry itself is displayed. If a string, it’s treated as a key to extract from the entry table. If a function, it is used as a callback which receives the entry as its only input and must return a string              |
 | `actions`    | `table?`                 | Key mappings for actions in the picker interface. Specify as `[key] = callback` OR `["key"] = { callback, label }` OR `["key"] = false` to disable the action for that key. Labels (optional) can be `string` or `function`.                                                  |
 | `preview`    | `Select.Preview,boolean` | Configures whether entries generate a preview. Set `false` for none, Or provide an instance of a class sub-classing off of `Select.Preview` such as - `Select.BufferPreview`.                                                                                                 |
@@ -775,15 +775,16 @@ usage of each option, along with any relevant details or examples.
 #### Core options
 
 - **content**: The content can be a string, function, or table. If it’s a string, it’s treated as an executable command. This is your
-  entrypoint into the picker. If it’s a function, it should accept a callback and an `args` table, and call the callback with each entry to
-  stream them in. If it’s a table, it should be a static list of entries (strings or tables). Tables require a `display` function to extract
-  the display and matching string.
+  entrypoint into the picker. If it’s a function, it should accept a callback and an `args` table (plus optional `cwd` and `env`), and call
+  the callback with each entry to stream them in. If it’s a table, it should be a static list of entries (strings or tables). Tables require
+  a `display` function to extract the display and matching string.
 
 - **context**: The context provides additional information to the content provider. It tells the picker how to run the command (if content
   is a string or a user defined function), what arguments to pass, the working directory, environment variables, and more. The `interactive`
   field marks the picker as interactive if set to `true`, or can be a string(template/placeholder name)/number to specify how to embed the
   user prompt in the `args`. The fields `cwd, env and args` in context can also be callbacks not just plain values. This is useful when the
-  picker instance is re-used being re-opened after being closed - context will be re-evaluated anew.
+  picker instance is re-used being re-opened after being closed - context will be re-evaluated anew. The picker reruns content when the
+  evaluated context changes; keep `args` focused on changing inputs (buffer list, tabs, cwd, tags, etc.) and avoid large static payloads.
 
 - **display**: The display option configures how entries are shown in the picker. It can be a function that takes an entry and returns a
   string, or a string key to extract from the entry table. If `nil`, the entry itself is displayed (works for simple strings). This is also
