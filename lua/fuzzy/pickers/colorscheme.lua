@@ -18,60 +18,46 @@ end
 --- @return Picker
 function M.open_colorscheme_picker(opts)
     opts = util.merge_picker_options({
-        live_preview = false,
         preview = true,
-        prompt_query = "",
     }, opts)
 
     local current_colorscheme_name = vim.g.colors_name or ""
     local preview_state_table = { last = current_colorscheme_name }
-    --- @type table|false
-    local preview_instance_object = false
     if opts.preview ~= false then
-        preview_instance_object = Select.CustomPreview.new(function(entry_value, buffer_id, _)
-            if opts.live_preview
-                and entry_value ~= preview_state_table.last then
-                apply_colorscheme_name(entry_value)
-                preview_state_table.last = entry_value
+        opts.preview = Select.CustomPreview.new(function(entry)
+            if entry ~= preview_state_table.last then
+                apply_colorscheme_name(entry)
+                preview_state_table.last = entry
             end
-            vim.api.nvim_buf_set_lines(buffer_id, 0, -1, false, {
-                "Colorscheme:",
-                entry_value,
-                "",
-                "Preview is global.",
-            })
+            return { string.format("Colorscheme: %s", entry) }
         end)
+    else
+        opts.preview = false
     end
 
     local function restore_colorscheme()
-        if current_colorscheme_name ~= ""
-            and preview_state_table.last ~= current_colorscheme_name then
+        if current_colorscheme_name ~= "" and preview_state_table.last ~= current_colorscheme_name then
             apply_colorscheme_name(current_colorscheme_name)
         end
     end
 
-    local action_map_table = {
+    local picker = nil
+    local actions = {
         ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
             apply_colorscheme_name(entry_value)
             return false
         end)),
         ["<esc>"] = Select.action(Select.close_view, function()
             restore_colorscheme()
+            assert(picker):_cancel_prompt()
         end),
         ["<m-esc>"] = Select.action(Select.close_view, function()
             restore_colorscheme()
+            assert(picker):_hide_prompt()
         end),
     }
 
-    if opts.actions then
-        action_map_table = vim.tbl_deep_extend(
-            "force",
-            action_map_table,
-            opts.actions
-        )
-    end
-
-    local picker = Picker.new(vim.tbl_extend("force", {
+    picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, args)
             local colorscheme_name_list = args.items
             for _, colorscheme_name in ipairs(colorscheme_name_list) do
@@ -87,8 +73,8 @@ function M.open_colorscheme_picker(opts)
                 }
             end,
         },
-        preview = preview_instance_object,
-        actions = action_map_table,
+        preview = opts.preview,
+        actions = actions,
     }, util.build_picker_options(opts)))
 
     picker:open()

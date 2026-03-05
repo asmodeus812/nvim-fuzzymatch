@@ -776,42 +776,45 @@ function Select.CustomPreview:preview(entry, window)
     if entry == false or entry == nil or not vim.api.nvim_win_is_valid(window) then
         return false
     end
-    assert(type(entry) == "string" or type(entry) == "table")
+
+    local _type = assert(type(assert(entry)))
+    assert(_type == "string" or _type == "table")
 
     local id = tostring(entry):gsub("table: ", "")
     local name = string.format("%s#fuzzy-custom-preview-entry", id)
 
-    if vim.fn.bufexists(name) == 0 then
-        local buffer = vim.api.nvim_create_buf(false, true)
-        buffer = initialize_buffer(buffer, "fuzzy-preview")
-        vim.api.nvim_win_set_buf(window, buffer)
-        vim.api.nvim_buf_set_name(buffer, name)
-        local ok, lines, ft, bt, cursor = utils.safe_call(
-            self.callback, entry, buffer, window
-        )
-        if ok then
-            if lines and type(lines) == "table" then
-                populate_buffer(buffer, lines)
-            end
-            if bt and type(bt) == "string" then
-                vim.bo[buffer].buftype = bt
-            end
-            if ft and type(ft) == "string" then
-                vim.bo[buffer].filetype = ft
-            end
-            if cursor and type(cursor) == "table" and #cursor == 2 and cursor[2] then
-                vim.api.nvim_win_set_cursor(window, cursor)
-            end
-        else
-            populate_buffer(buffer, {
-                lines or "Unable to preview current entry"
-            })
-        end
+    local buffer = vim.fn.bufnr(name, false) or -1
+    if vim.fn.bufexists(name) == 0 or not vim.api.nvim_buf_is_valid(buffer) then
+        buffer = assert(vim.api.nvim_create_buf(false, true))
         assert(not vim.tbl_contains(self.buffers, buffer))
+        buffer = initialize_buffer(buffer, "fuzzy-preview")
+        vim.api.nvim_buf_set_name(buffer, name)
         table.insert(self.buffers, buffer)
+    end
+
+    assert(vim.api.nvim_buf_is_valid(buffer))
+    assert(vim.api.nvim_win_is_valid(window))
+    vim.api.nvim_win_set_buf(window, buffer)
+    local ok, lines, ft, bt, cursor = pcall(
+        self.callback, entry, buffer, window
+    )
+    if ok then
+        if lines and type(lines) == "table" then
+            populate_buffer(buffer, lines)
+        end
+        if bt and type(bt) == "string" then
+            vim.bo[buffer].buftype = bt
+        end
+        if ft and type(ft) == "string" then
+            vim.bo[buffer].filetype = ft
+        end
+        if cursor and type(cursor) == "table" and #cursor == 2 and cursor[2] then
+            vim.api.nvim_win_set_cursor(window, cursor)
+        end
     else
-        local buffer = assert(vim.fn.bufnr(name, false))
-        vim.api.nvim_win_set_buf(window, buffer)
+        populate_buffer(buffer, {
+            lines or "Unable to preview current entry"
+        })
     end
     return true
 end
@@ -848,7 +851,7 @@ function Select.CommandPreview:preview(entry, window)
         return false
     end
 
-    assert(entry ~= nil and entry.filename ~= nil)
+    assert(entry and entry.filename)
     local name = string.format(
         "%s#fuzzy-command-preview-entry",
         tostring(entry.bufnr or entry.filename)

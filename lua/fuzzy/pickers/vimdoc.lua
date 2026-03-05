@@ -163,7 +163,7 @@ local function build_preview()
         end
         lines[#lines + 1] = ""
         lines[#lines + 1] = "Press <CR> to open :help " .. entry.tag
-        return lines, "markdown", ""
+        return lines, "markdown"
     end)
 end
 

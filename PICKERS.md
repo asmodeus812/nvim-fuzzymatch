@@ -65,6 +65,7 @@ while keeping UI latency low by batching and debouncing. All of them accept the 
 stream and match steps), and then add Git-specific knobs.
 
 All git pickers also accept:
+
 - `watch` (default `false`): enables a lightweight git-state `tick` to refresh results on reopen.
 
 ### Git Files
@@ -76,12 +77,12 @@ icons, path shortening, and visual separators.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_files({
-  cwd = vim.loop.cwd,
-  untracked = true,
-  preview = true,
-  icons = true,
-  stream_step = 100000,
-  match_step = 75000,
+    cwd = vim.loop.cwd,
+    untracked = true,
+    preview = true,
+    icons = true,
+    stream_step = 100000,
+    match_step = 75000,
 })
 ```
 
@@ -111,11 +112,11 @@ tree.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_status({
-  cwd = vim.loop.cwd,
-  preview = true,
-  icons = true,
-  stream_step = 50000,
-  match_step = 50000,
+    cwd = vim.loop.cwd,
+    preview = true,
+    icons = true,
+    stream_step = 50000,
+    match_step = 50000,
 })
 ```
 
@@ -140,9 +141,9 @@ discover recently updated branches.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_branches({
-  cwd = vim.loop.cwd,
-  stream_step = 50000,
-  match_step = 50000,
+    cwd = vim.loop.cwd,
+    stream_step = 50000,
+    match_step = 50000,
 })
 ```
 
@@ -161,9 +162,9 @@ or message works naturally.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_commits({
-  cwd = vim.loop.cwd,
-  stream_step = 50000,
-  match_step = 50000,
+    cwd = vim.loop.cwd,
+    stream_step = 50000,
+    match_step = 50000,
 })
 ```
 
@@ -182,8 +183,8 @@ history.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_bcommits({
-  stream_step = 50000,
-  match_step = 50000,
+    stream_step = 50000,
+    match_step = 50000,
 })
 ```
 
@@ -202,9 +203,9 @@ selection, not for bulk stash manipulation.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_stash({
-  cwd = vim.loop.cwd,
-  stream_step = 50000,
-  match_step = 50000,
+    cwd = vim.loop.cwd,
+    stream_step = 50000,
+    match_step = 50000,
 })
 ```
 
@@ -229,18 +230,18 @@ point.
 local files_picker = require("fuzzy.pickers.files")
 
 files_picker.open_files_picker({
-  cwd = vim.loop.cwd,
-  cwd_prompt = true,
-  cwd_prompt_shorten_val = 1,
-  cwd_prompt_shorten_len = 32,
-  hidden = true,
-  follow = false,
-  no_ignore = false,
-  no_ignore_vcs = false,
-  preview = true,
-  icons = true,
-  stream_step = 100000,
-  match_step = 75000,
+    cwd = vim.loop.cwd,
+    cwd_prompt = true,
+    cwd_prompt_shorten_val = 1,
+    cwd_prompt_shorten_len = 32,
+    hidden = true,
+    follow = false,
+    no_ignore = false,
+    no_ignore_vcs = false,
+    preview = true,
+    icons = true,
+    stream_step = 100000,
+    match_step = 75000,
 })
 ```
 
@@ -274,13 +275,13 @@ Lists `:oldfiles` entries. Matching is done on the file path, while display can 
 local oldfiles_picker = require("fuzzy.pickers.oldfiles")
 
 oldfiles_picker.open_oldfiles_picker({
-  cwd = vim.loop.cwd,
-  max = nil,
-  filename_only = false,
-  path_shorten = nil,
-  home_to_tilde = true,
-  preview = true,
-  icons = true,
+    cwd = vim.loop.cwd,
+    max = nil,
+    filename_only = false,
+    path_shorten = nil,
+    home_to_tilde = true,
+    preview = true,
+    icons = true,
 })
 ```
 
@@ -307,18 +308,18 @@ while still letting the matcher filter by filename.
 local buffers_picker = require("fuzzy.pickers.buffers")
 
 buffers_picker.open_buffers_picker({
-  current_tab = false,
-  show_unlisted = false,
-  show_unloaded = false,
-  include_special = false, -- false | true | { "terminal", "quickfix" } | { terminal = true }
-  ignore_current_buffer = true,
-  sort_lastused = true,
-  cwd = vim.loop.cwd,
-  filename_only = false,
-  path_shorten = nil,
-  home_to_tilde = true,
-  preview = true,
-  icons = true,
+    current_tab = false,
+    show_unlisted = false,
+    show_unloaded = false,
+    include_special = false, -- false | true | { "terminal", "quickfix" } | { terminal = true }
+    ignore_current_buffer = true,
+    sort_lastused = true,
+    cwd = vim.loop.cwd,
+    filename_only = false,
+    path_shorten = nil,
+    home_to_tilde = true,
+    preview = true,
+    icons = true,
 })
 ```
 
@@ -331,10 +332,10 @@ Options and behavior:
   inventory; otherwise keep them off for cleaner lists.
 
 - `include_special`: Controls special `buftype` entries.
-  - `false`: only normal buffers (`buftype == ""`).
-  - `true`: include all special buftypes.
-  - `table`: include only listed buftypes, as either an array (`{ "terminal", "quickfix" }`) or a map
-    (`{ terminal = true }`).
+    - `false`: only normal buffers (`buftype == ""`).
+    - `true`: include all special buftypes.
+    - `table`: include only listed buftypes, as either an array (`{ "terminal", "quickfix" }`) or a map
+      (`{ terminal = true }`).
 
 - `ignore_current_buffer`: Exclude the active buffer. Useful when you are looking for a jump target.
 
@@ -358,7 +359,7 @@ buffer details, giving you a lightweight overview of which files are visible in 
 local tabs_picker = require("fuzzy.pickers.tabs")
 
 tabs_picker.open_tabs_picker({
-  preview = false,
+    preview = false,
 })
 ```
 
@@ -380,13 +381,13 @@ matching. This is ideal when you want to search across many files without creati
 local lines_picker = require("fuzzy.pickers.lines")
 
 lines_picker.open_lines_picker({
-  show_unlisted = false,
-  show_unloaded = false,
-  ignore_current_buffer = false,
-  cwd = vim.loop.cwd,
-  include_special = false, -- false | true | { "terminal", "quickfix" } | { terminal = true }
-  preview = false,
-  match_step = 50000,
+    show_unlisted = false,
+    show_unloaded = false,
+    ignore_current_buffer = false,
+    cwd = vim.loop.cwd,
+    include_special = false, -- false | true | { "terminal", "quickfix" } | { terminal = true }
+    preview = false,
+    match_step = 50000,
 })
 ```
 
@@ -400,10 +401,10 @@ Options and behavior:
 - `cwd`: When set, only buffers under `cwd` are included.
 
 - `include_special`: Controls special `buftype` entries.
-  - `false`: only normal buffers (`buftype == ""`).
-  - `true`: include all special buftypes.
-  - `table`: include only listed buftypes, as either an array (`{ "terminal", "quickfix" }`) or a map
-    (`{ terminal = true }`).
+    - `false`: only normal buffers (`buftype == ""`).
+    - `true`: include all special buftypes.
+    - `table`: include only listed buftypes, as either an array (`{ "terminal", "quickfix" }`) or a map
+      (`{ terminal = true }`).
 
 - `preview`: Previewing full lines can be redundant; keep off unless you add a custom previewer.
 
@@ -415,11 +416,11 @@ Word and visual variants pre-fill the prompt with `<cword>` or the visual select
 local lines_picker = require("fuzzy.pickers.lines")
 
 lines_picker.open_lines_word({
-  match_step = 50000,
+    match_step = 50000,
 })
 
 lines_picker.open_lines_visual({
-  match_step = 50000,
+    match_step = 50000,
 })
 ```
 
@@ -447,11 +448,11 @@ Word and visual variants pre-fill the prompt with `<cword>` or the visual select
 local blines_picker = require("fuzzy.pickers.blines")
 
 blines_picker.open_buffer_lines_word({
-  match_step = 50000,
+    match_step = 50000,
 })
 
 blines_picker.open_buffer_lines_visual({
-  match_step = 50000,
+    match_step = 50000,
 })
 ```
 
@@ -468,23 +469,23 @@ Interactive grep using `rg` or `grep` (first available). Supports `query -- args
 local grep_picker = require("fuzzy.pickers.grep")
 
 grep_picker.open_grep_picker({
-  cwd = vim.loop.cwd,
-  hidden = false,
-  follow = false,
-  no_ignore = false,
-  no_ignore_vcs = false,
-  rg_glob = true,
-  rg_glob_fn = nil,
-  glob_flag = "--iglob",
-  glob_separator = "%s%-%-",
-  rg_opts = "--hidden --column --line-number --no-heading --color=never --smart-case -e",
-  grep_opts = "-n -H -r --line-buffered",
-  RIPGREP_CONFIG_PATH = vim.env.RIPGREP_CONFIG_PATH,
-  preview = true,
-  icons = true,
-  stream_step = 25000,
-  match_step = 25000,
-  prompt_debounce = 200,
+    cwd = vim.loop.cwd,
+    hidden = false,
+    follow = false,
+    no_ignore = false,
+    no_ignore_vcs = false,
+    rg_glob = true,
+    rg_glob_fn = nil,
+    glob_flag = "--iglob",
+    glob_separator = "%s%-%-",
+    rg_opts = "--hidden --column --line-number --no-heading --color=never --smart-case -e",
+    grep_opts = "-n -H -r --line-buffered",
+    RIPGREP_CONFIG_PATH = vim.env.RIPGREP_CONFIG_PATH,
+    preview = true,
+    icons = true,
+    stream_step = 25000,
+    match_step = 25000,
+    prompt_debounce = 200,
 })
 ```
 
@@ -529,7 +530,7 @@ Same as the main grep picker, but the prompt is prefilled with `<cword>`.
 local grep_picker = require("fuzzy.pickers.grep")
 
 grep_picker.open_grep_word({
-  cwd = vim.loop.cwd,
+    cwd = vim.loop.cwd,
 })
 ```
 
@@ -541,7 +542,7 @@ Same as the main grep picker, but the prompt is prefilled with the visual select
 local grep_picker = require("fuzzy.pickers.grep")
 
 grep_picker.open_grep_visual({
-  cwd = vim.loop.cwd,
+    cwd = vim.loop.cwd,
 })
 ```
 
@@ -559,13 +560,13 @@ match target so filtering remains fast.
 local quickfix_picker = require("fuzzy.pickers.quickfix")
 
 quickfix_picker.open_quickfix_picker({
-  filename_only = false,
-  path_shorten = nil,
-  home_to_tilde = true,
-  cwd = vim.loop.cwd,
-  preview = true,
-  icons = true,
-  match_step = 50000,
+    filename_only = false,
+    path_shorten = nil,
+    home_to_tilde = true,
+    cwd = vim.loop.cwd,
+    preview = true,
+    icons = true,
+    match_step = 50000,
 })
 ```
 
@@ -587,7 +588,7 @@ The visual variant pre-fills the prompt with the visual selection.
 local quickfix_picker = require("fuzzy.pickers.quickfix")
 
 quickfix_picker.open_quickfix_visual({
-  preview = true,
+    preview = true,
 })
 ```
 
@@ -600,13 +601,13 @@ active window.
 local loclist_picker = require("fuzzy.pickers.loclist")
 
 loclist_picker.open_loclist_picker({
-  filename_only = false,
-  path_shorten = nil,
-  home_to_tilde = true,
-  cwd = vim.loop.cwd,
-  preview = true,
-  icons = true,
-  match_step = 50000,
+    filename_only = false,
+    path_shorten = nil,
+    home_to_tilde = true,
+    cwd = vim.loop.cwd,
+    preview = true,
+    icons = true,
+    match_step = 50000,
 })
 ```
 
@@ -624,7 +625,7 @@ The visual variant pre-fills the prompt with the visual selection.
 local loclist_picker = require("fuzzy.pickers.loclist")
 
 loclist_picker.open_loclist_visual({
-  preview = true,
+    preview = true,
 })
 ```
 
@@ -637,7 +638,7 @@ quickfix state without rebuilding it.
 local quickfix_stack_picker = require("fuzzy.pickers.quickfix_stack")
 
 quickfix_stack_picker.open_quickfix_stack({
-  preview = false,
+    preview = false,
 })
 ```
 
@@ -650,7 +651,7 @@ local.
 local loclist_stack_picker = require("fuzzy.pickers.loclist_stack")
 
 loclist_stack_picker.open_loclist_stack({
-  preview = false,
+    preview = false,
 })
 ```
 
@@ -668,8 +669,8 @@ search.
 local commands_picker = require("fuzzy.pickers.commands")
 
 commands_picker.open_commands_picker({
-  include_builtin = true,
-  include_user = true,
+    include_builtin = true,
+    include_user = true,
 })
 ```
 
@@ -689,9 +690,9 @@ mapping by its LHS or RHS without clutter.
 local keymaps_picker = require("fuzzy.pickers.keymaps")
 
 keymaps_picker.open_keymaps_picker({
-  include_buffer = true,
-  modes = { "n" },
-  max_text = 120,
+    include_buffer = true,
+    modes = { "n" },
+    max_text = 120,
 })
 ```
 
@@ -712,12 +713,16 @@ makes it easy to find the right register without loading full blobs into the mat
 local registers_picker = require("fuzzy.pickers.registers")
 
 registers_picker.open_registers_picker({
+    preview = true,
+    filter = "^a$",
 })
 ```
 
 Options and behavior:
 
-This picker does not currently filter registers; it always lists the standard set.
+- `filter`: Pattern for register names to include. When set, only matching registers are listed.
+
+- `preview`: Enable the preview window. The preview shows the full register contents, including multi-line values.
 
 ### Marks
 
@@ -731,9 +736,9 @@ up front.
 local marks_picker = require("fuzzy.pickers.marks")
 
 marks_picker.open_marks_picker({
-  marks = "[a-z]",
-  include_local = true,
-  include_global = true,
+    marks = "[a-z]",
+    include_local = true,
+    include_global = true,
 })
 ```
 
@@ -755,7 +760,7 @@ retrace navigation history quickly. The list favors brevity so it stays fast eve
 local jumps_picker = require("fuzzy.pickers.jumps")
 
 jumps_picker.open_jumps_picker({
-  preview = false,
+    preview = false,
 })
 ```
 
@@ -772,7 +777,7 @@ stepping backward through recent edits.
 local changes_picker = require("fuzzy.pickers.changes")
 
 changes_picker.open_changes_picker({
-  preview = false,
+    preview = false,
 })
 ```
 
@@ -789,7 +794,7 @@ history manually.
 local command_history_picker = require("fuzzy.pickers.command_history")
 
 command_history_picker.open_command_history({
-  preview = false,
+    preview = false,
 })
 ```
 
@@ -802,26 +807,26 @@ complex regex.
 local search_history_picker = require("fuzzy.pickers.search_history")
 
 search_history_picker.open_search_history({
-  preview = false,
+    preview = false,
 })
 ```
 
 ### Colorscheme
 
-Lists installed colorschemes and lets you preview them. This is intentionally lightweight and only applies the theme to
+Lists installed color schemes and lets you preview them. This is intentionally lightweight and only applies the theme to
 the UI when you change selection.
 
 ```lua
 local colorscheme_picker = require("fuzzy.pickers.colorscheme")
 
 colorscheme_picker.open_colorscheme_picker({
-  preview = true,
+    preview = true,
 })
 ```
 
 Options and behavior:
 
-- `preview`: Applies schemes on selection. Use cautiously if you are sensitive to rapid theme changes.
+- `preview`: Enable the preview window; selections are applied as you move. Use cautiously if you are sensitive to rapid theme changes.
 
 ### Spell Suggest
 
@@ -832,8 +837,8 @@ can quickly filter close alternatives.
 local spell_suggest_picker = require("fuzzy.pickers.spell_suggest")
 
 spell_suggest_picker.open_spell_suggest({
-  target_word_text = nil,
-  suggest_limit_count = 25,
+    target_word_text = nil,
+    suggest_limit_count = 25,
 })
 ```
 
@@ -856,7 +861,7 @@ without loading more content into the picker itself.
 local helptags_picker = require("fuzzy.pickers.helptags")
 
 helptags_picker.open_helptags_picker({
-  preview = true,
+    preview = true,
 })
 ```
 
@@ -868,7 +873,7 @@ Lists manpages. Entries are collected from `apropos -k .` (fallback: `man -k .`)
 local manpages_picker = require("fuzzy.pickers.manpages")
 
 manpages_picker.open_manpages_picker({
-  preview = true,
+    preview = true,
 })
 ```
 
@@ -881,11 +886,11 @@ return type), can be filtered, and open the relevant help tag on confirm.
 local vimdoc_picker = require("fuzzy.pickers.vimdoc")
 
 vimdoc_picker.open_vimdoc_picker({
-  preview = true,
-  prefix = "nvim_",
-  include_deprecated = true,
-  include_private = false,
-  sort_by = "name",
+    preview = true,
+    prefix = "nvim_",
+    include_deprecated = true,
+    include_private = false,
+    sort_by = "name",
 })
 ```
 
@@ -912,7 +917,7 @@ confirm.
 local tags_picker = require("fuzzy.pickers.tags")
 
 tags_picker.open_tags_picker({
-  preview = true,
+    preview = true,
 })
 ```
 
@@ -925,7 +930,7 @@ within a single file.
 local btags_picker = require("fuzzy.pickers.btags")
 
 btags_picker.open_btags_picker({
-  preview = true,
+    preview = true,
 })
 ```
 

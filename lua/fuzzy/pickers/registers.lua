@@ -28,29 +28,47 @@ end
 --- @return Picker
 function M.open_registers_picker(opts)
     opts = util.merge_picker_options({
-        preview = false,
+        preview = true,
+        filter = nil,
     }, opts)
+
+    if opts.preview == true then
+        opts.preview = Select.CustomPreview.new(function(entry_value, _, _)
+            local regcontents = entry_value and entry_value.regcontents or nil
+            if regcontents == nil then
+                local register_name = entry_value and entry_value.name or nil
+                local register_info = register_name and vim.fn.getreginfo(register_name) or nil
+                regcontents = register_info and register_info.regcontents or nil
+            end
+            if type(regcontents) ~= "table" or #regcontents == 0 then
+                regcontents = { "" }
+            end
+            return regcontents, "text"
+        end)
+    elseif opts.preview == false or opts.preview == nil then
+        opts.preview = false
+    end
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = function(stream_callback, args)
             local register_list = args.items
             for _, register_entry in ipairs(register_list) do
                 local register_name = register_entry.name
+                if opts.filter ~= nil and register_name
+                    and not register_name:match(opts.filter)
+                then
+                    goto continue
+                end
                 local register_info = vim.fn.getreginfo(register_name)
                 local register_preview = ""
                 if register_info and register_info.regcontents then
-                    register_preview = table.concat(
-                        register_info.regcontents,
-                        "\\n"
-                    )
-                    register_preview = register_preview:gsub(
-                        "\\r?\\n",
-                        " "
-                    )
+                    register_preview = table.concat(register_info.regcontents, "\\n")
+                    register_preview = register_preview:gsub("\\r?\\n", " ")
                 end
-                if #register_preview > 80 then
+                local width = 80
+                if #register_preview > width then
                     register_preview = table.concat({
-                        register_preview:sub(1, 77),
+                        register_preview:sub(1, width - 3),
                         "..."
                     })
                 end
@@ -60,21 +78,22 @@ function M.open_registers_picker(opts)
                     regcontents = register_info and register_info.regcontents or nil,
                     regtype = register_info and register_info.regtype or nil,
                 })
+                ::continue::
             end
             stream_callback(nil)
         end,
         headers = util.build_picker_headers("Registers", opts),
         context = {
             args = function(_)
+                local items = {} -- collect the registers items
                 local register_name_list = collect_register_list()
-                local items = {}
                 for _, register_name in ipairs(register_name_list) do
                     items[#items + 1] = vim.fn["fuzzymatch#getregsig"](register_name)
                 end
                 return { items = items }
             end,
         },
-        preview = false,
+        preview = opts.preview,
         actions = {
             ["<cr>"] = Select.action(Select.default_select, Select.first(function(entry_value)
                 local register_name = entry_value and entry_value.name or nil
