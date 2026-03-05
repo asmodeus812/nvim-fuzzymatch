@@ -21,6 +21,46 @@ local function build_git_commits_format()
     })
 end
 
+local function git_system(cwd, args)
+    if not cwd or #cwd == 0 then
+        return nil
+    end
+    local cmd = { "git", "-C", cwd }
+    vim.list_extend(cmd, args or {})
+    return vim.system(cmd, { text = true }):wait()
+end
+
+local function git_version_status(cwd, include_untracked)
+    local args = {
+        "-c", "color.status=false",
+        "status", "--porcelain=v1", "-b",
+    }
+    if not include_untracked then
+        table.insert(args, "--untracked-files=no")
+    end
+    local result = git_system(cwd, args)
+    if not result or result.code ~= 0 then
+        return nil
+    end
+    return vim.trim(result.stdout or "")
+end
+
+local function git_version_refs(cwd)
+    local result = git_system(cwd, { "show-ref", "--heads", "--tags" })
+    if not result or result.code ~= 0 then
+        return nil
+    end
+    return vim.trim(result.stdout or "")
+end
+
+local function git_version_stash(cwd)
+    local result = git_system(cwd, { "rev-parse", "refs/stash" })
+    if not result or result.code ~= 0 then
+        return nil
+    end
+    return vim.trim(result.stdout or "")
+end
+
 local function resolve_picker_cwd(source)
     local opts = source:options() or {}
     return util.resolve_working_directory(opts.cwd)
@@ -83,17 +123,11 @@ function M.open_git_files(opts)
         untracked = true,
         preview = true,
         icons = true,
+        watch = false,
     }, opts)
 
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
-    end
-
-    local command_args = { "ls-files" }
-    if opts.untracked then
-        table.insert(command_args, "--others")
-        table.insert(command_args, "--cached")
-        table.insert(command_args, "--exclude-standard")
     end
 
     local converter = Picker.Converter.new(
@@ -112,12 +146,28 @@ function M.open_git_files(opts)
     if opts.icons ~= false then
         decorators = { Select.IconDecorator.new(converter_cb) }
     end
+
+    local tick_counter = 0
+    local command_args = { "ls-files" }
+    if opts.untracked then
+        table.insert(command_args, "--others")
+        table.insert(command_args, "--cached")
+        table.insert(command_args, "--exclude-standard")
+    end
     local picker = build_git_picker(opts, {
         title = "Gitfiles",
         context = {
             args = command_args,
             cwd = function(picker)
                 return assert(resolve_git_root(picker))
+            end,
+            tick = function(picker)
+                if opts.watch == true then
+                    local cwd = assert(resolve_git_root(picker))
+                    return git_version_status(cwd, opts.untracked) or ""
+                end
+                tick_counter = tick_counter + 1
+                return tick_counter
             end,
         },
         preview = opts.preview,
@@ -139,6 +189,7 @@ function M.open_git_status(opts)
         cwd = vim.loop.cwd,
         preview = true,
         icons = true,
+        watch = false,
     }, opts)
 
     if opts.cwd == true then
@@ -162,15 +213,25 @@ function M.open_git_status(opts)
         decorators = { Select.IconDecorator.new(converter_cb) }
     end
 
+    local tick_counter = 0
+    local command_args = {
+        "-c", "color.status=false",
+        "status", "--porcelain=v1",
+    }
     local picker = build_git_picker(opts, {
         title = "Status",
         context = {
-            args = {
-                "-c", "color.status=false",
-                "status", "--porcelain=v1",
-            },
+            args = command_args,
             cwd = function(picker)
                 return assert(resolve_git_root(picker))
+            end,
+            tick = function(picker)
+                if opts.watch == true then
+                    local cwd = assert(resolve_git_root(picker))
+                    return git_version_status(cwd, true) or ""
+                end
+                tick_counter = tick_counter + 1
+                return tick_counter
             end,
         },
         preview = opts.preview,
@@ -194,12 +255,14 @@ function M.open_git_branches(opts)
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         preview = false,
+        watch = false,
     }, opts)
 
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
 
+    local tick_counter = 0
     local command_args = {
         "branch",
         "--all",
@@ -209,13 +272,20 @@ function M.open_git_branches(opts)
         "--sort=refname:rstrip=-2",
         "--sort=-HEAD",
     }
-
     return build_git_picker(opts, {
         title = "Branches",
         context = {
             args = command_args,
             cwd = function(picker)
                 return assert(resolve_git_root(picker))
+            end,
+            tick = function(picker)
+                if opts.watch == true then
+                    local cwd = assert(resolve_git_root(picker))
+                    return git_version_refs(cwd) or ""
+                end
+                tick_counter = tick_counter + 1
+                return tick_counter
             end,
         },
     })
@@ -229,12 +299,14 @@ function M.open_git_commits(opts)
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         preview = false,
+        watch = false,
     }, opts)
 
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
 
+    local tick_counter = 0
     local command_args = {
         "log",
         "--color=never",
@@ -243,13 +315,20 @@ function M.open_git_commits(opts)
             build_git_commits_format(),
         }),
     }
-
     return build_git_picker(opts, {
         title = "Commits",
         context = {
             args = command_args,
             cwd = function(picker)
                 return assert(resolve_git_root(picker))
+            end,
+            tick = function(picker)
+                if opts.watch == true then
+                    local cwd = assert(resolve_git_root(picker))
+                    return git_version_refs(cwd) or ""
+                end
+                tick_counter = tick_counter + 1
+                return tick_counter
             end,
         },
     })
@@ -263,24 +342,33 @@ function M.open_git_stash(opts)
     opts = util.merge_picker_options({
         cwd = vim.loop.cwd,
         preview = false,
+        watch = false,
     }, opts)
 
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
 
+    local tick_counter = 0
     local command_args = {
         "--no-pager",
         "stash",
         "list",
     }
-
     return build_git_picker(opts, {
         title = "Stash",
         context = {
             args = command_args,
             cwd = function(picker)
                 return assert(resolve_git_root(picker))
+            end,
+            tick = function(picker)
+                if opts.watch == true then
+                    local cwd = assert(resolve_git_root(picker))
+                    return git_version_stash(cwd) or ""
+                end
+                tick_counter = tick_counter + 1
+                return tick_counter
             end,
         },
     })
@@ -294,12 +382,14 @@ function M.open_git_bcommits(opts)
     opts = util.merge_picker_options({
         cwd = true,
         preview = false,
+        watch = false,
     }, opts)
 
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
     end
 
+    local tick_counter = 0
     return build_git_picker(opts, {
         title = "BCommits",
         context = {
@@ -325,6 +415,14 @@ function M.open_git_bcommits(opts)
                     "--",
                     rel_path,
                 }
+            end,
+            tick = function(picker)
+                if opts.watch == true then
+                    local cwd = resolve_picker_cwd(picker)
+                    return git_version_refs(cwd) or ""
+                end
+                tick_counter = tick_counter + 1
+                return tick_counter
             end,
         },
     })

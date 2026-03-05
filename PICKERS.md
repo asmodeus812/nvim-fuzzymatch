@@ -64,6 +64,9 @@ The Git pickers are built around `git` commands and stream their output. They ar
 while keeping UI latency low by batching and debouncing. All of them accept the standard picker options (preview, icons,
 stream and match steps), and then add Git-specific knobs.
 
+All git pickers also accept:
+- `watch` (default `false`): enables a lightweight git-state `tick` to refresh results on reopen.
+
 ### Git Files
 
 Lists files from the current git repository. The matcher uses the file path as the content, while the display layer adds
@@ -248,6 +251,8 @@ Options and behavior:
 - `cwd_prompt`, `cwd_prompt_shorten_val`, `cwd_prompt_shorten_len`: Control the prompt header that shows the current
   working directory. These are display-only and do not affect matching. Use these if you often open the picker from
   different locations.
+
+- `watch` (default `false`): Enables a filesystem `tick` to refresh results on reopen.
 
 - `hidden`: Include hidden files. Recommended when working with dotfiles or config directories, not always ideal in
   large repos where hidden folders contain huge caches.
@@ -486,6 +491,8 @@ grep_picker.open_grep_picker({
 Options and behavior:
 
 - `cwd`: Search root. This matters for performance and accuracy, especially in monorepos.
+
+- `watch` (default `false`): Enables a filesystem `tick` to refresh results on reopen.
 
 - `hidden`, `follow`, `no_ignore`, `no_ignore_vcs`: Pass-through flags to the underlying command. These can drastically
   change result volume, so use them deliberately.

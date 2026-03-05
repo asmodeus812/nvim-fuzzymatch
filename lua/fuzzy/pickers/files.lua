@@ -78,6 +78,7 @@ function M.open_files_picker(opts)
         no_ignore_vcs = false,
         preview = true,
         icons = true,
+        watch = false,
     }, opts)
 
     if opts.cwd == true then
@@ -101,6 +102,7 @@ function M.open_files_picker(opts)
         decorators = { Select.IconDecorator.new(conv) }
     end
 
+    local tick_counter = 0
     local cmd, args = build_files_command(opts)
     local picker = Picker.new(vim.tbl_extend("force", {
         content = assert(cmd),
@@ -108,6 +110,13 @@ function M.open_files_picker(opts)
         context = {
             args = args,
             cwd = opts.cwd,
+            tick = function()
+                if opts.watch == true then
+                    return util.dir_watch_state(opts.cwd, true).tick
+                end
+                tick_counter = tick_counter + 1
+                return tick_counter
+            end,
         },
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),

@@ -97,17 +97,8 @@ function M.open_grep_picker(opts)
         preview = true,
         icons = true,
         prompt_debounce = 200,
+        watch = false,
     }, opts)
-
-    if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
-    end
-
-    local converter = Picker.Converter.new(
-        Picker.grep_converter,
-        Picker.cwd_visitor
-    )
-    local converter_cb = converter:get()
 
     local function parse_query_value(query)
         if not opts.rg_glob then
@@ -156,16 +147,15 @@ function M.open_grep_picker(opts)
         return args_list
     end
 
-    local env = nil
-    if opts.RIPGREP_CONFIG_PATH then
-        env = {
-            table.concat({
-                "RIPGREP_CONFIG_PATH=",
-                opts.RIPGREP_CONFIG_PATH,
-            })
-        }
+    if opts.cwd == true then
+        opts.cwd = vim.loop.cwd
     end
 
+    local converter = Picker.Converter.new(
+        Picker.grep_converter,
+        Picker.cwd_visitor
+    )
+    local converter_cb = converter:get()
     if opts.preview == true then
         opts.preview = Select.BufferPreview.new(nil, converter_cb)
     elseif opts.preview == false or opts.preview == nil then
@@ -177,14 +167,32 @@ function M.open_grep_picker(opts)
         decorators = { Select.IconDecorator.new(converter_cb) }
     end
 
+    local env = nil
+    if opts.RIPGREP_CONFIG_PATH then
+        env = {
+            table.concat({
+                "RIPGREP_CONFIG_PATH=",
+                opts.RIPGREP_CONFIG_PATH,
+            })
+        }
+    end
+
+    local tick_counter = 0
     local picker = Picker.new(vim.tbl_extend("force", {
         content = assert(cmd),
         headers = util.build_picker_headers("Grep", opts),
         context = {
-            env = env,
             args = args,
             cwd = opts.cwd,
+            env = env,
             interactive = build_interactive_arguments,
+            tick = function()
+                if opts.watch == true then
+                    return util.dir_watch_state(opts.cwd, true).tick
+                end
+                tick_counter = tick_counter + 1
+                return tick_counter
+            end,
         },
         preview = opts.preview,
         actions = util.build_default_actions(converter_cb, opts),

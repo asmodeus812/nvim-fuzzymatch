@@ -28,6 +28,35 @@ local function capture_picker(callback)
     end)
 end
 
+local function git_cmd(repo, args)
+    local cmd = { "git", "-C", repo }
+    vim.list_extend(cmd, args)
+    local result = vim.system(cmd, { text = true }):wait()
+    helpers.assert_ok(result and result.code == 0, "git command failed")
+    return result
+end
+
+local function init_repo()
+    local repo = helpers.create_temp_dir()
+    local file_path = vim.fs.joinpath(repo, "file.txt")
+    git_cmd(repo, { "init" })
+    git_cmd(repo, { "config", "user.name", "Fuzzy Test" })
+    git_cmd(repo, { "config", "user.email", "fuzzy@test.local" })
+    helpers.write_file(file_path, "alpha\n")
+    git_cmd(repo, { "add", "file.txt" })
+    git_cmd(repo, { "commit", "-m", "init" })
+    return repo, file_path
+end
+
+local function tick_value(opts)
+    local picker_stub = {
+        options = function()
+            return opts
+        end,
+    }
+    return eval(opts.context.tick, picker_stub)
+end
+
 function M.run()
     helpers.run_test_case("git_files", function()
         helpers.with_mock_map(util, {
@@ -44,6 +73,7 @@ function M.run()
                     icons = false,
                     prompt_debounce = 0,
                     untracked = true,
+                    watch = false,
                 })
                 local opts = get()
                 helpers.eq(opts.content, "git", "content")
@@ -54,6 +84,14 @@ function M.run()
                 }), "/tmp/git-root", "cwd")
                 helpers.assert_list_contains(opts.context.args, "ls-files", "args")
                 helpers.assert_list_contains(opts.context.args, "--exclude-standard", "args")
+                local picker_stub = {
+                    options = function()
+                        return opts
+                    end,
+                }
+                local tick1 = eval(opts.context.tick, picker_stub)
+                local tick2 = eval(opts.context.tick, picker_stub)
+                helpers.assert_ok(tick2 > tick1, "tick increments")
             end)
         end)
     end)
@@ -203,6 +241,211 @@ function M.run()
                 helpers.assert_list_contains(opts.context.args, "stash", "args")
                 helpers.assert_list_contains(opts.context.args, "list", "args")
             end)
+        end)
+    end)
+
+    helpers.run_test_case("git_tick_watch_true", function()
+        if not util.command_is_available("git") then
+            return
+        end
+
+        local repo = helpers.create_temp_dir()
+        local file_path = vim.fs.joinpath(repo, "file.txt")
+
+        local function git_cmd(args)
+            local cmd = { "git", "-C", repo }
+            vim.list_extend(cmd, args)
+            local result = vim.system(cmd, { text = true }):wait()
+            helpers.assert_ok(result and result.code == 0, "git command failed")
+            return result
+        end
+
+        git_cmd({ "init" })
+        git_cmd({ "config", "user.name", "Fuzzy Test" })
+        git_cmd({ "config", "user.email", "fuzzy@test.local" })
+        helpers.write_file(file_path, "alpha\n")
+        git_cmd({ "add", "file.txt" })
+        git_cmd({ "commit", "-m", "init" })
+
+        helpers.with_cwd(repo, function()
+            capture_picker(function(get)
+                require("fuzzy.pickers.git").open_git_status({
+                    preview = false,
+                    icons = false,
+                    prompt_debounce = 0,
+                    watch = true,
+                })
+                local opts = get()
+                local picker_stub = {
+                    options = function()
+                        return opts
+                    end,
+                }
+                local tick1 = eval(opts.context.tick, picker_stub)
+                helpers.write_file(file_path, "alpha\nbeta\n")
+                local tick2 = eval(opts.context.tick, picker_stub)
+                helpers.assert_ok(tick2 ~= tick1, "tick changes after git status update")
+            end)
+        end)
+    end)
+
+    helpers.run_test_case("git_files_watch_true", function()
+        if not util.command_is_available("git") then
+            return
+        end
+        local repo, _ = init_repo()
+        capture_picker(function(get)
+            require("fuzzy.pickers.git").open_git_files({
+                cwd = repo,
+                preview = false,
+                icons = false,
+                untracked = true,
+                watch = true,
+            })
+            local opts = get()
+            local tick1 = tick_value(opts)
+            helpers.write_file(vim.fs.joinpath(repo, "new.txt"), "new\n")
+            local tick2 = tick_value(opts)
+            helpers.assert_ok(tick2 ~= tick1, "git_files tick changes")
+        end)
+    end)
+
+    helpers.run_test_case("git_status_watch_true", function()
+        if not util.command_is_available("git") then
+            return
+        end
+        local repo, file_path = init_repo()
+        capture_picker(function(get)
+            require("fuzzy.pickers.git").open_git_status({
+                cwd = repo,
+                preview = false,
+                icons = false,
+                watch = true,
+            })
+            local opts = get()
+            local tick1 = tick_value(opts)
+            helpers.write_file(file_path, "alpha\nbeta\n")
+            local tick2 = tick_value(opts)
+            helpers.assert_ok(tick2 ~= tick1, "git_status tick changes")
+        end)
+    end)
+
+    helpers.run_test_case("git_branches_watch_true", function()
+        if not util.command_is_available("git") then
+            return
+        end
+        local repo, _ = init_repo()
+        capture_picker(function(get)
+            require("fuzzy.pickers.git").open_git_branches({
+                cwd = repo,
+                watch = true,
+            })
+            local opts = get()
+            local tick1 = tick_value(opts)
+            git_cmd(repo, { "checkout", "-b", "feature/test" })
+            local tick2 = tick_value(opts)
+            helpers.assert_ok(tick2 ~= tick1, "git_branches tick changes")
+        end)
+    end)
+
+    helpers.run_test_case("git_commits_watch_true", function()
+        if not util.command_is_available("git") then
+            return
+        end
+        local repo, file_path = init_repo()
+        capture_picker(function(get)
+            require("fuzzy.pickers.git").open_git_commits({
+                cwd = repo,
+                watch = true,
+            })
+            local opts = get()
+            local tick1 = tick_value(opts)
+            helpers.write_file(file_path, "alpha\nbeta\n")
+            git_cmd(repo, { "add", "file.txt" })
+            git_cmd(repo, { "commit", "-m", "update" })
+            local tick2 = tick_value(opts)
+            helpers.assert_ok(tick2 ~= tick1, "git_commits tick changes")
+        end)
+    end)
+
+    helpers.run_test_case("git_bcommits_watch_true", function()
+        if not util.command_is_available("git") then
+            return
+        end
+        local repo, file_path = init_repo()
+        local buf = helpers.create_named_buffer(file_path, { "line" })
+        vim.api.nvim_set_current_buf(buf)
+
+        capture_picker(function(get)
+            require("fuzzy.pickers.git").open_git_bcommits({
+                cwd = repo,
+                watch = true,
+            })
+            local opts = get()
+            local tick1 = tick_value(opts)
+            helpers.write_file(file_path, "alpha\nbeta\n")
+            git_cmd(repo, { "add", "file.txt" })
+            git_cmd(repo, { "commit", "-m", "update" })
+            local tick2 = tick_value(opts)
+            helpers.assert_ok(tick2 ~= tick1, "git_bcommits tick changes")
+        end)
+
+        vim.api.nvim_buf_delete(buf, { force = true })
+    end)
+
+    helpers.run_test_case("git_stash_watch_true", function()
+        if not util.command_is_available("git") then
+            return
+        end
+        local repo, file_path = init_repo()
+        capture_picker(function(get)
+            require("fuzzy.pickers.git").open_git_stash({
+                cwd = repo,
+                watch = true,
+            })
+            local opts = get()
+            local tick1 = tick_value(opts)
+            helpers.write_file(file_path, "alpha\nbeta\n")
+            git_cmd(repo, { "add", "file.txt" })
+            git_cmd(repo, { "stash", "push", "-m", "save" })
+            local tick2 = tick_value(opts)
+            helpers.assert_ok(tick2 ~= tick1, "git_stash tick changes")
+        end)
+    end)
+
+    helpers.run_test_case("git_status_watch_true_nochange", function()
+        if not util.command_is_available("git") then
+            return
+        end
+        local repo, _ = init_repo()
+        capture_picker(function(get)
+            require("fuzzy.pickers.git").open_git_status({
+                cwd = repo,
+                preview = false,
+                icons = false,
+                watch = true,
+            })
+            local opts = get()
+            local tick1 = tick_value(opts)
+            local tick2 = tick_value(opts)
+            helpers.eq(tick2, tick1, "git_status tick stable")
+        end)
+    end)
+
+    helpers.run_test_case("git_stash_watch_true_nochange", function()
+        if not util.command_is_available("git") then
+            return
+        end
+        local repo, _ = init_repo()
+        capture_picker(function(get)
+            require("fuzzy.pickers.git").open_git_stash({
+                cwd = repo,
+                watch = true,
+            })
+            local opts = get()
+            local tick1 = tick_value(opts)
+            local tick2 = tick_value(opts)
+            helpers.eq(tick2, tick1, "git_stash tick stable")
         end)
     end)
 end

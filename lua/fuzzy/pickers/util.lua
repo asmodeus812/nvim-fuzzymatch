@@ -1,5 +1,7 @@
 local Select = require("fuzzy.select")
 local Picker = require("fuzzy.picker")
+local Watch = require("fuzzy.watch")
+local dir_watch_state = {}
 
 local M = {}
 
@@ -246,6 +248,26 @@ end
 --- @return table
 function M.build_picker_options(picker_options)
     return picker_options or {}
+end
+
+--- Open Build versioned env list picker.
+--- @param cwd string|function
+--- @return table
+function M.dir_watch_state(cwd)
+    local resolved = M.resolve_working_directory(cwd)
+    if type(resolved) ~= "string" or #resolved == 0 then
+        return { tick = 1 }
+    end
+    local normalized = vim.fs.normalize(resolved)
+    local state = dir_watch_state[normalized]
+    if not state then
+        state = { tick = 1, subscription = nil }
+        dir_watch_state[normalized] = state
+        state.subscription = Watch.subscribe(normalized, function()
+            state.tick = state.tick + 1
+        end)
+    end
+    return state
 end
 
 --- Open Empty picker.

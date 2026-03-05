@@ -450,6 +450,45 @@ function M.run()
         end)
     end)
 
+    helpers.run_test_case("picker_cancel_preserves_results", function()
+        local picker = Picker.new({
+            content = function(callback)
+                callback("one")
+                callback("two")
+                callback(nil)
+            end,
+            preview = false,
+            prompt_debounce = 0,
+        })
+        picker:open()
+        helpers.wait_for_stream(picker)
+        helpers.assert_ok(picker.stream.results and #picker.stream.results == 2, "stream results")
+
+        local cancel = picker:_cancel_prompt()
+        cancel(picker.select)
+
+        helpers.assert_ok(picker.stream.results and #picker.stream.results == 2, "cancel keeps results")
+        helpers.assert_ok(picker.select:isopen() == false, "cancel closes select")
+    end)
+
+    helpers.run_test_case("picker_close_destroys_results", function()
+        local picker = Picker.new({
+            content = function(callback)
+                callback("one")
+                callback("two")
+                callback(nil)
+            end,
+            preview = false,
+            prompt_debounce = 0,
+        })
+        picker:open()
+        helpers.wait_for_stream(picker)
+        helpers.assert_ok(picker.stream.results and #picker.stream.results == 2, "stream results")
+
+        picker:close()
+        helpers.assert_ok(picker.stream.results == nil, "close destroys results")
+    end)
+
     helpers.run_test_case("picker_cwd_header", function()
         local cwd = "/tmp/fuzzy-header-a"
         local header_opts = {
