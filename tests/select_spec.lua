@@ -745,6 +745,35 @@ local function run_preview_case()
         and vim.api.nvim_win_get_buf(select.preview_window)
     local preview_lines = helpers.get_buffer_lines(preview_buffer)
     helpers.assert_line_contains(preview_lines, "preview: alpha", "preview")
+    helpers.eq(#preview.buffers, 1, "custom preview buffers")
+
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local lines = helpers.get_buffer_lines(buf)
+        for _, line in ipairs(lines or {}) do
+            if line:find("preview: beta", 1, true) then
+                return true
+            end
+        end
+        return false
+    end, 1500)
+    helpers.eq(#preview.buffers, 2, "custom preview new buffer")
+
+    select:move_up()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local lines = helpers.get_buffer_lines(buf)
+        for _, line in ipairs(lines or {}) do
+            if line:find("preview: alpha", 1, true) then
+                return true
+            end
+        end
+        return false
+    end, 1500)
+    helpers.eq(#preview.buffers, 2, "custom preview reuse buffer")
 
     local preview_window = select.preview_window
     select:toggle_preview()
@@ -769,6 +798,154 @@ local function run_preview_case()
     preview:clean()
 end
 
+local function run_buffer_preview_case()
+    local dir = helpers.create_temp_dir()
+    local filename = vim.fs.joinpath(dir, "alpha.txt")
+    local ignored = vim.fs.joinpath(dir, "image.png")
+    helpers.write_file(filename, { "alpha", "beta" })
+    helpers.write_file(ignored, { "binary" })
+
+    local preview = Select.BufferPreview.new()
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+    })
+
+    select:open()
+    select:list({ filename, ignored })
+    helpers.wait_for(function()
+        return select.preview_window
+            and helpers.is_window_valid(select.preview_window)
+    end, 1500)
+
+    helpers.wait_for(function()
+        local preview_buffer = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local preview_lines = helpers.get_buffer_lines(preview_buffer)
+        return vim.tbl_contains(preview_lines or {}, "alpha")
+    end, 1500)
+
+    select:move_down()
+    helpers.wait_for(function()
+        local preview_buffer = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local preview_lines = helpers.get_buffer_lines(preview_buffer)
+        for _, line in ipairs(preview_lines or {}) do
+            if line:find("ignored", 1, true) then
+                return true
+            end
+        end
+        return false
+    end, 1500)
+
+    select:move_up()
+    helpers.wait_for(function()
+        local preview_buffer = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local preview_lines = helpers.get_buffer_lines(preview_buffer)
+        return vim.tbl_contains(preview_lines or {}, "alpha")
+    end, 1500)
+
+    select:close()
+    preview:clean()
+end
+
+local function run_command_preview_case()
+    local dir = helpers.create_temp_dir()
+    local first = vim.fs.joinpath(dir, "first.txt")
+    local second = vim.fs.joinpath(dir, "second.txt")
+    helpers.write_file(first, { "alpha", "beta" })
+    helpers.write_file(second, { "gamma" })
+
+    local preview = Select.CommandPreview.new("cat")
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+    })
+
+    select:open()
+    select:list({ first, second })
+    helpers.wait_for(function()
+        return select.preview_window
+            and helpers.is_window_valid(select.preview_window)
+    end, 1500)
+
+    helpers.wait_for(function()
+        local preview_buffer = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local preview_lines = helpers.get_buffer_lines(preview_buffer)
+        return vim.tbl_contains(preview_lines or {}, "alpha")
+    end, 1500)
+    helpers.eq(#preview.buffers, 1, "command preview buffers")
+
+    select:move_down()
+    helpers.wait_for(function()
+        local preview_buffer = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local preview_lines = helpers.get_buffer_lines(preview_buffer)
+        return vim.tbl_contains(preview_lines or {}, "gamma")
+    end, 1500)
+    helpers.eq(#preview.buffers, 2, "command preview new buffer")
+
+    select:move_up()
+    helpers.wait_for(function()
+        local preview_buffer = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local preview_lines = helpers.get_buffer_lines(preview_buffer)
+        return vim.tbl_contains(preview_lines or {}, "alpha")
+    end, 1500)
+    helpers.eq(#preview.buffers, 2, "command preview reuse buffer")
+
+    select:close()
+    preview:clean()
+end
+
+local function run_decorator_case()
+    local decor_a = Select.Decorator.new()
+    function decor_a:decorate()
+        return "A", "String"
+    end
+
+    local decor_b = Select.Decorator.new()
+    function decor_b:decorate()
+        return "B", "String"
+    end
+
+    local decor_nil = Select.Decorator.new()
+    function decor_nil:decorate()
+        return nil, nil
+    end
+    local decor_false = Select.Decorator.new()
+    function decor_false:decorate()
+        return false, nil
+    end
+
+    local combine = Select.CombineDecorator.new({ decor_false, decor_a, decor_b }, "Constant", ":")
+    local chain = Select.ChainDecorator.new({ decor_nil, decor_b })
+
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = false,
+        decorators = { combine, chain },
+    })
+
+    select:open()
+    select:list({ "one", "two" })
+    helpers.wait_for(function()
+        local lines = helpers.get_buffer_lines(select.list_buffer)
+        return lines and #lines >= 2
+    end, 1500)
+
+    local lines = helpers.get_buffer_lines(select.list_buffer)
+    helpers.assert_ok(lines[1]:find("A:B", 1, true) ~= nil, "combine decorator")
+    helpers.assert_ok(lines[1]:find("A:B B", 1, true) ~= nil, "chain decorator")
+
+    select:close()
+end
+
 local function run_converter_case()
     local first_conv = Select.first(function(entry)
         return entry.value
@@ -788,6 +965,13 @@ local function run_converter_case()
     helpers.eq(first_conv(entries), "one", "first")
     helpers.eq(last_conv(entries), "two", "last")
     helpers.eq(all_conv(entries)[1], "one", "all")
+
+    local buf = helpers.create_named_buffer("converter.txt", { "line" })
+    local conv = Select.default_converter("converter.txt")
+    helpers.eq(conv.filename, "converter.txt", "default converter string")
+
+    local conv_buf = Select.default_converter(buf)
+    helpers.eq(conv_buf.bufnr, buf, "default converter bufnr")
 end
 
 function M.run()
@@ -805,6 +989,9 @@ function M.run()
     run_prompt_case()
     run_prompt_sync_results_case()
     run_preview_case()
+    run_buffer_preview_case()
+    run_command_preview_case()
+    run_decorator_case()
     run_converter_case()
 end
 

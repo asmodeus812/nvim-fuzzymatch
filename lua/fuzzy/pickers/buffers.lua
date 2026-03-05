@@ -176,14 +176,15 @@ function M.open_buffers_picker(opts)
             buffer_prefix = "#"
         end
 
-        return table.concat({
-            "[",
-            buf,
-            "] ",
+        return {
+            table.concat({ "[", buf, "] " }),
             buffer_prefix,
             flag_string,
-            " ",
-        })
+        }, {
+            "SelectDecoratorDefault",
+            "SelectDecoratorDefault",
+            "SelectDecoratorDefault",
+        }
     end
 
     table.insert(decorators, prefix_decorator)

@@ -932,7 +932,7 @@ function Picker.new(opts)
         stream_type = "lines",
         stream_debounce = 0,
         window_size = 0.20,
-        prompt_debounce = 150,
+        prompt_debounce = 125,
         prompt_query = "",
         prompt_decor = {
             prefix = "› ",

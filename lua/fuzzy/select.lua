@@ -880,9 +880,9 @@ function Select.CommandPreview:preview(entry, window)
     else
         local buffer
         if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
+            buffer = entry.bufnr
             vim.bo[buffer].modifiable = true
             vim.bo[buffer].modified = false
-            buffer = entry.bufnr
         else
             buffer = vim.api.nvim_create_buf(false, true)
             buffer = initialize_buffer(buffer, "fuzzy-preview")
@@ -1239,15 +1239,19 @@ function Select:_render_list()
         end
 
         if self.list_window and vim.api.nvim_win_is_valid(self.list_window) then
+            local win = self.list_window
             self:_decorate_list()
             self:_highlight_list()
             self:_display_toggle()
             self:_display_preview()
 
-            vim.api.nvim_win_call(
-                self.list_window,
-                vim.cmd.redraw
-            )
+            if vim.api.nvim__redraw then
+                vim.api.nvim__redraw({
+                    win = win,
+                    valid = true,
+                    flush = true,
+                })
+            end
         end
     end)
 
