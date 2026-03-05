@@ -1042,6 +1042,7 @@ The decorators are responsible for decorating the entries in the picker interfac
 `Select.Decorator`. They require you to implement the decorate function which receive the current entry and the raw display line, of the
 entry alone, without and before any decoration to it is done, and should return a string or a tuple of string and highlight group, can
 also return a table of strings and table of highlight groups. To skip the decorator for the current entry, simply return nil or false.
+If a decorator returns a table of strings and omits highlights, the default highlight `SelectDecoratorDefault` is applied to every part.
 Below we have shown how to create our own decorator that also skips entries that equal a specific value.
 
 ```lua
@@ -1105,6 +1106,32 @@ all you need to care about is cleaning the state in the clean method, that was c
 
 `The decorate function can return false to signal that the decoration should be skipped or did not complete successfully, this will result in
 no-op for the decorator for this entry`
+
+The built-in `Select.CombineDecorator` and `Select.ChainDecorator` accept an optional default highlight. If a decorator returns a table of
+text segments without a matching highlight table, the default highlight is applied to every segment.
+
+`Select.WidthDecorator.new(decorator, width, align?, pad?) -> decorator`
+- `decorator`: `Select.Decorator` to wrap
+- `width`: `integer` target width
+- `align`: `"left"|"right"` (default `"left"`)
+- `pad`: `string` padding character (default `" "`)
+- `decorate(entry)` returns the padded text (string or table) with the original highlight(s)
+
+`Select.TruncDecorator.new(decorator, max, ellipsis?) -> decorator`
+- `decorator`: `Select.Decorator` to wrap
+- `max`: `integer` maximum width
+- `ellipsis`: `string` (default `"..."`)
+- `decorate(entry)` returns truncated text (string or table) with the original highlight(s)
+
+`Select.CombineDecorator.new(decorators, highlight?) -> decorator`
+- `decorators`: `Select.Decorator[]`
+- `highlight`: `string|nil` default highlight for missing per-segment highlights
+- `decorate(entry)` returns `table|nil` text parts and `table|nil` highlight parts
+
+`Select.ChainDecorator.new(decorators, highlight?) -> decorator`
+- `decorators`: `Select.Decorator[]`
+- `highlight`: `string|nil` default highlight for missing per-segment highlights
+- `decorate(entry)` returns `string|table|nil` text and `string|table|nil` highlights
 
 #### Converters
 

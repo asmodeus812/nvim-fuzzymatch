@@ -41,11 +41,10 @@ Select.IconDecorator = {}
 Select.IconDecorator.__index = Select.IconDecorator
 setmetatable(Select.IconDecorator, { __index = Select.Decorator })
 
---- This is a decorator that runs and combines the result of multiple decorators, combination is done by using a user defined separator or delimiter and a single highlight group for the entire combined result
+--- This is a decorator that runs and combines the result of multiple decorators, flattening their outputs into text and highlight arrays
 --- @class Select.CombineDecorator
 --- @field decorators Select.Decorator[] A list of decorators to run, the result of which non-nil decorator will be added to the combined result
---- @field delimiter? string|nil A delimiter to use to combine or join the results of the configured decorators, space by default
---- @field highlight? string|nil A single highlight group to use for the entire combined result of the decorators
+--- @field highlight? string|nil Default highlight group used when a decorator omits highlights
 Select.CombineDecorator = {}
 Select.CombineDecorator.__index = Select.CombineDecorator
 setmetatable(Select.CombineDecorator, { __index = Select.Decorator })
@@ -53,9 +52,29 @@ setmetatable(Select.CombineDecorator, { __index = Select.Decorator })
 --- This is a decorator that returns the first decorator with a valid non-nil result from a list of pre-defined decorators.
 --- @class Select.ChainDecorator
 --- @field decorators Select.Decorator[] A list of decorators to run, the first non-nil decorator result will be used as a result for the decorate function
+--- @field highlight? string|nil Default highlight group used when a decorator omits highlights
 Select.ChainDecorator = {}
 Select.ChainDecorator.__index = Select.ChainDecorator
-setmetatable(Select.CombineDecorator, { __index = Select.Decorator })
+setmetatable(Select.ChainDecorator, { __index = Select.Decorator })
+
+--- This is a decorator that pads the output of another decorator to a fixed width.
+--- @class Select.WidthDecorator
+--- @field decorator Select.Decorator Decorator to wrap
+--- @field width integer Target width
+--- @field align "left"|"right" Alignment (left by default)
+--- @field pad string Padding character (space by default)
+Select.WidthDecorator = {}
+Select.WidthDecorator.__index = Select.WidthDecorator
+setmetatable(Select.WidthDecorator, { __index = Select.Decorator })
+
+--- This is a decorator that truncates the output of another decorator to a max width.
+--- @class Select.TruncDecorator
+--- @field decorator Select.Decorator Decorator to wrap
+--- @field max integer Max width
+--- @field ellipsis string Ellipsis string ("..." by default)
+Select.TruncDecorator = {}
+Select.TruncDecorator.__index = Select.TruncDecorator
+setmetatable(Select.TruncDecorator, { __index = Select.Decorator })
 
 function Select.Preview.new()
     local obj = {}
@@ -408,6 +427,9 @@ end
 --- @param entries table Data
 --- @param display function|string|nil Display/formatter
 local function populate_range(buffer, start, _end, entries, display)
+    if buffer == nil or not vim.api.nvim_buf_is_valid(buffer) then
+        return
+    end
     local lines = utils.EMPTY_TABLE
 
     if _end > 0 then
@@ -983,56 +1005,187 @@ function Select.IconDecorator:decorate(entry, line)
     return assert(icon), icon_highlight or "SelectDecoratorDefault"
 end
 
---- Create a new combine decorator instance, the decorators are run in order and their results are combined using the delimiter
---- and a single highlight group is used for the entire combined result.
+--- Create a new combine decorator instance, the decorators are run in order and their results are flattened into text/highlight arrays.
 --- @param decorators Select.Decorator[] A list of decorators to run, the result of which non-nil decorator will be added to the combined result
---- @param highlight? string|nil A single highlight group to use for the entire combined result of the decorators
---- @param delimiter? string|nil A delimiter to use to combine or join the results of the configured decorators, space by default
-function Select.CombineDecorator.new(decorators, highlight, delimiter)
+--- @param highlight? string|nil Default highlight group to use when a decorator does not return highlights
+function Select.CombineDecorator.new(decorators, highlight)
     local obj = Select.Decorator.new()
     setmetatable(obj, Select.CombineDecorator)
     obj.decorators = assert(decorators)
     obj.highlight = highlight or "SelectDecoratorDefault"
-    obj.delimiter = delimiter or " "
     return obj
 end
 
---- Decorate the entry by combining the results of all configured decorators using the delimiter, the configured highlight or "SelectDecoratorDefault" is used for the entire combined result
+--- Decorate the entry by combining the results of all configured decorators into arrays of text/highlight parts
 --- @param entry any The entry to decorate
---- @return string|nil The combined decoration string if any decorator returned a non-nil result, nil otherwise
---- @return string The highlight group for the combined decoration, the configured highlight or "SelectDecoratorDefault" if none was configured
+--- @return table|nil Combined text parts or nil if no decorator produced output
+--- @return table|nil Combined highlight parts (defaults applied) or nil
 function Select.CombineDecorator:decorate(entry)
-    local text = {}
-    for _, decor in ipairs(self.decorators) do
-        local str, _ = decor:decorate(entry)
+    local texts = {}
+    local highlights = {}
+    local default_hl = self.highlight
 
-        if str and type(str) == "string" and #str > 0 then
-            table.insert(text, str)
+    for _, decor in ipairs(self.decorators) do
+        local res, hl = decor:decorate(entry)
+        if res ~= nil and res ~= false then
+            if type(res) == "string" and #res > 0 then
+                texts[#texts + 1] = res
+                highlights[#highlights + 1] = (type(hl) == "string" and hl) or default_hl
+            elseif type(res) == "table" and #res > 0 then
+                for i = 1, #res do
+                    texts[#texts + 1] = res[i]
+                    if type(hl) == "table" then
+                        highlights[#highlights + 1] = hl[i] or default_hl
+                    elseif type(hl) == "string" then
+                        highlights[#highlights + 1] = hl
+                    else
+                        highlights[#highlights + 1] = default_hl
+                    end
+                end
+            end
         end
     end
 
-    return table.concat(text, self.delimiter), self.highlight
+    if #texts == 0 then
+        return nil, nil
+    end
+    return texts, highlights
 end
 
 --- Create a new chain decorator instance, the decorators are run in order and the first non-nil result is returned.
 --- @param decorators Select.Decorator[] A list of decorators to run, the first non-nil decorator result will be used as a result for the decorate function
-function Select.ChainDecorator.new(decorators)
+--- @param highlight? string|nil Default highlight group to use when a decorator does not return highlights
+function Select.ChainDecorator.new(decorators, highlight)
     local obj = Select.Decorator.new()
     setmetatable(obj, Select.ChainDecorator)
     obj.decorators = assert(decorators)
+    obj.highlight = highlight or "SelectDecoratorDefault"
     return obj
 end
 
---- Decorate the entry by running the configured decorators in order and returning the first non-nil result, the highlight group returned by the decorator or "SelectDecoratorDefault" if none was returned
+--- Decorate the entry by running the configured decorators in order and returning the first non-nil result, default highlights are filled when missing
 --- @param entry any The entry to decorate
---- @return string|nil The decoration string if any decorator returned a non-nil result, nil otherwise
---- @return string|nil The highlight group for the decoration, "SelectDecoratorDefault" if none was returned by the decorator
+--- @return string|table|nil The decoration text (string or parts) if any decorator returned a non-nil result, nil otherwise
+--- @return string|table|nil The highlight group(s) for the decoration, defaults applied when missing
 function Select.ChainDecorator:decorate(entry)
     for _, decor in ipairs(self.decorators) do
-        local str, hl = decor:decorate(entry)
-        if str and type(str) == "string" and #str > 0 then
-            return str, hl or "SelectDecoratorDefault"
+        local res, hl = decor:decorate(entry)
+        if res and type(res) == "string" and #res > 0 then
+            return res, hl or self.highlight
+        elseif res and type(res) == "table" and #res > 0 then
+            if type(hl) == "table" then
+                return res, hl
+            end
+            local highlights = {}
+            hl = hl or self.highlight
+            for i = 1, #res do
+                highlights[i] = hl
+            end
+            return res, highlights
         end
+    end
+    return nil, nil
+end
+
+--- Create a new width decorator instance.
+--- @param decorator Select.Decorator Decorator to wrap
+--- @param width integer Target width
+--- @param align? "left"|"right" Alignment
+--- @param pad? string Padding character
+function Select.WidthDecorator.new(decorator, width, align, pad)
+    local obj = Select.Decorator.new()
+    setmetatable(obj, Select.WidthDecorator)
+    obj.width = assert(width > 0 and width)
+    obj.decorator = assert(decorator)
+    obj.align = align or "left"
+    obj.pad = pad or " "
+    return obj
+end
+
+local function pad_string(text, width, align, pad)
+    if not text or #text >= width then
+        return text
+    end
+    local fill = string.rep(pad, width - #text)
+    if align == "right" then
+        return fill .. text
+    end
+    return text .. fill
+end
+
+--- Decorate the entry by padding the wrapped decorator output to a fixed width.
+--- @param entry any The entry to decorate
+--- @return string|table|nil The padded decoration text (string or parts) or nil
+--- @return string|table|nil The highlight group(s) for the decoration
+function Select.WidthDecorator:decorate(entry)
+    local res, hl = self.decorator:decorate(entry)
+    if type(res) == "string" then
+        return pad_string(
+            res,
+            self.width,
+            self.align,
+            self.pad
+        ), hl
+    elseif type(res) == "table" then
+        local padded = {}
+        for i, value in ipairs(res) do
+            padded[i] = pad_string(
+                value,
+                self.width,
+                self.align,
+                self.pad
+            )
+        end
+        return padded, hl
+    end
+    return nil, nil
+end
+
+--- Create a new trunc decorator instance.
+--- @param decorator Select.Decorator Decorator to wrap
+--- @param max integer Max width
+--- @param ellipsis? string Ellipsis string
+function Select.TruncDecorator.new(decorator, max, ellipsis)
+    local obj = Select.Decorator.new()
+    setmetatable(obj, Select.TruncDecorator)
+    obj.max = assert(max > 0 and max)
+    obj.decorator = assert(decorator)
+    obj.ellipsis = ellipsis or "..."
+    return obj
+end
+
+local function trunc_string(text, max_len, ellipsis)
+    if not text or max_len <= 0 or #text <= max_len then
+        return text
+    end
+    if #ellipsis >= max_len then
+        return ellipsis:sub(1, max_len)
+    end
+    return text:sub(1, max_len - #ellipsis) .. ellipsis
+end
+
+--- Decorate the entry by truncating the wrapped decorator output to a max width.
+--- @param entry any The entry to decorate
+--- @return string|table|nil The truncated decoration text (string or parts) or nil
+--- @return string|table|nil The highlight group(s) for the decoration
+function Select.TruncDecorator:decorate(entry)
+    local res, hl = self.decorator:decorate(entry)
+    if type(res) == "string" then
+        return trunc_string(
+            res,
+            self.max,
+            self.ellipsis
+        ), hl
+    elseif type(res) == "table" then
+        local truncated = {}
+        for i, value in ipairs(res) do
+            truncated[i] = trunc_string(
+                value,
+                self.max,
+                self.ellipsis
+            )
+        end
+        return truncated, hl
     end
     return nil, nil
 end

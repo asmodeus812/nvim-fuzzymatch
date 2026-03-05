@@ -905,12 +905,12 @@ end
 local function run_decorator_case()
     local decor_a = Select.Decorator.new()
     function decor_a:decorate()
-        return "A", "String"
+        return { "A", ":" }, { "String", "String" }
     end
 
     local decor_b = Select.Decorator.new()
     function decor_b:decorate()
-        return "B", "String"
+        return "B"
     end
 
     local decor_nil = Select.Decorator.new()
@@ -922,8 +922,8 @@ local function run_decorator_case()
         return false, nil
     end
 
-    local combine = Select.CombineDecorator.new({ decor_false, decor_a, decor_b }, "Constant", ":")
-    local chain = Select.ChainDecorator.new({ decor_nil, decor_b })
+    local combine = Select.CombineDecorator.new({ decor_false, decor_a, decor_b }, "Constant")
+    local chain = Select.ChainDecorator.new({ decor_nil, decor_b }, "Constant")
 
     local select = new_select({
         prompt_list = true,
@@ -940,10 +940,42 @@ local function run_decorator_case()
     end, 1500)
 
     local lines = helpers.get_buffer_lines(select.list_buffer)
-    helpers.assert_ok(lines[1]:find("A:B", 1, true) ~= nil, "combine decorator")
-    helpers.assert_ok(lines[1]:find("A:B B", 1, true) ~= nil, "chain decorator")
+    helpers.assert_ok(lines[1]:find("A : B", 1, true) ~= nil, "combine decorator")
+    helpers.assert_ok(lines[1]:find("A : B B", 1, true) ~= nil, "chain decorator")
 
     select:close()
+end
+
+local function run_wrap_decorator_case()
+    local base = Select.Decorator.new()
+    function base:decorate()
+        return "Alpha", "String"
+    end
+
+    local width = Select.WidthDecorator.new(base, 8, "left", " ")
+    local trunc = Select.TruncDecorator.new(base, 4, "...")
+
+    local wtext, whl = width:decorate("entry")
+    helpers.eq(wtext, "Alpha   ", "width decorator")
+    helpers.eq(whl, "String", "width decorator hl passthrough")
+
+    local ttext, thl = trunc:decorate("entry")
+    helpers.eq(ttext, "A...", "trunc decorator")
+    helpers.eq(thl, "String", "trunc decorator hl passthrough")
+
+    local tab = Select.Decorator.new()
+    function tab:decorate()
+        return { "Alpha", "Betamax" }, { "String", "Number" }
+    end
+    local tab_trunc = Select.TruncDecorator.new(tab, 4, "...")
+    local tparts, thls = tab_trunc:decorate("entry")
+    helpers.eq(tparts[1], "A...", "trunc table part 1")
+    helpers.assert_ok(type(tparts[2]) == "string", "trunc table part 2")
+    helpers.assert_ok(#tparts[2] <= 4, "trunc table part 2")
+    helpers.assert_ok(tparts[2]:sub(1, 1) == "B", "trunc table part 2")
+    helpers.assert_ok(tparts[2]:sub(-3) == "...", "trunc table part 2")
+    helpers.eq(thls[1], "String", "trunc table hl 1")
+    helpers.eq(thls[2], "Number", "trunc table hl 2")
 end
 
 local function run_converter_case()
@@ -992,6 +1024,7 @@ function M.run()
     run_buffer_preview_case()
     run_command_preview_case()
     run_decorator_case()
+    run_wrap_decorator_case()
     run_converter_case()
 end
 
