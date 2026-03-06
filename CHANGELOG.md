@@ -7,8 +7,8 @@
 ## [1.0.0] - 2026-03-06
 
 ### Breaking
-
 - refactor(api)!: change the contract format for decorators and highlighters
+- refactor(api)!: move interactive and map away from context map
 
 ### Added
 - Match: a fuzzy matcher module which is used to fuzzy match a query within a list of provided user items
@@ -32,7 +32,6 @@
 - feat(visitor): add visitors and stateful converter modules
 
 ### Fixed
-- fix()
 - fix(test): fix failing tests and introduce more robust extmark cleanup
 - fix(picker): several picker fixes and more passes on naming fixes.
 - fix(naming): ensure naming is consistent across pickers

@@ -174,8 +174,10 @@ defaults are tuned to be fast and safe for large lists, and you can override onl
 
 ```lua
 require("fuzzy").setup({
-    -- override the built-in vim.ui.select with a fuzzy picker implementation
-    override_select = true,
+    general = {
+        -- override the built-in `vim.ui.select` with fuzzymatch
+        override_select = true,
+    }
 
     -- Scheduler controls the async budget for cooperative tasks
     scheduler = {
@@ -200,7 +202,7 @@ require("fuzzy").setup({
 
 Configuration details:
 
-- `override_select`: Replaces `vim.ui.select` with the built-in picker-based implementation.
+- `general.override_select`: Replaces `vim.ui.select` with the built-in picker-based implementation.
 - `scheduler.async_budget`: Time budget in microseconds for cooperative async tasks.
 - `pool.max_idle`: Maximum idle time in milliseconds before a pooled table is discarded.
 - `pool.prune_interval`: Interval in milliseconds for pool cleanup.
@@ -322,10 +324,11 @@ picker:open()
 ### Stream mapping
 
 `stream_map` is a lightweight, per-entry transform that runs before entries are added to the stream. Use it to normalize or filter output
-(return `nil`/`false` to drop an entry). Keep it fast; it runs for every entry.
+(return `nil`/`false` to drop an entry). Keep it fast; it runs for every entry. It's intended for shaping complex command output into
+something the picker can use and understand. Returning `nil` or `false` drops the entry.
 
 ```lua
---- here is an example of a picker that transforms, actually changes the output of the stream while the content is being delivered, in
+-- here is an example of a picker that transforms, actually changes the output of the stream while the content is being delivered, in
 -- our case what we do is we remove all - `total, .., .` lines form the output of `ls`. This mutates the stream in flight and here
 -- we skip the target lines by returning nil, the rest of the lines are unmodified.
 local Picker = require("fuzzy.picker")
@@ -339,7 +342,7 @@ local picker = Picker.new({
     },
     stream_map = function(e)
         if e:match("%.$") or e:match("%.%.$") or e:match("^total") then
-            return nil
+            return nil -- (or one can also use as well -> return false)
         end
         return e
     end,
@@ -683,6 +686,11 @@ the fuzzy stage, to further fuzzy match on the results from the live grep.
 By default all pickers are non-interactive, and the default first and only stage that is available is the fuzzy matching stage, that is
 the normal operation of most all types of pickers.
 
+`interactive` controls how prompt input drives the command. When interactive is enabled the command is re-run on each prompt change. If
+`interactive` is `true`, the prompt is appended to `args`. If it's a string, that string is treated as a placeholder token in `args` and is
+replaced with the prompt. If it's a number, the prompt is inserted into `args` at that index. If it's a function, it is called as
+`interactive(query, context)` and must return the full args table. This is a top-level picker option, not part of the context.
+
 ### Closing and hiding pickers
 
 Hide keeps state and does not cancel streaming or matching; close destroys state and forces a rerun on next open. Use hide for "temporary
@@ -720,14 +728,6 @@ state), provide a function that returns the env table.
 
 `args` is the argument list for the command or the content callback. Keep it focused on values that actually change between runs. Large static
 payloads here make the context comparison noisy and can cause unnecessary reruns.
-
-`stream_map` is a per-entry transform that runs before the entry is added to the stream. It's intended for shaping complex command output
-into something the picker can use. Returning `nil` or `false` drops the entry. This is a top-level picker option, not part of the context.
-
-`interactive` controls how prompt input drives the command. When interactive is enabled the command is re-run on each prompt change. If
-`interactive` is `true`, the prompt is appended to `args`. If it's a string, that string is treated as a placeholder token in `args` and is
-replaced with the prompt. If it's a number, the prompt is inserted into `args` at that index. If it's a function, it is called as
-`interactive(query, context)` and must return the full args table. This is a top-level picker option, not part of the context.
 
 `tick` is a lightweight change signal. It can be any value and is compared as part of context evaluation; changing `tick` forces a re-run
 without having to mutate `args` or `env`. This is useful for external changes like directory watchers or Git state.
@@ -1116,7 +1116,9 @@ end
 
 function EchoPreviewer:preview(entry, win)
     -- note that we can return a status from the preview as well, which can give more context to the user why a given entry could not be
-    -- previewed at this time, the status result must be a boolean value, and an optional message can be present too.
+    -- previewed at this time, the status result must false or nil value, and an optional message can be present too. That message will be
+    -- actually shown in the pre-defined default preview buffer that every picker has. That is a special hidden buffer that is used to show
+    -- default fallback and status messages when your primary previewer does not succeed with previewing the entry, or fails to do so
     if type(entry) == "boolean" then
         return false, "Unsupported entry type for preview"
     end
@@ -1476,7 +1478,7 @@ function callback, or a command executable. These types of contents are dynamic 
 ```lua
 local picker = Picker.new({
     content = function(cb, args)
-        --- Generate 1 million entries based on the user input, the user input is passed in as the second argument to the content function,
+        -- Generate 1 million entries based on the user input, the user input is passed in as the second argument to the content function,
         -- the first, the first argument is a callback which delivers items to the stream, upon completion the callback should be called with
         -- nil to signal the end of the stream. This is not mandatory as the stream will be automatically closed after the functions exits
         -- normally.
@@ -1540,7 +1542,7 @@ local picker = Picker.new({
     },
     -- use rip-grep to list all files in the current working directory, including hidden files
     content = "rg",
-    --- the context in which the command is executed, in this case a static cwd, that is noteworthy, as we are also using a custom Picker.Converter instance
+    -- the context in which the command is executed, in this case a static cwd, that is noteworthy, as we are also using a custom Picker.Converter instance
     -- that makes use of the cwd_visitor to ensure that each entry is absolute relative to the cwd of the picker, this is important as the output of `rg --files` is
     -- relative paths.
     context = {
