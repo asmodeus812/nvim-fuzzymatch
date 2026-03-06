@@ -145,7 +145,7 @@ end
 
 --- Unpack a table that was packed using the table_pack function, returning the original variable arguments. The function uses the 'n' field to determine the number of elements to unpack, ensuring that nil values are preserved.
 --- @param tbl table The table to unpack
---- @return ... The unpacked variable arguments
+--- @return any ... The unpacked variable arguments
 function M.table_unpack(tbl)
     return unpack(assert(tbl), 1, assert(tbl.n))
 end

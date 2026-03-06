@@ -188,7 +188,7 @@ function M.open_grep_picker(opts)
             interactive = build_interactive_arguments,
             tick = function()
                 if opts.watch == true then
-                    return util.dir_watch_state(opts.cwd, true).tick
+                    return util.dir_watch_state(opts.cwd).tick
                 end
                 tick_counter = tick_counter + 1
                 return tick_counter

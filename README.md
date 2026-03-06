@@ -699,7 +699,7 @@ Select.select_prev
 Select.select_tab
 Select.select_vertical
 Select.select_horizontal
-Select.send_locliset
+Select.send_loclist
 Select.send_quickfix
 
 -- Preview actions
@@ -804,7 +804,7 @@ usage of each option, along with any relevant details or examples.
 - **preview**: Configures whether entries generate a preview. If set to `false`, no preview is shown. If set to `true`, the default
   `Select.BufferPreview` is used. You can also provide a custom instance of a child class of `Select.Preview`. Each previewer must override
   the preview function which receives as single argument the raw entry as it was provided by the stream. The preview function can return a
-  `boolean` denoting the result of the preview - `true or false`, and a `status result message`, which is mostly relevant if the preview
+  `boolean` denoting the result of the preview - `true` or `false/nil`, and a `status result message`, which is mostly relevant if the preview
   failed, the message will be used as information to the user.
 
 - **decorators**: A table of selection list entry decorators. The decorators govern how the entries are visually decorated - the decorations
@@ -815,9 +815,10 @@ usage of each option, along with any relevant details or examples.
 
 - **highlighters**: A table of selection list entry highlighters. Highlighters are responsible for highlighting parts of the list line after
   decorations are applied. They must be sub-classes of `Select.Highlighter` and implement `highlight(entry, line)` which returns either a
-  triplet of `start, length, hl_group` (two numbers and a highlight group string), or a list of triplets like `{ { start, length, hl }, {
-start, length, hl } }`. The highlight start is automatically offset by any decorator text preceding the highlighter text. A return of `0,
--1, "Group"` highlights the entire line. The built-in `Select.LineHighlighter` provides this behavior with a configurable highlight group.
+  triplet of `start, length, hl_group?` (two numbers and an optional highlight group string), or a list of triplets like `{ { start, length,
+  hl? }, { start, length, hl? } }`. The highlight start is automatically offset by any decorator text preceding the highlighter text. A
+  return of `0, #line, "Group"` highlights the entire line. The built-in `Select.LineHighlighter` provides this behavior with a configurable
+  highlight group. If `hl_group` is omitted, `SelectLineHighlight` is used.
 
 #### Advanced options
 
@@ -919,7 +920,7 @@ point that can be used to provide your custom behavior.
 -- specific structure for the entries, and in this case we ensure that this is the case by adding a converter to the action which takes
 -- care of normalizing each entry into a valid structure understood by the internal actions.
 actions = {
-    ["<cr>"] = Select.action(Select.select_entry, Select.all(function(entries)
+    ["<cr>"] = Select.action(Select.select_entry, Select.all(function(entry)
         local pat = "^([^:]+):(%d+):(%d+):(.+)$"
         local filename, line_num, col_num = entry:match(pat)
         -- in case no filename could be matched, we can of course return false, to skip this entry entirely from being considered by the
@@ -979,8 +980,8 @@ display or preview lua tables and strings called `EchoPreviewer`
 
 ```lua
 -- Example of using a built-in previewer with a converter that matches grep entries and parses them into the required table structure. This
--- structure is required by the built-in `SelectBufferPreview` to correctly be able to preview the entry.
-preview = Select.BufferPreview.new({}, function()
+-- structure is required by the built-in `Select.BufferPreview` to correctly be able to preview the entry.
+preview = Select.BufferPreview.new({}, function(entry)
     local pat = "^([^:]+):(%d+):(%d+):(.+)$"
     local filename, line_num, col_num = entry:match(pat)
     return {
@@ -998,14 +999,14 @@ setmetatable(EchoPreviewer, { __index = Select.Preview })
 
 function EchoPreviewer:new()
     local obj = Select.Preview.new()
-    setmetatable(obj, Select.EchoPreviewer)
+    setmetatable(obj, EchoPreviewer)
     return obj
 end
 
 function EchoPreviewer:init()
     -- create the buffer that will be used and populated when the preview window is showing new entries, in this case we use only a single
     -- buffer for all entries, for demonstration purposes.
-    obj.buf = vim.api.nvim_create_buf(false, true)
+    self.buf = vim.api.nvim_create_buf(false, true)
 end
 
 function EchoPreviewer:clean()
@@ -1022,7 +1023,6 @@ function EchoPreviewer:preview(entry, win)
         return false, "Unsupported entry type for preview"
     end
     -- user is responsible for managing the buffer if needed, here we are simply reusing a single buffer and clearing it on each preview call
-    -- if the buffer needs to be cleared after the selection interface is closed return the buffer number from the preview function as well
     local lines = type(entry) == "string" and { entry } or vim.split(vim.inspect(entry), "\n")
     vim.api.nvim_win_set_option(win, "wrap", false)
     vim.api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
@@ -1039,8 +1039,8 @@ of file extensions which are to be ignored, these would often be executables or 
 by default, set this parameter to `nil` to use the default ignore list that is provided internally, otherwise provide a valid table of
 values which are the file extensions such as - `{"exe", "dll", "so", "dylib", "bin", "app", "msi"}`
 
-`The preview function can return false to signal that the preview did not complete successfully, this will result in no-op for the
-preview for this entry, an optional message can also be returned describing the reason for the failure`
+`The preview function can return false or nil to signal that the preview did not complete successfully, this will result in a default
+preview message for this entry, an optional message can also be returned describing the reason for the failure`
 
 Previewers can optionally override the `clean` and `init` methods which are invoked with the internal lifecycle of the selection interface,
 all you need to care about is cleaning the state in the clean method, that was created in the init method
@@ -1049,8 +1049,8 @@ all you need to care about is cleaning the state in the clean method, that was c
 
 The decorators are responsible for decorating the entries in the picker interface, they are optional and must be sub-classes of
 `Select.Decorator`. They require you to implement the decorate function which receive the current entry and the raw display line, of the
-entry alone, without and before any decoration to it is done, and should return a string or a tuple of string and highlight group, can
-also return a list of `{ text, hl }` parts. To skip the decorator for the current entry, simply return nil or false.
+entry alone, without and before any decoration to it is done, and should return a string or a tuple of string and highlight group, or a
+list of `{ text, hl }` parts. To skip the decorator for the current entry, simply return nil or false.
 Below we have shown how to create our own decorator that also skips entries that equal a specific value.
 
 ```lua
@@ -1058,7 +1058,7 @@ Below we have shown how to create our own decorator that also skips entries that
 -- Which requires a converter to be instantiated, the same converter function that can be passed to the `actions` or the `previewer` to
 -- obtain a valid entry structure table tuple
 decorators = {
-    Select.IconDecorator.new(function()
+    Select.IconDecorator.new(function(entry)
         local pat = "^([^:]+):(%d+):(%d+):(.+)$"
         local filename, line_num, col_num = entry:match(pat)
         return {
@@ -1098,11 +1098,41 @@ function PrefixDecorator:decorate(entry, line)
     if entry == "ignoreme" then
         return false
     end
-    -- add something simple, to each entry, to simply demonstrate what the decoration provider can return from its function, the hl group is
-    -- optional and if not provided a default one will be added - `SelectDecoratorDefault`. Returning nil or "" for the decoration text tells
-    -- the decorator handler that this decorator is going to be skipped entirely from being added to the final decorated line
+    -- add something simple, to each entry, to simply demonstrate what the decoration provider can return from its function. Returning nil
+    -- or "" for the decoration text tells the decorator handler that this decorator is going to be skipped entirely from being added to the
+    -- final decorated line
     return "[*]", "ErrorMsg"
 end
+```
+
+#### Highlighters
+
+Highlighters add additional highlights to the final list line after decorations are applied. They must be sub-classes of
+`Select.Highlighter` and implement `highlight(entry, line)`. The function can return a single triplet of
+`start_col, length, hl_group?`, or a list of triplets `{ { start, length, hl? }, ... }`. Returning `nil` or `false` skips highlighting
+for the current entry. If `hl_group` is omitted, `SelectLineHighlight` is used. The highlight start is automatically offset by any
+decorator text.
+
+```lua
+local LineHighlighter = {}
+LineHighlighter.__index = LineHighlighter
+setmetatable(LineHighlighter, { __index = Select.Highlighter })
+
+function LineHighlighter.new()
+    local obj = Select.Highlighter.new()
+    setmetatable(obj, LineHighlighter)
+    return obj
+end
+
+function LineHighlighter:highlight(entry, line)
+    if line and #line > 0 then
+        return 0, #line, "Directory"
+    end
+end
+
+highlighters = {
+    LineHighlighter.new()
+}
 ```
 
 The built-in decorators such as `Select.IconDecorator` is accepting a converter as an optional argument, which is used to convert the
@@ -1137,13 +1167,13 @@ explicit highlights, the default highlight is applied to every segment.
 
 - `decorators`: `Select.Decorator[]`
 - `highlight`: `string|nil` default highlight for missing per-segment highlights
-- `decorate(entry)` returns `table|nil` text parts and `table|nil` highlight parts
+- `decorate(entry)` returns `table|nil` list of `{ text, hl }` parts
 
 `Select.ChainDecorator.new(decorators, highlight?) -> decorator`
 
 - `decorators`: `Select.Decorator[]`
 - `highlight`: `string|nil` default highlight for missing per-segment highlights
-- `decorate(entry)` returns `string|table|nil` text and `string|table|nil` highlights
+- `decorate(entry)` returns `string|table|nil` text (string or `{ { text, hl }, ... }` parts)
 
 #### Converters
 
@@ -1278,7 +1308,7 @@ local picker = Picker.new({
         ["<c-t>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "tabe" },
         ["<c-v>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "vert" },
         ["<c-s>"] = { Select.action(Select.send_quickfix, Select.all(grep_converter)), "split" },
-    }
+    },
     -- tells the picker how to handle user confirmation, using the default selection, with a combination of a custom converter, that
     -- ensures that an entry from the output of ripgrep is properly parsed into a valid tuple of { filename, lnum, col }, as well as
     -- handling multiple selections via the `many` helper function
@@ -1539,7 +1569,7 @@ vim.ui.select = function(items, opts, on_choice)
         -- always pick all entries, which would cause all entries to be :edit`ed, if a multi select is active in the picker
         actions = {
             ["<cr>"] = Select.action(Select.select_entry, Select.all(converter)),
-            ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(converter), "qflist" },
+            ["<c-q>"] = { Select.action(Select.send_quickfix, Select.all(converter)), "qflist" },
         },
     }
     picker:open()

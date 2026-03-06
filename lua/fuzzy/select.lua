@@ -132,12 +132,7 @@ function Select.Highlighter:clean()
     -- default empty implementation
 end
 
---- @param entry any The entry to highlight
---- @param line string The line content to highlight
---- @return integer|table start 0-based start column, or list of triplets { start, length, hl }
---- @return integer|nil length Length of highlight, -1 for entire line
---- @return string|nil hl Highlight group name
-function Select.Highlighter:highlight(entry, line)
+function Select.Highlighter:highlight(_, _)
     error("must be implemented by sub-classing")
 end
 
@@ -271,10 +266,13 @@ local function compute_decoration(entry, str, decorators)
         end
         if type(txt) == "table" then
             for _, item in ipairs(txt) do
+                assert(type(item) == "table")
+                assert(type(item[1]) == "string")
                 table.insert(text, item[1])
                 table.insert(highlights, item[2] or default_hl)
             end
         elseif type(txt) == "string" then
+            assert(type(hl) == "string" or hl == nil)
             table.insert(text, txt)
             table.insert(highlights, hl or default_hl)
         end
@@ -282,6 +280,59 @@ local function compute_decoration(entry, str, decorators)
     end
     assert(#text == #highlights)
     return text, highlights
+end
+
+--- Aggregates the result of multiple highlighters for an entry.
+--- @param entry any Entry to highlight
+--- @param line string Line to highlight
+--- @param highlighters table List of highlighters
+--- @return table List of spans { { start, length, hl } }
+local function compute_highlights(entry, line, highlighters)
+    local spans = {}
+    local default_hl = "SelectLineHighlight"
+    for _, highlighter in ipairs(highlighters or {}) do
+        local start, len, hl = highlighter:highlight(entry, line)
+        if start ~= nil and start ~= false then
+            local list = start
+            if type(start) == "number" then
+                assert(type(len) == "number")
+                assert(start >= 0 and len > 0)
+                list = { {
+                    start, len,
+                    hl or default_hl,
+                } }
+            end
+            assert(type(list) == "table")
+            for _, span in ipairs(list) do
+                if span ~= nil and span ~= false then
+                    assert(type(span) == "table")
+                    assert(type(span[1]) == "number")
+                    assert(type(span[2]) == "number")
+                    spans[#spans + 1] = {
+                        span[1], span[2],
+                        span[3] or default_hl,
+                    }
+                end
+            end
+        end
+    end
+    return spans
+end
+
+local function clear_extmarks(buffer, namespace, extmark_ids, start_index)
+    if not extmark_ids or #extmark_ids == 0 then
+        return
+    end
+    for i = start_index or 1, #extmark_ids do
+        local id = extmark_ids[i]
+        if id and id ~= nil and id > 0 then
+            pcall(
+                vim.api.nvim_buf_del_extmark,
+                buffer, namespace, id
+            )
+        end
+        extmark_ids[i] = nil
+    end
 end
 
 --- Counts the number of selected/toggled entries.
@@ -506,6 +557,19 @@ local function highlight_range(buffer, start, _end, entries, positions, display,
         local index = (target - start) + 1
         assert(#matches % 2 == 0 and entry)
 
+        local line_ids = extmark_ids[index] or {}
+        extmark_ids[index] = line_ids
+
+        if not matches or #matches == 0 then
+            clear_extmarks(
+                buffer,
+                LIST_HIGHLIGHT_NAMESPACE,
+                line_ids,
+                1
+            )
+            goto continue
+        end
+
         local decors = vim.api.nvim_buf_get_extmarks(
             buffer, LIST_DECORATED_NAMESPACE,
             { index - 1, 0 }, { index - 1, -1 },
@@ -517,23 +581,21 @@ local function highlight_range(buffer, start, _end, entries, positions, display,
         local decor = decors ~= nil and #decors > 0 and decors[#decors]
         local offset = (decor and #decor >= 4 and decor[4].end_col + 1 or 0)
 
-        local line_ids = extmark_ids[index] or {}
-        extmark_ids[index] = line_ids
-        local mark_index = 0
-
+        local idx = 1
         for i = 1, #matches, 2 do
+            assert(type(matches[i + 0]) == "number")
+            assert(type(matches[i + 1]) == "number")
             local byte_start, byte_end = compute_offsets(
                 line_mapper(entry, display, target),
                 matches[i + 0], matches[i + 1]
             )
-            mark_index = mark_index + 1
             local id = vim.api.nvim_buf_set_extmark(
                 buffer,
                 LIST_HIGHLIGHT_NAMESPACE,
                 index - 1,
                 offset + byte_start,
                 {
-                    id = line_ids[mark_index],
+                    id = line_ids[idx],
                     strict = false,
                     hl_eol = false,
                     invalidate = true,
@@ -546,23 +608,19 @@ local function highlight_range(buffer, start, _end, entries, positions, display,
                     end_col = offset + byte_end
                 }
             )
-            line_ids[mark_index] = id
+            line_ids[idx] = id
+            idx = idx + 1
         end
 
-        if #line_ids > mark_index then
-            for i = mark_index + 1, #line_ids do
-                local id = line_ids[i]
-                if id then
-                    pcall(
-                        vim.api.nvim_buf_del_extmark,
-                        buffer,
-                        LIST_HIGHLIGHT_NAMESPACE,
-                        id
-                    )
-                end
-                line_ids[i] = nil
-            end
+        if #line_ids >= idx then
+            clear_extmarks(
+                buffer,
+                LIST_HIGHLIGHT_NAMESPACE,
+                line_ids,
+                idx
+            )
         end
+        ::continue::
     end
     Async.yield()
 end
@@ -579,8 +637,26 @@ local function highlight_line(buffer, start, _end, entries, highlighters, displa
     assert(start <= _end and start > 0)
 
     for target = start, _end, 1 do
+        assert(target <= #entries)
         local entry = entries[target]
         local index = (target - start) + 1
+        local line = line_mapper(entry, display, target)
+        local spans = compute_highlights(
+            entry, line, highlighters
+        )
+
+        local line_ids = extmark_ids[index] or {}
+        extmark_ids[index] = line_ids
+
+        if not spans or #spans == 0 then
+            clear_extmarks(
+                buffer,
+                LIST_TEXTLINE_NAMESPACE,
+                line_ids,
+                1
+            )
+            goto continue
+        end
 
         local decors = vim.api.nvim_buf_get_extmarks(
             buffer, LIST_DECORATED_NAMESPACE,
@@ -591,58 +667,44 @@ local function highlight_line(buffer, start, _end, entries, highlighters, displa
         local decor = decors ~= nil and #decors > 0 and decors[#decors]
         local offset = (decor and #decor >= 4 and decor[4].end_col + 1 or 0)
 
-        local line = line_mapper(entry, display, target)
-        local line_ids = extmark_ids[index] or {}
-        extmark_ids[index] = line_ids
+        for i, span in ipairs(spans) do
+            assert(type(span[1]) == "number")
+            assert(type(span[2]) == "number")
+            assert(type(span[3]) == "string")
 
-        local mark_index = 0
-        for _, highlighter in ipairs(highlighters or {}) do
-            local col, len, hl = highlighter:highlight(entry, line)
-            local spans = type(col) == "table" and col or { { col, len, hl } }
-            for _, span in ipairs(spans) do
-                assert(span ~= nil and #span == 3)
-                assert(type(span[1]) == "number")
-                assert(type(span[2]) == "number")
-                assert(type(span[3]) == "string")
-                mark_index = mark_index + 1
-                local id = vim.api.nvim_buf_set_extmark(
-                    buffer,
-                    LIST_TEXTLINE_NAMESPACE,
-                    index - 1,
-                    offset + span[1],
-                    {
-                        strict = false,
-                        hl_eol = false,
-                        invalidate = true,
-                        ephemeral = false,
-                        undo_restore = false,
-                        right_gravity = true,
-                        end_right_gravity = true,
-                        hl_group = span[3],
-                        id = line_ids[mark_index],
-                        end_line = index - 1,
-                        end_col = offset + span[1] + span[2]
-                    }
-                )
-                line_ids[mark_index] = id
-            end
+            local id = vim.api.nvim_buf_set_extmark(
+                buffer,
+                LIST_TEXTLINE_NAMESPACE,
+                index - 1,
+                offset + span[1],
+                {
+                    strict = false,
+                    hl_eol = false,
+                    invalidate = true,
+                    ephemeral = false,
+                    undo_restore = false,
+                    right_gravity = true,
+                    end_right_gravity = true,
+                    hl_group = span[3],
+                    id = line_ids[i],
+                    end_line = index - 1,
+                    end_col = offset + span[1] + span[2]
+                }
+            )
+            line_ids[i] = id
         end
 
-        if #line_ids > mark_index then
-            for i = mark_index + 1, #line_ids do
-                local id = line_ids[i]
-                if id then
-                    pcall(
-                        vim.api.nvim_buf_del_extmark,
-                        buffer,
-                        LIST_TEXTLINE_NAMESPACE,
-                        id
-                    )
-                end
-                line_ids[i] = nil
-            end
+        if #line_ids > #spans then
+            clear_extmarks(
+                buffer,
+                LIST_TEXTLINE_NAMESPACE,
+                line_ids,
+                #spans + 1
+            )
         end
+        ::continue::
     end
+    Async.yield()
 end
 
 --- Applies decorators as extmarks to the visible portion of the buffer.
@@ -660,12 +722,28 @@ local function decorate_range(buffer, start, _end, entries, decorators, display,
     vim.bo[buffer].modifiable = true
 
     for target = start, _end, 1 do
+        assert(target <= #entries)
         local entry = entries[target]
         local index = (target - start) + 1
-        local content, highlights = compute_decoration(entry,
-            line_mapper(entry, display, target), decorators
+        local line = line_mapper(entry, display, target)
+        local content, highlights = compute_decoration(
+            entry, line, decorators
         )
-        if #content > 0 then
+
+        local line_ids = extmark_ids[index] or {}
+        extmark_ids[index] = line_ids
+
+        if not content or #content == 0 then
+            clear_extmarks(
+                buffer,
+                LIST_DECORATED_NAMESPACE,
+                line_ids,
+                1
+            )
+            goto continue
+        end
+
+        if content and #content > 0 then
             assert(#content == #highlights)
 
             -- prefix the line with the decorations, they are concatenated in order from the content table,
@@ -677,11 +755,9 @@ local function decorate_range(buffer, start, _end, entries, decorators, display,
                 index - 1, 0, index - 1, 0, { decor }
             )
 
-            local line_ids = extmark_ids[index] or {}
-            extmark_ids[index] = line_ids
             local offset = 0
-            for position, highlight in ipairs(highlights) do
-                local decor_item = content[position]
+            for i, highlight in ipairs(highlights) do
+                local decor_item = content[i]
                 local end_col = offset + #decor_item
                 local id = vim.api.nvim_buf_set_extmark(
                     buffer,
@@ -699,28 +775,23 @@ local function decorate_range(buffer, start, _end, entries, decorators, display,
                         right_gravity = true,
                         end_right_gravity = true,
                         hl_group = highlight,
-                        id = line_ids[position],
+                        id = line_ids[i],
                     }
                 )
-                line_ids[position] = id
+                line_ids[i] = id
                 offset = end_col + 1
             end
 
             if #line_ids > #highlights then
-                for i = #highlights + 1, #line_ids do
-                    local id = line_ids[i]
-                    if id then
-                        pcall(
-                            vim.api.nvim_buf_del_extmark,
-                            buffer,
-                            LIST_DECORATED_NAMESPACE,
-                            id
-                        )
-                    end
-                    line_ids[i] = nil
-                end
+                clear_extmarks(
+                    buffer,
+                    LIST_DECORATED_NAMESPACE,
+                    line_ids,
+                    #highlights + 1
+                )
             end
         end
+        ::continue::
     end
 
     vim.bo[buffer].modifiable = oldma
@@ -789,7 +860,7 @@ local function display_entry(previewer, entry, window, buffer)
         local old_ignore = vim.o.eventignore
         vim.o.eventignore = "all"
         local ok, res, msg = pcall(previewer.preview, previewer, entry, window)
-        if ok and res == false then
+        if ok and (res == false or res == nil) then
             if buffer ~= nil and vim.api.nvim_buf_is_valid(buffer) then
                 display_default({ msg or "Unable to preview current entry" }, window, buffer)
             end
@@ -1043,7 +1114,7 @@ function Select.CommandPreview:preview(entry, window)
             })
         end
     else
-        local buffer
+        local buffer = -1
         if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
             buffer = entry.bufnr
             vim.bo[buffer].modifiable = true
@@ -1204,7 +1275,7 @@ function Select.CombineDecorator:decorate(entry)
             end
         end
     end
-    return (not parts or #parts == 0) and parts or nil
+    return (parts and #parts > 0) and parts or nil
 end
 
 --- Create a new chain decorator instance, the decorators are run in order and the first non-nil result is returned.
@@ -1988,13 +2059,11 @@ function Select:send_fixlist(type, callback)
     elseif type == "loclist" then
         local target
         if self.source_window and vim.api.nvim_win_is_valid(self.source_window) then
-            target = self.source_window
+            target = vim.fn.win_id2win(self.source_window)
         else
             target = vim.fn.winnr("#")
         end
-        vim.fn.setloclist(assert(
-            target
-        ), {}, " ", args)
+        vim.fn.setloclist(assert(target), {}, " ", args)
         self._options.loclist_open()
     end
 end
@@ -2431,14 +2500,16 @@ function Select:header(header)
         vim.api.nvim_win_set_height(self.prompt_window, 2)
     end
 
+    local prompt_buffer = assert(self.prompt_buffer)
     virtual_content(
-        self.prompt_buffer,
+        prompt_buffer,
         LIST_HEADER_NAMESPACE,
         0, 0, nil, { header_entries }
     )
 
     -- TODO: https://github.com/neovim/neovim/issues/27967
-    vim.api.nvim_win_call(self.prompt_window, function()
+    local prompt_window = assert(self.prompt_window)
+    vim.api.nvim_win_call(prompt_window, function()
         local scroll_up = vim.api.nvim_replace_termcodes(
             assert("<c-b>"), false, false, true
         )
