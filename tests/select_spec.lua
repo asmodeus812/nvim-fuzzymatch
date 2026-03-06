@@ -905,12 +905,12 @@ end
 local function run_decorator_case()
     local decor_a = Select.Decorator.new()
     function decor_a:decorate()
-        return { "A", ":" }, { "String", "String" }
+        return { { "A", "String" }, { ":", "String" } }
     end
 
     local decor_b = Select.Decorator.new()
     function decor_b:decorate()
-        return "B"
+        return "B", "String"
     end
 
     local decor_nil = Select.Decorator.new()
@@ -965,23 +965,23 @@ local function run_wrap_decorator_case()
 
     local tab = Select.Decorator.new()
     function tab:decorate()
-        return { "Alpha", "Betamax" }, { "String", "Number" }
+        return { { "Alpha", "String" }, { "Betamax", "Number" } }
     end
     local tab_trunc = Select.TruncDecorator.new(tab, 4, "...")
-    local tparts, thls = tab_trunc:decorate("entry")
-    helpers.eq(tparts[1], "A...", "trunc table part 1")
-    helpers.assert_ok(type(tparts[2]) == "string", "trunc table part 2")
-    helpers.assert_ok(#tparts[2] <= 4, "trunc table part 2")
-    helpers.assert_ok(tparts[2]:sub(1, 1) == "B", "trunc table part 2")
-    helpers.assert_ok(tparts[2]:sub(-3) == "...", "trunc table part 2")
-    helpers.eq(thls[1], "String", "trunc table hl 1")
-    helpers.eq(thls[2], "Number", "trunc table hl 2")
+    local tparts = tab_trunc:decorate("entry")
+    helpers.eq(tparts[1][1], "A...", "trunc table part 1")
+    helpers.eq(tparts[1][2], "String", "trunc table hl 1")
+    helpers.assert_ok(type(tparts[2][1]) == "string", "trunc table part 2")
+    helpers.assert_ok(#tparts[2][1] <= 4, "trunc table part 2")
+    helpers.assert_ok(tparts[2][1]:sub(1, 1) == "B", "trunc table part 2")
+    helpers.assert_ok(tparts[2][1]:sub(-3) == "...", "trunc table part 2")
+    helpers.eq(tparts[2][2], "Number", "trunc table hl 2")
 end
 
 local function run_extmark_composite_case()
     local decor = Select.Decorator.new()
     function decor:decorate()
-        return { "A" }, { "String" }
+        return { { "A", "String" } }
     end
 
     local select = new_select({
@@ -1001,12 +1001,9 @@ local function run_extmark_composite_case()
     end
     select:list(entries, positions)
 
-    local ns_line = vim.api.nvim_get_namespaces()["list_txtline_namespace"]
-    local ns_match = vim.api.nvim_get_namespaces()["list_highlight_namespace"]
-    local ns_decor = vim.api.nvim_get_namespaces()["list_decorated_namespace"]
-    helpers.assert_ok(ns_line ~= nil, "line namespace exists")
-    helpers.assert_ok(ns_match ~= nil, "match namespace exists")
-    helpers.assert_ok(ns_decor ~= nil, "decorator namespace exists")
+    local ns_line = vim.api.nvim_create_namespace("list_textline_namespace")
+    local ns_match = vim.api.nvim_create_namespace("list_highlight_namespace")
+    local ns_decor = vim.api.nvim_create_namespace("list_decorated_namespace")
 
     local height = vim.api.nvim_win_get_height(select.list_window)
     local function mark_count(ns)
@@ -1029,6 +1026,55 @@ local function run_extmark_composite_case()
     helpers.eq(mark_count(ns_line), height, "line highlights match visible lines")
     helpers.eq(mark_count(ns_match), height, "match highlights match visible lines")
     helpers.eq(mark_count(ns_decor), height, "decorator highlights match visible lines")
+
+    select:close()
+end
+
+local function run_highlighter_multi_case()
+    local multi = Select.Highlighter.new()
+    function multi:highlight()
+        return {
+            { 0, 1, "Directory" },
+            { 1, 1, "Directory" },
+        }
+    end
+
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = false,
+        highlighters = { multi },
+    })
+
+    select:open()
+    local entries = {}
+    for i = 1, 50 do
+        entries[i] = string.format("item-%02d", i)
+    end
+    select:list(entries)
+
+    local ns = vim.api.nvim_create_namespace("list_textline_namespace")
+    local height = vim.api.nvim_win_get_height(select.list_window)
+
+    helpers.wait_for(function()
+        local extmarks = vim.api.nvim_buf_get_extmarks(
+            select.list_buffer,
+            ns,
+            { 0, 0 },
+            { -1, -1 },
+            { details = true }
+        )
+        return extmarks and #extmarks == height * 2
+    end, 1500)
+
+    local extmarks = vim.api.nvim_buf_get_extmarks(
+        select.list_buffer,
+        ns,
+        { 0, 0 },
+        { -1, -1 },
+        { details = true }
+    )
+    helpers.eq(#extmarks, height * 2, "multi highlighter spans per line")
 
     select:close()
 end
@@ -1081,6 +1127,7 @@ function M.run()
     run_decorator_case()
     run_wrap_decorator_case()
     run_extmark_composite_case()
+    run_highlighter_multi_case()
     run_converter_case()
 end
 

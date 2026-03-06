@@ -739,15 +739,15 @@ These core options are the most important ones, and are required to create a fun
 what content it streams, how it displays the entries, what actions are available, how the list and the entries are decorated and whether a
 preview is available or not.
 
-| Field        | Type                     | Description                                                                                                                                                                                                                                                                   |
-| ------------ | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `content`    | `string,function,table`  | The content for the picker. Can be a string (command), function (generates entries dynamically), or table (static entries). Tables make the picker non-interactive by default. Functions/tables can contain strings or tables (requires a `display` function for extracting). |
-| `context`    | `table?`                 | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), `map` (function to transform entries from the content stream), `interactive` (boolean, string, or number to configure interactivity), and `tick` (integer > 0) for change detection. The evaluated context is deep-compared on open; keep `args` lightweight and limited to changing source state so reruns happen only when intended. |
-| `display`    | `function,string,nil`    | Custom function for displaying entries. If `nil`, the entry itself is displayed. If a string, it’s treated as a key to extract from the entry table. If a function, it is used as a callback which receives the entry as its only input and must return a string              |
-| `actions`    | `table?`                 | Key mappings for actions in the picker interface. Specify as `[key] = callback` OR `["key"] = { callback, label }` OR `["key"] = false` to disable the action for that key. Labels (optional) can be `string` or `function`.                                                  |
-| `preview`    | `Select.Preview,boolean` | Configures whether entries generate a preview. Set `false` for none, Or provide an instance of a class sub-classing off of `Select.Preview` such as - `Select.BufferPreview`.                                                                                                 |
-| `decorators` | `Select.Decorator[]`     | Table of decorators for the entries. The decoration providers are instances of `Select.Decorators` and by default the Select module provides several built in ones like Select.IconDecorator.                                                                                 |
-| `highlighters` | `Select.Highlighter[]` | Table of highlighters for the entries. Highlighters add highlights to list lines in the picker interface, and are instances of `Select.Highlighter` implementations.                                                                                                        |
+| Field          | Type                     | Description                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`      | `string,function,table`  | The content for the picker. Can be a string (command), function (generates entries dynamically), or table (static entries). Tables make the picker non-interactive by default. Functions/tables can contain strings or tables (requires a `display` function for extracting).                                                                                                                                                           |
+| `context`      | `table?`                 | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), `map` (function to transform entries from the content stream), `interactive` (boolean, string, or number to configure interactivity), and `tick` (integer > 0) for change detection. The evaluated context is deep-compared on open; keep `args` lightweight and limited to changing source state so reruns happen only when intended. |
+| `display`      | `function,string,nil`    | Custom function for displaying entries. If `nil`, the entry itself is displayed. If a string, it’s treated as a key to extract from the entry table. If a function, it is used as a callback which receives the entry as its only input and must return a string                                                                                                                                                                        |
+| `actions`      | `table?`                 | Key mappings for actions in the picker interface. Specify as `[key] = callback` OR `["key"] = { callback, label }` OR `["key"] = false` to disable the action for that key. Labels (optional) can be `string` or `function`.                                                                                                                                                                                                            |
+| `preview`      | `Select.Preview,boolean` | Configures whether entries generate a preview. Set `false` for none, Or provide an instance of a class sub-classing off of `Select.Preview` such as - `Select.BufferPreview`.                                                                                                                                                                                                                                                           |
+| `decorators`   | `Select.Decorator[]`     | Table of decorators for the entries. The decoration providers are instances of `Select.Decorators` and by default the Select module provides several built in ones like Select.IconDecorator.                                                                                                                                                                                                                                           |
+| `highlighters` | `Select.Highlighter[]`   | Table of highlighters for the entries. Highlighters add highlights to list lines in the picker interface, and are instances of `Select.Highlighter` implementations.                                                                                                                                                                                                                                                                    |
 
 ### Advanced options
 
@@ -781,17 +781,18 @@ usage of each option, along with any relevant details or examples.
   the callback with each entry to stream them in. If it’s a table, it should be a static list of entries (strings or tables). Tables require
   a `display` function to extract the display and matching string.
 
+- **display**: The display option configures how entries are shown in the picker. It can be a function that takes an entry and returns a
+  string, or a string key to extract from the entry table. If `nil`, the entry itself is displayed (works for simple strings). This is also
+  the same string used for the fuzzy matching.
+
 - **context**: The context provides additional information to the content provider. It tells the picker how to run the command (if content
   is a string or a user defined function), what arguments to pass, the working directory, environment variables, and more. The `interactive`
   field marks the picker as interactive if set to `true`, or can be a string(template/placeholder name)/number to specify how to embed the
   user prompt in the `args`. The fields `cwd, env, args, and tick` in context can also be callbacks not just plain values. Use `tick` as a
   lightweight string or integer to signal source changes without mutating `args`/`env`. This is useful when the picker instance is re-used
   being re-opened after being closed - context will be re-evaluated anew. The picker reruns content when the evaluated context changes; keep
-  `args` focused on changing inputs (buffer list, tabs, cwd, tags, etc.) and avoid large static payloads.
-
-- **display**: The display option configures how entries are shown in the picker. It can be a function that takes an entry and returns a
-  string, or a string key to extract from the entry table. If `nil`, the entry itself is displayed (works for simple strings). This is also
-  the same string used for the fuzzy matching.
+  `args` focused on changing inputs (buffer list, tabs, tags, etc.) and avoid large static payloads in there. The primary idea is to use the
+  context `args` as an initial input providing the primary data and `compute the actual content in the content callback instead`
 
 - **actions**: Key mappings for actions in the picker interface. This is a table where keys are the keybindings (e.g., `"<CR>"`, `"<C-q>"`)
   and values are either a callback function or a tuple of `{ callback, label }`. The label is optional and can be a string or a function that
@@ -809,14 +810,14 @@ usage of each option, along with any relevant details or examples.
 - **decorators**: A table of selection list entry decorators. The decorators govern how the entries are visually decorated - the decorations
   are always inserted in front of the entry line in the list interface. They must of sub-classes of `Select.Decorator`, each decorator must
   override the decorate function which receives the current raw entry as provided by the stream along with the display line for the same
-  entry, the function can return a single string, a tuple of string and a highlight group, a table of strings, and a table of highlight groups
-  or simply `false` to skip the decoration. The string represents the decoration added to the line and the highlight of the decoration.
+  entry. The function can return a single string plus highlight group, or a list of `{ text, hl }` parts. Returning `false` skips the
+  decoration for the current entry.
 
 - **highlighters**: A table of selection list entry highlighters. Highlighters are responsible for highlighting parts of the list line after
-  decorations are applied. They must be sub-classes of `Select.Highlighter` and implement `highlight(entry, line)` which returns a triplet
-  of `start_col, length, hl_group` (two numbers and a highlight group string). The highlight start is automatically offset by any decorator
-  text. A return of `0, -1, "Group"` highlights the entire line. The built-in `Select.LineHighlighter` provides this behavior with a
-  configurable highlight group.
+  decorations are applied. They must be sub-classes of `Select.Highlighter` and implement `highlight(entry, line)` which returns either a
+  triplet of `start, length, hl_group` (two numbers and a highlight group string), or a list of triplets like `{ { start, length, hl }, {
+start, length, hl } }`. The highlight start is automatically offset by any decorator text preceding the highlighter text. A return of `0,
+-1, "Group"` highlights the entire line. The built-in `Select.LineHighlighter` provides this behavior with a configurable highlight group.
 
 #### Advanced options
 
@@ -1049,8 +1050,7 @@ all you need to care about is cleaning the state in the clean method, that was c
 The decorators are responsible for decorating the entries in the picker interface, they are optional and must be sub-classes of
 `Select.Decorator`. They require you to implement the decorate function which receive the current entry and the raw display line, of the
 entry alone, without and before any decoration to it is done, and should return a string or a tuple of string and highlight group, can
-also return a table of strings and table of highlight groups. To skip the decorator for the current entry, simply return nil or false.
-If a decorator returns a table of strings and omits highlights, the default highlight `SelectDecoratorDefault` is applied to every part.
+also return a list of `{ text, hl }` parts. To skip the decorator for the current entry, simply return nil or false.
 Below we have shown how to create our own decorator that also skips entries that equal a specific value.
 
 ```lua
@@ -1115,10 +1115,11 @@ all you need to care about is cleaning the state in the clean method, that was c
 `The decorate function can return false to signal that the decoration should be skipped or did not complete successfully, this will result in
 no-op for the decorator for this entry`
 
-The built-in `Select.CombineDecorator` and `Select.ChainDecorator` accept an optional default highlight. If a decorator returns a table of
-text segments without a matching highlight table, the default highlight is applied to every segment.
+The built-in `Select.CombineDecorator` and `Select.ChainDecorator` accept an optional default highlight. If a decorator returns parts without
+explicit highlights, the default highlight is applied to every segment.
 
 `Select.WidthDecorator.new(decorator, width, align?, pad?) -> decorator`
+
 - `decorator`: `Select.Decorator` to wrap
 - `width`: `integer` target width
 - `align`: `"left"|"right"` (default `"left"`)
@@ -1126,17 +1127,20 @@ text segments without a matching highlight table, the default highlight is appli
 - `decorate(entry)` returns the padded text (string or table) with the original highlight(s)
 
 `Select.TruncDecorator.new(decorator, max, ellipsis?) -> decorator`
+
 - `decorator`: `Select.Decorator` to wrap
 - `max`: `integer` maximum width
 - `ellipsis`: `string` (default `"..."`)
 - `decorate(entry)` returns truncated text (string or table) with the original highlight(s)
 
 `Select.CombineDecorator.new(decorators, highlight?) -> decorator`
+
 - `decorators`: `Select.Decorator[]`
 - `highlight`: `string|nil` default highlight for missing per-segment highlights
 - `decorate(entry)` returns `table|nil` text parts and `table|nil` highlight parts
 
 `Select.ChainDecorator.new(decorators, highlight?) -> decorator`
+
 - `decorators`: `Select.Decorator[]`
 - `highlight`: `string|nil` default highlight for missing per-segment highlights
 - `decorate(entry)` returns `string|table|nil` text and `string|table|nil` highlights

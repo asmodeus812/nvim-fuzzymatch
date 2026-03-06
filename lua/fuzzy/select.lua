@@ -134,9 +134,9 @@ end
 
 --- @param entry any The entry to highlight
 --- @param line string The line content to highlight
---- @return integer start 0-based start column
---- @return integer length Length of highlight, -1 for entire line
---- @return string hl Highlight group name
+--- @return integer|table start 0-based start column, or list of triplets { start, length, hl }
+--- @return integer|nil length Length of highlight, -1 for entire line
+--- @return string|nil hl Highlight group name
 function Select.Highlighter:highlight(entry, line)
     error("must be implemented by sub-classing")
 end
@@ -263,20 +263,20 @@ end
 --- @return table, table Table of text pieces and their highlights
 local function compute_decoration(entry, str, decorators)
     local text, highlights = {}, {}
+    local default_hl = "SelectDecoratorDefault"
     for _, decor in ipairs(decorators or {}) do
         local txt, hl = decor:decorate(entry, str)
         if txt ~= nil and txt == false then
             goto continue
         end
         if type(txt) == "table" then
-            vim.list_extend(text, txt)
+            for _, item in ipairs(txt) do
+                table.insert(text, item[1])
+                table.insert(highlights, item[2] or default_hl)
+            end
         elseif type(txt) == "string" then
             table.insert(text, txt)
-        end
-        if type(hl) == "table" then
-            vim.list_extend(highlights, hl)
-        elseif type(hl) == "string" then
-            table.insert(highlights, hl)
+            table.insert(highlights, hl or default_hl)
         end
         ::continue::
     end
@@ -595,35 +595,41 @@ local function highlight_line(buffer, start, _end, entries, highlighters, displa
         local line_ids = extmark_ids[index] or {}
         extmark_ids[index] = line_ids
 
-        for hindex, highlighter in ipairs(highlighters or {}) do
+        local mark_index = 0
+        for _, highlighter in ipairs(highlighters or {}) do
             local col, len, hl = highlighter:highlight(entry, line)
-            assert(type(col) == "number")
-            assert(type(len) == "number")
-            assert(type(hl) == "string")
-            local id = vim.api.nvim_buf_set_extmark(
-                buffer,
-                LIST_TEXTLINE_NAMESPACE,
-                index - 1,
-                offset + col,
-                {
-                    strict = false,
-                    hl_eol = false,
-                    invalidate = true,
-                    ephemeral = false,
-                    undo_restore = false,
-                    right_gravity = true,
-                    end_right_gravity = true,
-                    hl_group = hl,
-                    id = line_ids[hindex],
-                    end_line = index - 1,
-                    end_col = offset + col + len
-                }
-            )
-            line_ids[hindex] = id
+            local spans = type(col) == "table" and col or { { col, len, hl } }
+            for _, span in ipairs(spans) do
+                assert(span ~= nil and #span == 3)
+                assert(type(span[1]) == "number")
+                assert(type(span[2]) == "number")
+                assert(type(span[3]) == "string")
+                mark_index = mark_index + 1
+                local id = vim.api.nvim_buf_set_extmark(
+                    buffer,
+                    LIST_TEXTLINE_NAMESPACE,
+                    index - 1,
+                    offset + span[1],
+                    {
+                        strict = false,
+                        hl_eol = false,
+                        invalidate = true,
+                        ephemeral = false,
+                        undo_restore = false,
+                        right_gravity = true,
+                        end_right_gravity = true,
+                        hl_group = span[3],
+                        id = line_ids[mark_index],
+                        end_line = index - 1,
+                        end_col = offset + span[1] + span[2]
+                    }
+                )
+                line_ids[mark_index] = id
+            end
         end
 
-        if #line_ids > #highlighters then
-            for i = #highlighters + 1, #line_ids do
+        if #line_ids > mark_index then
+            for i = mark_index + 1, #line_ids do
                 local id = line_ids[i]
                 if id then
                     pcall(
@@ -1180,40 +1186,25 @@ function Select.CombineDecorator.new(decorators, highlight)
     return obj
 end
 
---- Decorate the entry by combining the results of all configured decorators into arrays of text/highlight parts
+--- Decorate the entry by combining the results of all configured decorators into parts
 --- @param entry any The entry to decorate
---- @return table|nil Combined text parts or nil if no decorator produced output
---- @return table|nil Combined highlight parts (defaults applied) or nil
+--- @return table|nil Combined parts { { text, hl } } or nil if not one decorator produced output
 function Select.CombineDecorator:decorate(entry)
-    local texts = {}
-    local highlights = {}
+    local parts = {}
     local default_hl = self.highlight
-
     for _, decor in ipairs(self.decorators) do
         local res, hl = decor:decorate(entry)
         if res ~= nil and res ~= false then
             if type(res) == "string" and #res > 0 then
-                texts[#texts + 1] = res
-                highlights[#highlights + 1] = (type(hl) == "string" and hl) or default_hl
+                parts[#parts + 1] = { res, hl or default_hl }
             elseif type(res) == "table" and #res > 0 then
-                for i = 1, #res do
-                    texts[#texts + 1] = res[i]
-                    if type(hl) == "table" then
-                        highlights[#highlights + 1] = hl[i] or default_hl
-                    elseif type(hl) == "string" then
-                        highlights[#highlights + 1] = hl
-                    else
-                        highlights[#highlights + 1] = default_hl
-                    end
+                for _, item in ipairs(res) do
+                    parts[#parts + 1] = { item[1], item[2] or default_hl }
                 end
             end
         end
     end
-
-    if #texts == 0 then
-        return nil, nil
-    end
-    return texts, highlights
+    return (not parts or #parts == 0) and parts or nil
 end
 
 --- Create a new chain decorator instance, the decorators are run in order and the first non-nil result is returned.
@@ -1227,28 +1218,25 @@ function Select.ChainDecorator.new(decorators, highlight)
     return obj
 end
 
---- Decorate the entry by running the configured decorators in order and returning the first non-nil result, default highlights are filled when missing
+--- Decorate the entry by running the configured decorators in order and returning the first non-nil result
 --- @param entry any The entry to decorate
 --- @return string|table|nil The decoration text (string or parts) if any decorator returned a non-nil result, nil otherwise
---- @return string|table|nil The highlight group(s) for the decoration, defaults applied when missing
+--- @return string|table|nil The highlight group(s) for the decoration
 function Select.ChainDecorator:decorate(entry)
     for _, decor in ipairs(self.decorators) do
         local res, hl = decor:decorate(entry)
         if res and type(res) == "string" and #res > 0 then
             return res, hl or self.highlight
         elseif res and type(res) == "table" and #res > 0 then
-            if type(hl) == "table" then
-                return res, hl
+            local parts = {}
+            local default_hl = hl or self.highlight
+            for i, item in ipairs(res) do
+                parts[i] = { item[1], item[2] or default_hl }
             end
-            local highlights = {}
-            hl = hl or self.highlight
-            for i = 1, #res do
-                highlights[i] = hl
-            end
-            return res, highlights
+            return parts
         end
     end
-    return nil, nil
+    return nil
 end
 
 --- Create a new width decorator instance.
@@ -1293,12 +1281,15 @@ function Select.WidthDecorator:decorate(entry)
     elseif type(res) == "table" then
         local padded = {}
         for i, value in ipairs(res) do
-            padded[i] = pad_string(
-                value,
-                self.width,
-                self.align,
-                self.pad
-            )
+            padded[i] = {
+                pad_string(
+                    value[1],
+                    self.width,
+                    self.align,
+                    self.pad
+                ),
+                value[2]
+            }
         end
         return padded, hl
     end
@@ -1343,11 +1334,14 @@ function Select.TruncDecorator:decorate(entry)
     elseif type(res) == "table" then
         local truncated = {}
         for i, value in ipairs(res) do
-            truncated[i] = trunc_string(
-                value,
-                self.max,
-                self.ellipsis
-            )
+            truncated[i] = {
+                trunc_string(
+                    value[1],
+                    self.max,
+                    self.ellipsis
+                ),
+                value[2]
+            }
         end
         return truncated, hl
     end
@@ -2822,7 +2816,7 @@ end
 --- @field mappings? table<string, fun(self: Select, callback: fun(selection: any, cursor: integer[]|boolean|nil): any)> Key mappings for the selection interface. The keys are the key sequences and the values are functions that take the Select instance and an optional callback as arguments. If `false` is provided for the value of the key-value pair the mapping for that key is disabled
 --- @field preview? Select.Preview|boolean|nil Preview instance or boolean indicating whether to show the preview window. If an instance is provided, it will be used to render the preview. The preview instance must be a subclass of Select.Preview. Preview instances must implement the `preview` method.
 --- @field display? string|fun(entry: any): string|string|nil Function or string to format the display of entries in the list. If a function is provided, it will be called with each entry and should return a string to display. If a string is provided, it will be used as the property name to extract from each entry for display.
---- @field decorators? Select.Decorator[]|nil List of decorators to apply to entries in the list. Each decorator should be a table with a `decorate` function that takes an entry and returns a decorated string along with optional highlight group information.
+--- @field decorators? Select.Decorator[]|nil List of decorators to apply to entries in the list. Each decorator should be a table with a `decorate` function that takes an entry and returns a decorated string plus highlight, or a list of `{ text, hl }` parts.
 --- @field highlighters? Select.Highlighter[]|nil List of highlighters to apply to list entries. Each highlighter should be a table with a `highlight` function.
 
 --- Creates a new Select instance with the given options.
