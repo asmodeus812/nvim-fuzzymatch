@@ -830,8 +830,9 @@ Options and behavior:
 
 ### Spell Suggest
 
-Lists spell suggestions for the word under cursor. The list is small and focused, and matches by suggestion text so you
-can quickly filter close alternatives.
+Lists spell suggestions for the word under the cursor. The target word is resolved at open time, so canceling and
+reopening after moving the cursor refreshes suggestions for the new word. The list is small and focused, and matches by
+suggestion text so you can quickly filter close alternatives.
 
 ```lua
 local spell_suggest_picker = require("fuzzy.pickers.spell_suggest")
@@ -844,7 +845,8 @@ spell_suggest_picker.open_spell_suggest({
 
 Options and behavior:
 
-- `target_word_text`: Override the target word instead of using the word under cursor.
+- `target_word_text`: Override the target word instead of using the word under cursor. When `nil` or empty, the picker
+  uses `<cword>` on each open so suggestions stay in sync with the current cursor word.
 
 - `suggest_limit_count`: Limit the number of suggestions. Use lower values for speed, higher values for completeness.
 

@@ -141,18 +141,14 @@ end
 
 local function build_preview()
     return Select.CustomPreview.new(function(entry)
-        local lines = {
-            entry.tag,
-            "",
-            "Signature: " .. entry.signature,
-            "Return:    " .. tostring(entry.return_type),
-            "Since:     " .. tostring(entry.since or 0),
-            "Method:    " .. tostring(entry.method == true),
-        }
+        local lines = {}
         if entry.deprecated_since then
-            lines[#lines + 1] = "Deprecated:" .. " since " .. tostring(entry.deprecated_since)
+            lines[#lines + 1] = "Deprecated since: " .. tostring(entry.deprecated_since)
         end
-        lines[#lines + 1] = ""
+        lines[#lines + 1] = entry.tag
+        lines[#lines + 1] = "Signature: " .. entry.signature
+        lines[#lines + 1] = "Return:    " .. tostring(entry.return_type)
+        lines[#lines + 1] = "Since:     " .. tostring(entry.since or 0)
         lines[#lines + 1] = "Parameters:"
         if #entry.params == 0 then
             lines[#lines + 1] = "  (none)"
@@ -161,7 +157,6 @@ local function build_preview()
                 lines[#lines + 1] = "  - " .. param
             end
         end
-        lines[#lines + 1] = ""
         lines[#lines + 1] = "Press <CR> to open :help " .. entry.tag
         return lines, "markdown"
     end)

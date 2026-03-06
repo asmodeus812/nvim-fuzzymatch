@@ -60,6 +60,14 @@ local function replace_cursor_word(word)
     )
 end
 
+local function resolve_target_word(opts)
+    local target = opts.target_word_text
+    if type(target) ~= "string" or #target == 0 then
+        target = vim.fn.expand("<cword>")
+    end
+    return target
+end
+
 --- Open Spell suggest picker.
 --- @param opts SpellSuggestPickerOptions|nil Picker options for this picker
 --- @return Picker
@@ -70,42 +78,39 @@ function M.open_spell_suggest(opts)
         preview = false,
     }, opts)
 
-    local target = opts.target_word_text
-    if type(target) ~= "string" or #target == 0 then
-        target = vim.fn.expand("<cword>")
-    end
     local limit = tonumber(opts.suggest_limit_count) or 25
-    local items = {}
-    if target and #target > 0 then
-        items = vim.fn.spellsuggest(
-            target,
-            limit
-        )
-    end
-
-    if not items or #items == 0 then
-        return util.open_empty_picker(
-            "No spell suggestions.",
-            opts
-        )
-    end
-
-    local headers = util.build_picker_headers(
-        "Spell",
-        opts
-    )
-    if target and #target > 0 then
-        headers = headers or {}
-        table.insert(headers, { target })
-    end
+    local headers = util.build_picker_headers("Spell", opts)
+    headers = headers or {}
+    table.insert(headers, {
+        function()
+            return resolve_target_word(opts)
+        end
+    })
 
     local picker = Picker.new(vim.tbl_extend("force", {
-        content = function(stream)
+        content = function(stream, args)
+            local target = args and args[1] or ""
+            local items = {}
+            if target and #target > 0 then
+                items = vim.fn.spellsuggest(
+                    target,
+                    limit
+                )
+            end
+            if not items or #items == 0 then
+                stream(nil)
+                return
+            end
             for _, item in ipairs(items) do
                 stream(item)
             end
             stream(nil)
         end,
+        context = {
+            args = function()
+                return { resolve_target_word(opts) }
+            end,
+        },
         headers = headers,
         preview = false,
         actions = {

@@ -15,15 +15,16 @@ function M.run()
         vim.api.nvim_set_current_buf(buf)
         set_cursor(1, 1)
 
+        local calls = {}
         helpers.with_mock_map(vim.fn, {
-            expand = function()
-                return "helo"
-            end,
             spellsuggest = function(word, _)
-                if word ~= "helo" then
-                    error("unexpected word")
+                calls[#calls + 1] = word
+                if word == "helo" then
+                    return { "hello", "help" }
+                elseif word == "wrld" then
+                    return { "world" }
                 end
-                return { "hello", "help" }
+                return {}
             end,
         }, function()
             local picker = require("fuzzy.pickers.spell_suggest").open_spell_suggest({
@@ -40,6 +41,17 @@ function M.run()
 
             local line = helpers.get_buffer_lines(buf, 0, 1)[1] or ""
             helpers.eq(line, "hello world", "replace")
+
+            vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "hello wrld" })
+            set_cursor(1, 7)
+            picker:open()
+            helpers.wait_for_list(picker)
+            helpers.wait_for_line_contains(picker, "world")
+            helpers.assert_line_missing(
+                helpers.get_list_lines(picker),
+                "hello",
+                "refresh missing old suggestions"
+            )
             helpers.close_picker(picker)
         end)
 

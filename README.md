@@ -362,7 +362,7 @@ Interactive pickers re-run the command on every prompt change. Use `interactive`
 -- responsive
 local Picker = require("fuzzy.picker")
 local picker = Picker.new({
-    strem_step = 25000,
+    stream_step = 25000,
     match_step = 25000,
     content = "grep",
     context = {

@@ -165,6 +165,75 @@ function M.run()
             end)
         end)
     end)
+
+    helpers.run_test_case("vimdoc_preview_content", function()
+        helpers.with_mock(vim.fn, "api_info", function()
+            return {
+                functions = {
+                    {
+                        name = "nvim_deprecated_fn",
+                        since = 2,
+                        return_type = "Array",
+                        deprecated_since = 5,
+                        parameters = { { "Buffer", "buffer" } },
+                    },
+                },
+            }
+        end, function()
+            local api_picker = require("fuzzy.pickers.vimdoc")
+            local picker = api_picker.open_vimdoc_picker({
+                preview = true,
+                prompt_debounce = 0,
+            })
+            helpers.wait_for_entries(picker)
+            helpers.wait_for_list(picker)
+            helpers.wait_for_line_contains(picker, "nvim_deprecated_fn()")
+            local previewer = picker.select._options.preview
+            local entries = helpers.get_entries(picker)
+            local entry = entries and entries[1] or nil
+            helpers.assert_ok(
+                previewer and type(previewer.callback) == "function",
+                "previewer callback"
+            )
+            helpers.assert_ok(entry ~= nil, "preview entry")
+            local ok, lines = pcall(previewer.callback, entry)
+            helpers.assert_ok(ok and type(lines) == "table", "preview lines")
+            local preview_dump = table.concat(lines or {}, "\\n")
+            helpers.assert_ok(
+                lines[1] == "Deprecated since: 5",
+                "deprecated first line: " .. tostring(lines[1]) .. "\\n" .. preview_dump
+            )
+            helpers.assert_ok(
+                lines[2] == "nvim_deprecated_fn()",
+                "tag line: " .. tostring(lines[2]) .. "\\n" .. preview_dump
+            )
+            helpers.assert_ok(
+                lines[3] == "Signature: nvim_deprecated_fn(Buffer buffer) -> Array",
+                "signature line: " .. tostring(lines[3]) .. "\\n" .. preview_dump
+            )
+            helpers.assert_ok(
+                lines[4] == "Return:    Array",
+                "return line: " .. tostring(lines[4]) .. "\\n" .. preview_dump
+            )
+            helpers.assert_ok(
+                lines[5] == "Since:     2",
+                "since line: " .. tostring(lines[5]) .. "\\n" .. preview_dump
+            )
+            helpers.assert_ok(
+                lines[6] == "Parameters:",
+                "params header: " .. tostring(lines[6]) .. "\\n" .. preview_dump
+            )
+            helpers.assert_ok(
+                lines[7] == "  - Buffer buffer",
+                "param line: " .. tostring(lines[7]) .. "\\n" .. preview_dump
+            )
+            helpers.assert_ok(
+                lines[#lines] and lines[#lines]:find("Press <CR> to open :help", 1, true),
+                "footer line"
+            )
+            picker:close()
+        end)
+    end)
 end
 
 return M
