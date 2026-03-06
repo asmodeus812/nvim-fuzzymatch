@@ -120,7 +120,6 @@ function M.run()
         end)
         vim.api.nvim_buf_delete(buf, { force = true })
     end)
-
 end
 
 return M

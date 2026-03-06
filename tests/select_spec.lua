@@ -917,6 +917,7 @@ local function run_decorator_case()
     function decor_nil:decorate()
         return nil, nil
     end
+
     local decor_false = Select.Decorator.new()
     function decor_false:decorate()
         return false, nil
@@ -967,6 +968,7 @@ local function run_wrap_decorator_case()
     function tab:decorate()
         return { { "Alpha", "String" }, { "Betamax", "Number" } }
     end
+
     local tab_trunc = Select.TruncDecorator.new(tab, 4, "...")
     local tparts = tab_trunc:decorate("entry")
     helpers.eq(tparts[1][1], "A...", "trunc table part 1")
@@ -1028,6 +1030,124 @@ local function run_extmark_composite_case()
     helpers.eq(mark_count(ns_decor), height, "decorator highlights match visible lines")
 
     select:close()
+end
+
+local function run_extmark_cleanup_case()
+    local entries = {}
+    local positions = {}
+    for i = 1, 50 do
+        entries[i] = string.format("item-%02d", i)
+        positions[i] = { 0, 1 }
+    end
+
+    local ns_match = vim.api.nvim_create_namespace("list_highlight_namespace")
+    local ns_decor = vim.api.nvim_create_namespace("list_decorated_namespace")
+    local ns_line = vim.api.nvim_create_namespace("list_textline_namespace")
+
+    local function mark_count(select, ns)
+        local extmarks = vim.api.nvim_buf_get_extmarks(
+            select.list_buffer,
+            ns,
+            { 0, 0 },
+            { -1, -1 },
+            { details = true }
+        )
+        return extmarks and #extmarks or 0
+    end
+
+    do
+        local select = new_select({
+            prompt_list = true,
+            prompt_input = false,
+            preview = false,
+        })
+
+        select:open()
+        select:list(entries, positions)
+
+        local height = vim.api.nvim_win_get_height(select.list_window)
+        helpers.wait_for(function()
+            return mark_count(select, ns_match) == height
+        end, 1500)
+
+        for i = 1, #positions do
+            positions[i] = {}
+        end
+        select:list(entries, positions)
+        helpers.wait_for(function()
+            return mark_count(select, ns_match) == 0
+        end, 1500)
+
+        select:close()
+    end
+
+    do
+        local enabled = true
+        local decor = Select.Decorator.new()
+        function decor:decorate()
+            if not enabled then
+                return nil
+            end
+            return { { "A", "String" } }
+        end
+
+        local select = new_select({
+            prompt_list = true,
+            prompt_input = false,
+            preview = false,
+            decorators = { decor },
+        })
+
+        select:open()
+        select:list(entries)
+
+        local height = vim.api.nvim_win_get_height(select.list_window)
+        helpers.wait_for(function()
+            return mark_count(select, ns_decor) == height
+        end, 1500)
+
+        enabled = false
+        select:list(entries)
+        helpers.wait_for(function()
+            return mark_count(select, ns_decor) == 0
+        end, 1500)
+
+        select:close()
+    end
+
+    do
+        local enabled = true
+        local highlighter = Select.Highlighter.new()
+        function highlighter:highlight(entry, line)
+            if not enabled then
+                return nil
+            end
+            return 0, #line, "Directory"
+        end
+
+        local select = new_select({
+            prompt_list = true,
+            prompt_input = false,
+            preview = false,
+            highlighters = { highlighter },
+        })
+
+        select:open()
+        select:list(entries)
+
+        local height = vim.api.nvim_win_get_height(select.list_window)
+        helpers.wait_for(function()
+            return mark_count(select, ns_line) == height
+        end, 1500)
+
+        enabled = false
+        select:list(entries)
+        helpers.wait_for(function()
+            return mark_count(select, ns_line) == 0
+        end, 1500)
+
+        select:close()
+    end
 end
 
 local function run_highlighter_multi_case()
@@ -1127,6 +1247,7 @@ function M.run()
     run_decorator_case()
     run_wrap_decorator_case()
     run_extmark_composite_case()
+    run_extmark_cleanup_case()
     run_highlighter_multi_case()
     run_converter_case()
 end

@@ -253,7 +253,6 @@ function M.run()
         vim.api.nvim_buf_delete(term_buf, { force = true })
         vim.api.nvim_buf_delete(quickfix_buf, { force = true })
     end)
-
 end
 
 return M

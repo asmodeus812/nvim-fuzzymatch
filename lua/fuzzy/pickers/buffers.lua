@@ -178,8 +178,8 @@ function M.open_buffers_picker(opts)
 
         return {
             { table.concat({ "[", buf, "] " }), "SelectDecoratorDefault" },
-            { buffer_prefix, "SelectDecoratorDefault" },
-            { flag_string, "SelectDecoratorDefault" },
+            { buffer_prefix,                    "SelectDecoratorDefault" },
+            { flag_string,                      "SelectDecoratorDefault" },
         }
     end
 

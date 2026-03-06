@@ -59,7 +59,7 @@ function M.run()
                 functions = {
                     { name = "nvim_old_fn", since = 1, deprecated_since = 3 },
                     { name = "nvim_new_fn", since = 10 },
-                    { name = "vim_old_fn", since = 2, deprecated_since = 5 },
+                    { name = "vim_old_fn",  since = 2, deprecated_since = 5 },
                 },
             }
         end, function()

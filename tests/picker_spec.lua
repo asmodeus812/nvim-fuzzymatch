@@ -229,9 +229,9 @@ function M.run()
 
     helpers.run_test_case("picker_stream_slow_query_match", function()
         local chunks = {
-            { "beta", "omicron", "lambda" },
-            { "delta", "zeta", "omicron" },
-            { "eta", "theta", "iota" },
+            { "beta",  "omicron", "lambda" },
+            { "delta", "zeta",    "omicron" },
+            { "eta",   "theta",   "iota" },
         }
         local expected = {
             beta = true,
@@ -328,9 +328,9 @@ function M.run()
 
     helpers.run_test_case("picker_stream_query_change_resets", function()
         local chunks = {
-            { "beta", "omicron", "lambda" },
-            { "delta", "zeta", "omicron" },
-            { "eta", "theta", "iota" },
+            { "beta",  "omicron", "lambda" },
+            { "delta", "zeta",    "omicron" },
+            { "eta",   "theta",   "iota" },
         }
         local Async = require("fuzzy.async")
         local state = { sent = 0, allow_start = false, allow_chunk3 = false }

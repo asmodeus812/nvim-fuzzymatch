@@ -34,7 +34,6 @@ function M.run()
 
         vim.api.nvim_buf_delete(buf, { force = true })
     end)
-
 end
 
 return M

@@ -816,7 +816,7 @@ usage of each option, along with any relevant details or examples.
 - **highlighters**: A table of selection list entry highlighters. Highlighters are responsible for highlighting parts of the list line after
   decorations are applied. They must be sub-classes of `Select.Highlighter` and implement `highlight(entry, line)` which returns either a
   triplet of `start, length, hl_group?` (two numbers and an optional highlight group string), or a list of triplets like `{ { start, length,
-  hl? }, { start, length, hl? } }`. The highlight start is automatically offset by any decorator text preceding the highlighter text. A
+hl? }, { start, length, hl? } }`. The highlight start is automatically offset by any decorator text preceding the highlighter text. A
   return of `0, #line, "Group"` highlights the entire line. The built-in `Select.LineHighlighter` provides this behavior with a configurable
   highlight group. If `hl_group` is omitted, `SelectLineHighlight` is used.
 
@@ -1099,7 +1099,7 @@ function PrefixDecorator:decorate(entry, line)
         return false
     end
     -- add something simple, to each entry, to simply demonstrate what the decoration provider can return from its function. Returning nil
-    -- or "" for the decoration text tells the decorator handler that this decorator is going to be skipped entirely from being added to the
+    -- or false for the decoration tells the decorator handler that this decorator is going to be skipped entirely from being added to the
     -- final decorated line
     return "[*]", "ErrorMsg"
 end

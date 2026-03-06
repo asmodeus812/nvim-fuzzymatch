@@ -166,8 +166,6 @@ Select.CustomPreview = {}
 Select.CustomPreview.__index = Select.CustomPreview
 setmetatable(Select.CustomPreview, { __index = Select.Preview })
 
---- Loads the nvim-web-devicons if available, returns an empty table if not.
---- @return table the nvim-web-devicons module or an empty table
 local function icon_set()
     local ok, module = pcall(require, 'nvim-web-devicons')
     return ok and module or {}
@@ -181,6 +179,19 @@ local function cursor_clamp(cursor, count)
         cursor[2], cursor[1] = 0, 1
     end
     return cursor
+end
+
+local function clear_extmarks(buffer, namespace, extmark_ids, start_index)
+    for i = start_index or 1, #(extmark_ids or {}) do
+        local id = extmark_ids[i]
+        if id and id ~= nil and id > 0 then
+            pcall(
+                vim.api.nvim_buf_del_extmark,
+                buffer, assert(namespace), id
+            )
+        end
+        extmark_ids[i] = nil
+    end
 end
 
 --- Deletes listed buffers if valid; used for previewer buffer cleanup.
@@ -317,22 +328,6 @@ local function compute_highlights(entry, line, highlighters)
         end
     end
     return spans
-end
-
-local function clear_extmarks(buffer, namespace, extmark_ids, start_index)
-    if not extmark_ids or #extmark_ids == 0 then
-        return
-    end
-    for i = start_index or 1, #extmark_ids do
-        local id = extmark_ids[i]
-        if id and id ~= nil and id > 0 then
-            pcall(
-                vim.api.nvim_buf_del_extmark,
-                buffer, namespace, id
-            )
-        end
-        extmark_ids[i] = nil
-    end
 end
 
 --- Counts the number of selected/toggled entries.

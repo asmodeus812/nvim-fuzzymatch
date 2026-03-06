@@ -238,7 +238,7 @@ function M.run()
                 helpers.assert_ok(type(captured.preview) == "table", "previewer type")
                 helpers.assert_ok(
                     type(captured.preview.preview) == "function"
-                        or type(getmetatable(captured.preview).__index.preview) == "function",
+                    or type(getmetatable(captured.preview).__index.preview) == "function",
                     "previewer method"
                 )
             end)

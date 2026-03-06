@@ -65,7 +65,7 @@ function M.open_lines_picker(opts)
         end
         local display_path = util.format_display_path(filename, opts)
         return {
-            { display_path, "Directory" },
+            { display_path,         "Directory" },
             { tostring(entry.lnum), "Number" }
         }
     end

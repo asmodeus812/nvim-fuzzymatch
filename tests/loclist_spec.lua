@@ -127,7 +127,6 @@ function M.run()
         vim.api.nvim_buf_delete(buf_a, { force = true })
         vim.api.nvim_buf_delete(buf_b, { force = true })
     end)
-
 end
 
 return M
