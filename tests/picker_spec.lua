@@ -429,10 +429,10 @@ function M.run()
                 context = {
                     args = { "--test" },
                     cwd = vim.loop.cwd,
-                    interactive = function(_, ctx)
-                        return ctx.args
-                    end,
                 },
+                interactive = function(_, ctx)
+                    return ctx.args
+                end,
             })
             interactive_picker:open()
             helpers.wait_for(function()

@@ -185,7 +185,6 @@ function M.open_grep_picker(opts)
             args = args,
             cwd = opts.cwd,
             env = env,
-            interactive = build_interactive_arguments,
             tick = function()
                 if opts.watch == true then
                     return util.dir_watch_state(opts.cwd).tick
@@ -194,6 +193,7 @@ function M.open_grep_picker(opts)
                 return tick_counter
             end,
         },
+        interactive = build_interactive_arguments,
         preview = opts.preview,
         actions = util.build_default_actions(convert, opts),
         decorators = decorators,

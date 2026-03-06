@@ -254,23 +254,24 @@ function Picker:_context_evaluate(key, ...)
 end
 
 function Picker:_interactive_args(context, query)
-    if type(context.interactive) == "function" then
-        local args = context.interactive(query, context)
+    local interactive = self._options.interactive
+    if type(interactive) == "function" then
+        local args = interactive(query, context)
         assert(type(args) == "table")
         return args
     end
 
     local command_args = context.args and vim.fn.copy(context.args)
-    if type(context.interactive) == "string" then
+    if type(interactive) == "string" then
         for indx, argument in ipairs(command_args or {}) do
-            if argument == context.interactive then
+            if argument == interactive then
                 command_args[indx] = query
                 break
             end
             assert(indx < #command_args)
         end
-    elseif type(context.interactive) == "number" then
-        table.insert(assert(command_args), context.interactive, query)
+    elseif type(interactive) == "number" then
+        table.insert(assert(command_args), interactive, query)
     else
         table.insert(assert(command_args), query)
     end
@@ -323,11 +324,11 @@ function Picker:_input_prompt()
                 self.stream:start(self._state.content, {
                     cwd = evaluated_context.cwd,
                     env = evaluated_context.env,
-                    transform = evaluated_context.map,
                     args = self:_interactive_args(
                         evaluated_context, query
                     ),
                     callback = self:_flush_interactive(),
+                    transform = self._options.stream_map,
                 })
             else
                 -- when there is no query we just render no results, there is nothing yet running, the stream is not
@@ -732,11 +733,11 @@ function Picker:_is_valid()
 end
 
 function Picker:_is_interactive()
-    local interactive = self._state.context.interactive
+    local interactive = self._options.interactive
     return interactive ~= nil and interactive ~= false
 end
 
---- Extract the context of the picker, the context is a table that contains the evaluated values of the context keys provided to the picker at construction time. The context can contain the following keys - `cwd` - string, `env` - table of environment variables, `args` a table of arguments to start the command with - table, and `map`, a function that transforms each entry before it is added to the stream. This is the context after it has been evaluated, meaning that any function values have been called and their return values have been extracted. The context is re-evaluated each time the picker is opened, if the context has changed since the last time it was opened
+--- Extract the context of the picker, the context is a table that contains the evaluated values of the context keys provided to the picker at construction time. The context can contain the following keys: `cwd` can be string or function (evaluated to a string); `env` can be table or function (evaluated to a table of env vars); `args` can be table or function (evaluated to a list of args); `tick` can be any value and is compared to detect external changes without mutating args/env. This is the context after it has been evaluated, meaning that any function values have been called and their return values have been extracted. The context is re-evaluated each time the picker is opened, if the context has changed since the last time it was opened
 --- @return table the evaluated context of the current picker instance
 function Picker:context()
     local state = assert(self._state)
@@ -832,8 +833,8 @@ function Picker:open()
                     cwd = evaluated_context.cwd,
                     env = evaluated_context.env,
                     args = evaluated_context.args,
-                    transform = evaluated_context.map,
                     callback = self:_flush_direct(),
+                    transform = self._options.stream_map,
                 })
             elseif self.stream.results and self.select:isempty() then
                 -- in case there are valid results in the stream, just fill the select interface, having results here
@@ -874,7 +875,9 @@ end
 
 --- @class PickerOptions
 --- @field content string|function|table the content to use for the picker, can be a command string, a function that takes a callback (plus optional args/cwd/env) and calls it for each entry, or a table of entries. If a string or function is provided the content is streamed, if a table is provided the content is static, and the picker can not be interactive. When a table or function is provided the entries can be either strings or tables, when tables are used the display option must be provided to extract a valid matching string from the table. The display function will be used for both displaying in the list and matching the entries against the user query, internally.
---- @field context? table a table of context to pass to the content function, can contain the following keys - `cwd` - string, `env` - table of environment variables, `args` a table of arguments to start the command with - table, and `map`, a function that transforms each entry before it is added to the stream. The mapper function is useful when the content function produces complex entries, that need to be transformed into useable entries for the picker components downstream. It is independent of the display function, which is used to extract a string from the entry (at which point it may already mapped with the mapper function) for displaying and matching. The mapper function is used to transform the stream entries before they are added to the stream itself. Return nil or false from this function to skip an entry from being added to the stream, `interactive` - boolean|string|number|nil whether the command is interactive, meaning that it will restart the stream on every query change, if a string is provided it is used as a placeholder in the `args` list to replace with the query, if number, the query is inserted at <index> position in `args`, if nil or false the picker is non-interactive, during an interactive mode the matching is done in the second stage, that can be entered with <c-g>. `tick` - integer>0 to signal source changes without mutating args/env.
+--- @field context? table a table of context to pass to the content function. Keys: `cwd` string or function; `env` table or function; `args` table or function; `tick` any value to signal source changes without mutating args/env.
+--- @field interactive? boolean|string|number|function whether the picker is interactive (true appends prompt, string replaces matching arg token, number inserts at index, function returns full args table).
+--- @field stream_map? function|nil function to transform each entry before it is added to the stream (return nil/false to skip).
 --- @field decorators? Select.Decorator[]|nil a list of decorators to use for decorating the entries in the list, each decorator must be a child class derived from Select.Decorator.
 --- @field highlighters? Select.Highlighter[]|nil a list of highlighters to use for highlighting entries in the list, each highlighter must be a child class derived from Select.Highlighter.
 --- @field preview? Select.Preview|boolean|nil a previewer to use for previewing the currently selected entry, can be a user provided previewer, must be an instance of a sub-class of Select.Preview.
@@ -902,6 +905,8 @@ function Picker.new(opts)
         headers = { opts.headers, "table", true },
         content = { opts.content, { "string", "function", "table" } },
         context = { opts.context, { "table", "nil" }, true },
+        interactive = { opts.interactive, { "boolean", "string", "number", "function", "nil" }, true },
+        stream_map = { opts.stream_map, { "function", "nil" }, true },
         display = { opts.display, { "function", "string", "nil" }, true },
         preview = { opts.preview, { "table", "boolean", "nil" }, true },
         decorators = { opts.decorators, "table", true },
@@ -923,11 +928,11 @@ function Picker.new(opts)
         content = nil,
         context = {
             args = {},
-            map = nil,
             env = nil,
             cwd = vim.loop.cwd,
-            interactive = false,
         },
+        interactive = false,
+        stream_map = nil,
         preview = nil,
         display = nil,
         decorators = {},
@@ -968,6 +973,12 @@ function Picker.new(opts)
             matcher = opts.matcher,
         },
     }, Picker)
+
+    if self:_is_interactive() then
+        -- ensure that picker is not marked interactive when a table
+        -- static content is provided for the picker, otherwise fail
+        assert(type(self._options.content) ~= "table")
+    end
 
     self.match = Match.new({
         timer = opts.match_timer,

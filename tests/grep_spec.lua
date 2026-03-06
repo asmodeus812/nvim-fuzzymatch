@@ -219,7 +219,7 @@ function M.run()
                     prompt_debounce = 0,
                 })
                 local ctx = captured.context
-                local args = ctx.interactive("needle -- *.lua", ctx)
+                local args = captured.interactive("needle -- *.lua", ctx)
                 helpers.assert_list_contains(args, "--iglob=*.lua", "glob arg")
             end)
         end)
@@ -244,7 +244,7 @@ function M.run()
                     prompt_debounce = 0,
                 })
                 local ctx = captured.context
-                local args = ctx.interactive("needle", ctx)
+                local args = captured.interactive("needle", ctx)
                 helpers.eq(args[#args], ".", "grep path")
             end)
         end)
