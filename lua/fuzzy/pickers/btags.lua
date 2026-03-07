@@ -45,6 +45,12 @@ function M.open_btags_picker(opts)
                 return false
             end)),
         },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%S+", "Identifier" },
+                { "%s%[([^%]]+)%]$", "Type", 1 },
+            }),
+        },
         display = function(entry)
             local name = entry.name or ""
             local kind = entry.kind or ""

@@ -177,9 +177,8 @@ function M.open_buffers_picker(opts)
         end
 
         return {
-            { table.concat({ "[", buf, "] " }), "SelectDecoratorDefault" },
             { buffer_prefix,                    "SelectDecoratorDefault" },
-            { flag_string,                      "SelectDecoratorDefault" },
+            { table.concat({ flag_string, " " }), "SelectDecoratorDefault" },
         }
     end
 
@@ -239,9 +238,20 @@ function M.open_buffers_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(Picker.default_converter, opts),
         decorators = decorators,
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%d+", "Number" },
+                { "%s.+$", "Directory" },
+            }),
+        },
         display = function(entry)
             local buffer_name = entry.filename or utils.NO_NAME
-            return util.format_display_path(buffer_name, opts)
+            local display_path = util.format_display_path(buffer_name, opts)
+            return table.concat({
+                tostring(entry.bufnr or "?"),
+                " ",
+                display_path or utils.NO_NAME,
+            })
         end,
     }, opts, {
         match_timer = 10,

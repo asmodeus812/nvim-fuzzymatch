@@ -166,6 +166,22 @@ Select.CustomPreview = {}
 Select.CustomPreview.__index = Select.CustomPreview
 setmetatable(Select.CustomPreview, { __index = Select.Preview })
 
+--- This is a highlighter that highlights the entire line with a single highlight group.
+--- @class Select.LineHighlighter
+--- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
+--- @field hl_group string Highlight group to apply to the full line, optional and defaults to "SelectLineHighlight".
+Select.LineHighlighter = {}
+Select.LineHighlighter.__index = Select.LineHighlighter
+setmetatable(Select.LineHighlighter, { __index = Select.Highlighter })
+
+--- This is a highlighter that highlights ranges matched by regex patterns.
+--- @class Select.RegexHighlighter
+--- @field patterns table List of { pattern, hl } matchers
+--- @field hl_group string Highlight group, optional and defaults to "SelectLineHighlight".
+Select.RegexHighlighter = {}
+Select.RegexHighlighter.__index = Select.RegexHighlighter
+setmetatable(Select.RegexHighlighter, { __index = Select.Highlighter })
+
 local function icon_set()
     local ok, module = pcall(require, 'nvim-web-devicons')
     return ok and module or {}
@@ -231,10 +247,18 @@ end
 --- @return string|any Rendered string or entry field
 local function line_mapper(entry, display, index)
     if type(display) == "function" then
-        return display(assert(entry), index)
+        local value = display(assert(entry), index)
+        if value == nil then
+            return ""
+        end
+        return value
     elseif type(display) == "string" then
         assert(entry and next(entry))
-        return entry[display]
+        local value = entry[display]
+        if value == nil then
+            return ""
+        end
+        return value
     else
         return entry
     end
@@ -1211,14 +1235,6 @@ function Select.IconDecorator:decorate(entry, line)
     return assert(icon), icon_highlight or "SelectDecoratorDefault"
 end
 
---- This is a highlighter that highlights the entire line with a single highlight group.
---- @class Select.LineHighlighter
---- @field converter function|nil A function that takes the entry and returns a table with bufnr, filename, lnum and col fields.
---- @field hl_group string Highlight group to apply to the full line.
-Select.LineHighlighter = {}
-Select.LineHighlighter.__index = Select.LineHighlighter
-setmetatable(Select.LineHighlighter, { __index = Select.Highlighter })
-
 --- Create a new line highlighter instance that highlights the entire line.
 --- @param highlight string Highlight group to apply to the full line.
 --- @param converter? function|nil Optional entry converter (consistent with other types).
@@ -1238,7 +1254,68 @@ end
 --- @return string hl Highlight group name
 function Select.LineHighlighter:highlight(entry, line)
     assert(entry and line and #line > 0)
-    return 0, #line, self.hl_group
+    return 0, #line, assert(self.hl_group)
+end
+
+--- Create a new regex highlighter instance.
+--- @param patterns table List of { pattern, hl, capture } matchers (Lua patterns)
+--- @param highlight? string|nil Default highlight group when pattern omits highlight
+function Select.RegexHighlighter.new(patterns, highlight)
+    local obj = Select.Highlighter.new()
+    setmetatable(obj, Select.RegexHighlighter)
+    obj.patterns = assert(patterns)
+    obj.hl_group = highlight or "SelectLineHighlight"
+    return obj
+end
+
+--- Highlight ranges that match the configured patterns.
+--- @param entry any The entry to highlight
+--- @param line string The line content to highlight
+--- @return table|nil spans List of { start, len, hl }
+function Select.RegexHighlighter:highlight(entry, line)
+    assert(entry and line)
+    local spans = {}
+    for _, spec in ipairs(self.patterns or {}) do
+        local pattern = assert(spec.pattern or spec[1])
+        local hl = assert(spec.hl or spec[2] or self.hl_group)
+        local capture = spec[3]
+        if type(pattern) == "string" and #pattern > 0 then
+            local init = 1
+            while init <= #line do
+                local found = { string.find(line, pattern, init) }
+                local start_idx, end_idx = found[1], found[2]
+                if not start_idx or not end_idx then
+                    break
+                end
+                if end_idx < start_idx then
+                    break
+                end
+                local span_start, span_end = start_idx, end_idx
+                if capture then
+                    local cap_value = found[2 + capture]
+                    if type(cap_value) == "string" and #cap_value > 0 then
+                        local cap_start = line:find(cap_value, start_idx, true)
+                        if cap_start and cap_start <= end_idx then
+                            span_start = cap_start
+                            span_end = cap_start + #cap_value - 1
+                        end
+                    end
+                end
+                local len = span_end - span_start + 1
+                if len > 0 then
+                    spans[#spans + 1] = {
+                        span_start - 1,
+                        len,
+                        hl,
+                    }
+                    init = end_idx + 1
+                else
+                    init = start_idx + 1
+                end
+            end
+        end
+    end
+    return #spans > 0 and spans or nil
 end
 
 --- Create a new combine decorator instance, the decorators are run in order and their results are flattened into text/highlight arrays.

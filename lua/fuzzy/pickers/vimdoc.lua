@@ -203,6 +203,14 @@ function M.open_vimdoc_picker(opts)
                 return false
             end)),
         },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%S+", "Identifier" },
+                { "since:%d+", "Number" },
+                { "dep@%d+", "WarningMsg" },
+                { "%s%S+$", "Type" },
+            }),
+        },
         display = display_entry,
     }, opts, {
         match_timer = 10,

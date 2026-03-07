@@ -100,6 +100,13 @@ function M.open_marks_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%[[^%]]+%]", "Identifier" },
+                { "^%[[^%]]+%]%s(%S+)", "Directory", 1 },
+                { "%d+:%d+", "Number" },
+            }),
+        },
         display = function(entry)
             local pos = entry.pos or {}
             return util.format_location_entry(

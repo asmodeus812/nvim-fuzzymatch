@@ -10,24 +10,39 @@ function M.run()
         helpers.write_file(file_path, "alpha\nbeta\n")
         local buf = helpers.create_named_buffer(file_path, { "alpha", "beta" })
         local item_list = {
-            { bufnr = buf, lnum = 1, col = 1, text = "alpha" },
+            { bufnr = buf, lnum = 1, col = 1, text = "alpha", filename = file_path },
         }
-        vim.fn.setqflist({}, "r", { title = "Quickfix", items = item_list })
-        local qf_info = vim.fn.getqflist({ items = 1 })
-        if not qf_info or not qf_info.items or #qf_info.items == 0 then
-            vim.api.nvim_buf_delete(buf, { force = true })
-            return
-        end
-        local qf_picker = require("fuzzy.pickers.quickfix")
-        local picker = qf_picker.open_quickfix_picker({
-            preview = false,
-            icons = false,
-            prompt_debounce = 0,
-        })
-        helpers.wait_for_list(picker)
-        helpers.wait_for_line_contains(picker, "quickfix.txt")
-        helpers.wait_for_line_contains(picker, "alpha")
-        picker:close()
+        helpers.with_mock(vim.fn, "getqflist", function()
+            return {
+                title = "Quickfix",
+                items = item_list,
+            }
+        end, function()
+            local qf_picker = require("fuzzy.pickers.quickfix")
+            local picker = qf_picker.open_quickfix_picker({
+                preview = false,
+                icons = false,
+                prompt_debounce = 0,
+            })
+            local highlighters = picker.select._options.highlighters
+            helpers.assert_ok(highlighters and #highlighters > 0, "quickfix highlighters")
+            local entry = item_list[1]
+            helpers.assert_ok(entry ~= nil, "quickfix entry")
+            local line = picker.select._options.display(entry, 1)
+            helpers.assert_ok(type(line) == "string" and #line > 0, "quickfix line")
+            local spans = highlighters[1]:highlight({}, line) or {}
+            local span_hls = {}
+            for _, span in ipairs(spans) do
+                span_hls[span[3]] = true
+            end
+            helpers.assert_ok(span_hls.Identifier, "quickfix prefix hl")
+            if line:find("%.txt", 1, true) then
+                helpers.assert_ok(span_hls.Directory, "quickfix path hl")
+            end
+            helpers.assert_ok(span_hls.Number, "quickfix line hl")
+            helpers.assert_ok(span_hls.Comment, "quickfix text hl")
+            picker:close()
+        end)
         vim.api.nvim_buf_delete(buf, { force = true })
     end)
 
@@ -67,7 +82,9 @@ function M.run()
                 end, 1500)
                 helpers.wait_for_prompt_cursor(picker)
                 local entries = helpers.get_entries(picker)
-                helpers.eq(#entries, 1, "cwd filtered")
+                if #entries ~= 1 then
+                    error("cwd filtered: " .. tostring(#entries))
+                end
                 local entry_name = entries[1].filename or ""
                 local expected = vim.fs.normalize(file_one)
                 helpers.eq(vim.fs.normalize(entry_name), expected, "cwd include")

@@ -106,11 +106,31 @@ function M.run()
     local cwd_buf = helpers.create_named_buffer(cwd_path, { "cwd buffer" }, true)
     local other_buf = helpers.create_named_buffer(other_path, { "other buffer" }, true)
     local display = {
-        [bufs.buf1] = vim.fs.basename(vim.api.nvim_buf_get_name(bufs.buf1)),
-        [bufs.buf2] = vim.fs.basename(vim.api.nvim_buf_get_name(bufs.buf2)),
-        [bufs.buf3] = vim.fs.basename(vim.api.nvim_buf_get_name(bufs.buf3)),
-        [cwd_buf] = vim.fs.basename(vim.api.nvim_buf_get_name(cwd_buf)),
-        [other_buf] = vim.fs.basename(vim.api.nvim_buf_get_name(other_buf)),
+        [bufs.buf1] = table.concat({
+            tostring(bufs.buf1),
+            " ",
+            vim.fs.basename(vim.api.nvim_buf_get_name(bufs.buf1)),
+        }),
+        [bufs.buf2] = table.concat({
+            tostring(bufs.buf2),
+            " ",
+            vim.fs.basename(vim.api.nvim_buf_get_name(bufs.buf2)),
+        }),
+        [bufs.buf3] = table.concat({
+            tostring(bufs.buf3),
+            " ",
+            vim.fs.basename(vim.api.nvim_buf_get_name(bufs.buf3)),
+        }),
+        [cwd_buf] = table.concat({
+            tostring(cwd_buf),
+            " ",
+            vim.fs.basename(vim.api.nvim_buf_get_name(cwd_buf)),
+        }),
+        [other_buf] = table.concat({
+            tostring(other_buf),
+            " ",
+            vim.fs.basename(vim.api.nvim_buf_get_name(other_buf)),
+        }),
     }
 
     run_test_case("default", {
@@ -124,6 +144,22 @@ function M.run()
         include = { bufs.buf1, bufs.buf2 },
         display = display,
     })
+
+    helpers.run_test_case("buffers_highlights", function()
+        local picker = helpers.open_buffers_picker({
+            show_unlisted = true,
+            show_unloaded = true,
+            preview = false,
+            icons = false,
+            prompt_debounce = 0,
+        })
+        helpers.wait_for_list(picker)
+        helpers.wait_for_list_extmarks(picker)
+        local extmarks = helpers.get_list_extmarks(picker)
+        helpers.assert_has_hl(extmarks, "Number", "buffers number hl")
+        helpers.assert_has_hl(extmarks, "Directory", "buffers path hl")
+        picker:close()
+    end)
 
     run_test_case("ignore_current", {
         ignore_current_buffer = true,

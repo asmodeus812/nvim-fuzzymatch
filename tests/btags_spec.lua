@@ -8,7 +8,7 @@ function M.run()
         local buf = helpers.create_named_buffer("btags.txt", { "alpha", "beta" })
         vim.api.nvim_set_current_buf(buf)
         local tag_list = {
-            { name = "tag-b", filename = vim.api.nvim_buf_get_name(buf) },
+            { name = "tag-b", filename = vim.api.nvim_buf_get_name(buf), kind = "f" },
         }
         helpers.with_mock(vim.fn, "taglist", function(_)
             return tag_list
@@ -26,6 +26,10 @@ function M.run()
             --- @cast prompt_input fun(string)
             prompt_input("tag-b")
             helpers.wait_for_line_contains(picker, "tag-b")
+            helpers.wait_for_list_extmarks(picker)
+            local extmarks = helpers.get_list_extmarks(picker)
+            helpers.assert_has_hl(extmarks, "Identifier", "btags name hl")
+            helpers.assert_has_hl(extmarks, "Type", "btags kind hl")
             picker:close()
         end)
         vim.api.nvim_buf_delete(buf, { force = true })

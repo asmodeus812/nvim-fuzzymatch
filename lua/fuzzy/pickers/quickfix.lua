@@ -81,6 +81,14 @@ function M.open_quickfix_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(convert, opts),
         decorators = decorators,
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%s*%[[^%]]+%]", "Identifier" },
+                { "^%s*%[[^%]]+%]%s(%S+)", "Directory", 1 },
+                { "%d+:%d+", "Number" },
+                { ":%s(.+)$", "Comment", 1 },
+            }),
+        },
         display = function(entry)
             local filename = assert(entry.filename)
             local display_path = util.format_display_path(filename, opts)

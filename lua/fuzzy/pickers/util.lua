@@ -213,6 +213,7 @@ function M.format_location_entry(
     return table.concat(string_parts)
 end
 
+
 --- Open Build default actions picker.
 --- @param converter_callback fun(entry: any): table|false|nil
 --- @param picker_options table|nil

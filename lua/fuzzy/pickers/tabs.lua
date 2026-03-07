@@ -50,6 +50,12 @@ function M.open_tabs_picker(opts)
                 return false
             end)),
         },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%[[%d]+%]", "Number" },
+                { "^%[[%d]+%]%s(.+)$", "Directory", 1 },
+            }),
+        },
         display = function(entry)
             assert(vim.api.nvim_tabpage_is_valid(entry.tabpage))
             local index = vim.api.nvim_tabpage_get_number(entry.tabpage)

@@ -181,21 +181,24 @@ function Picker:_cancel_picker()
     self.select:close()
     self.match:destroy()
     self.stream:stop()
-    self:_running_match(nil)
+    self:_running_match()
+    self:_cached_display()
 end
 
 function Picker:_close_picker()
     self.select:close()
     self.match:destroy()
     self.stream:destroy()
-    self:_running_match(nil)
+    self:_running_match()
+    self:_cached_display()
 end
 
 function Picker:_clear_picker()
     self.select:clear()
     self.match:destroy()
     self.stream:destroy()
-    self:_running_match(nil)
+    self:_running_match()
+    self:_cached_display()
 end
 
 function Picker:_hide_picker()
@@ -377,17 +380,17 @@ function Picker:_input_prompt()
                             "%d/%d", #matching[1], #data
                         ))
                     end
-                    self:_running_match(nil)
+                    self:_running_match()
                 end, self._state.matcher)
             else
                 -- just render all the results as they are, when there is no query, nothing can be matched against, so we dump all the
                 -- results into the list
-                self:_running_match(nil)
                 self.select:list(data, nil)
                 self.select:list(nil, nil)
                 self.select:status(string.format(
                     "%d/%d", #data, #data
                 ))
+                self:_running_match()
             end
         end
     end)
@@ -554,6 +557,40 @@ function Picker:_compute_headers(headers, actions)
     return vim.list_extend(headers, action_headers)
 end
 
+function Picker:_cached_display(display)
+    local state = assert(self._state)
+    if display == nil and state.caching then
+        for key, _ in pairs(state.caching) do
+            state.caching[key] = nil
+        end
+        state.caching = nil
+        return display
+    elseif display ~= nil then
+        if state.caching == nil and state.caching then
+            state.caching = {}
+        end
+        return function(entry)
+            local id = nil
+            local _type = type(entry)
+            if _type == "number" then
+                id = -entry
+            elseif _type == "string" then
+                id = entry
+            elseif _type == "table" then
+                id = tostring(entry):gsub("table: ", "")
+            end
+            if state.caching[id] then
+                return state.caching[id]
+            end
+            assert(id ~= false and id ~= nil)
+            local value = display(entry)
+            state.caching[id] = value
+            return value
+        end
+    end
+    return display
+end
+
 function Picker:_running_match(matching, query)
     -- Maintain a running accumulator of match results while a stream is active; it is a {matches, positions, scores} triplet that grows per chunk, resets on query change, and is released when matching is nil.
     local state = assert(self._state)
@@ -600,7 +637,7 @@ function Picker:_running_match(matching, query)
             }
         end
         if state.matching.query ~= query then
-            self:_running_match(nil)
+            self:_running_match()
             state.matching = {}
         end
         local match_state = state.matching
@@ -705,12 +742,13 @@ function Picker:_flush_direct()
                     end
                 end, self._state.matcher)
             else
-                -- No query: render all results as-is and reset any running accumulator.
+                -- No query, render all of the results as-is and reset any running accumulator, as it will have become
+                -- invalid anyway with an empty query
                 self.select:list(all, nil)
                 self.select:status(string.format(
                     "%d/%d", #all, #all
                 ))
-                self:_running_match(nil)
+                self:_running_match()
             end
         end
     end)

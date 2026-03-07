@@ -74,6 +74,15 @@ function M.open_keymaps_picker(opts)
                 return false
             end)),
         },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%[[bg]%]", "Identifier" },
+                { "^%[[bg]%]%s(%S+)", "Type", 1 },
+                { "%s(%S+)%s%-%>", "Statement", 1 },
+                { "%-%>%s(%S+)", "String", 1 },
+                { "%s%-%s(.+)$", "Comment", 1 },
+            }),
+        },
         display = function(entry)
             local prefix = entry.buffer == 1 and "[b]" or "[g]"
             local mode = entry.mode or "?"

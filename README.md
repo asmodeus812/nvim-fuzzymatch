@@ -1154,6 +1154,9 @@ entry and the raw display line, of the entry alone, without and before any decor
 of string and highlight group, or a list of `{ text, hl }` parts. To skip the decorator for the current entry, simply return nil or false.
 Below we have shown how to create our own decorator that also skips entries that equal a specific value.
 
+`Decorators are not part of the matching process they are simply there to add or decorate as the name implies an entry, to add some
+contextual information to the entry, the most common example would be file or directory icons`
+
 ```lua
 -- Example shows how to add a decorator to the picker, in this case we are using the default one which is provided by the select module.
 -- Which requires a converter to be instantiated, the same converter function that can be passed to the `actions` or the `previewer` to
@@ -1206,36 +1209,6 @@ function PrefixDecorator:decorate(entry, line)
 end
 ```
 
-#### Highlighters
-
-Highlighters add highlights to the final line after decorations. Use them for emphasis or status. They run per visible line, so keep them
-fast. Highlighters add additional highlights to the final list line after decorations are applied. They must be sub-classes of
-`Select.Highlighter` and implement `highlight(entry, line)`. The function can return a single triplet of `start_col, length, hl_group?`, or
-a list of triplets `{ { start, length, hl? }, ... }`. Returning `nil` or `false` skips highlighting for the current entry. If `hl_group` is
-omitted, `SelectLineHighlight` is used. The highlight start is automatically offset by any decorator text.
-
-```lua
-local LineHighlighter = {}
-LineHighlighter.__index = LineHighlighter
-setmetatable(LineHighlighter, { __index = Select.Highlighter })
-
-function LineHighlighter.new()
-    local obj = Select.Highlighter.new()
-    setmetatable(obj, LineHighlighter)
-    return obj
-end
-
-function LineHighlighter:highlight(entry, line)
-    if line and #line > 0 then
-        return 0, #line, "Directory"
-    end
-end
-
-highlighters = {
-    LineHighlighter.new()
-}
-```
-
 The built-in decorators such as `Select.IconDecorator` is accepting a converter as an optional argument, which is used to convert the
 raw entry into a valid entry structure before calculating the decorations for it. The decorator require the same structure as specified
 for the picker `actions` or `previewers`. Otherwise a default internal converter is used which attempts to convert the entry.
@@ -1275,6 +1248,50 @@ explicit highlights, the default highlight is applied to every segment.
 - `decorators`: `Select.Decorator[]`
 - `highlight`: `string|nil` default highlight for missing per-segment highlights
 - `decorate(entry)` returns `string|table|nil` text (string or `{ { text, hl }, ... }` parts)
+
+#### Highlighters
+
+Highlighters add highlights to the final line after decorations. Use them for emphasis or status. They run per visible line, so keep them
+fast. Highlighters add additional highlights to the final list line after decorations are applied. They must be sub-classes of
+`Select.Highlighter` and implement `highlight(entry, line)`. The function can return a single triplet of `start_col, length, hl_group?`, or
+a list of triplets `{ { start, length, hl? }, ... }`. Returning `nil` or `false` skips highlighting for the current entry. If `hl_group` is
+omitted, `SelectLineHighlight` is used. The highlight start is automatically offset by any decorator text.
+
+The built-in `Select.LineHighlighter` highlights the entire line. The built-in `Select.RegexHighlighter` matches Lua patterns against the
+final display line and highlights each match with its configured highlight group. Each pattern entry can include a capture index as the third
+array item (e.g. `{ pattern, hl, 1 }`) to highlight only that capture group instead of the full match. This is ideal when your display line
+has multiple white space separated components (prefix, filename, line/col, message) and you want each piece to have a distinct highlight
+without including delimiters.
+
+```lua
+-- Highlight the entire line using the built-in type, this is as simple as creating a new instance of the `LineHighlighter`, and then adding a
+-- desired highlight group to apply on the entire line
+highlighters = {
+    Select.LineHighlighter.new("Directory"),
+}
+
+-- Highlight a line piece by piece, that means for a multi component display line such as the example below where a buffer number, buffer
+-- name and location in that buffer is included, we want to have different highlights applied to allow us to more easily distinguish these
+-- different components
+-- Example line:
+--   "[12] src/main.lua 42:7: missing semicolon"
+-- Pattern array:
+--   "^%[[^%]]+%]"         -> "[12]" (prefix/id)
+--   "^%[[^%]]+%]%s(%S+)"  -> "src/main.lua" (path, capture group 1)
+--   "%d+:%d+"             -> "42:7" (line/col)
+--   ":%s(.+)$"            -> "missing semicolon" (message, capture group 1)
+highlighters = {
+    Select.RegexHighlighter.new({
+        { "^%[[^%]]+%]", "Number" },
+        { "^%[[^%]]+%]%s(%S+)", "Directory", 1 },
+        { "%d+:%d+", "Function" },
+        { ":%s(.+)$", "Comment", 1 },
+    })
+}
+```
+
+`Highlighters are meant to help the user distinguish between complex display lines that consist of multiple elements or components showing
+different information, during matching, as the display line is what is being used to match against.`
 
 #### Converters
 
@@ -1343,6 +1360,7 @@ and visitors that can be used out of the box, these are:
 ```lua
 Picker.default_converter -- A default converter that attempts to convert an entry into a valid structure
 Picker.noop_converter -- A converter that does nothing and returns the entry as is without any conversion
+
 Picker.ls_converter -- A converter that converts `ls` command output into valid entry structure
 Picker.grep_converter -- A converter that converts `grep` command output into valid entry structure
 Picker.err_converter -- A converter that converts common `err` formats into valid entry structure

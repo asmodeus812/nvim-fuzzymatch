@@ -143,6 +143,52 @@ function M.get_list_lines(picker)
     return vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 end
 
+function M.get_list_extmarks(picker, namespace)
+    M.assert_ok(picker and picker.select, "picker not available")
+    local buf = picker.select.list_buffer
+    if not buf or not vim.api.nvim_buf_is_valid(buf) then
+        return {}
+    end
+    local namespaces = vim.api.nvim_get_namespaces()
+    local ns = namespaces[namespace or "list_textline_namespace"]
+    M.assert_ok(ns ~= nil, "namespace missing")
+    return vim.api.nvim_buf_get_extmarks(
+        buf,
+        ns,
+        0,
+        -1,
+        { details = true, hl_name = true }
+    )
+end
+
+function M.wait_for_list_extmarks(picker, namespace)
+    return M.wait_for(function()
+        local extmarks = M.get_list_extmarks(picker, namespace)
+        return extmarks and #extmarks > 0
+    end, 1500)
+end
+
+function M.assert_has_hl(extmarks, hl_name, label)
+    local seen = {}
+    for _, mark in ipairs(extmarks or {}) do
+        local details = mark[4] or {}
+        local name = details.hl_name or details.hl_group
+        if name then
+            seen[name] = true
+        end
+        if name == hl_name then
+            return true
+        end
+    end
+    local seen_list = {}
+    for name, _ in pairs(seen) do
+        seen_list[#seen_list + 1] = name
+    end
+    table.sort(seen_list)
+    error((label or ("missing hl: " .. tostring(hl_name)))
+        .. " (seen: " .. table.concat(seen_list, ", ") .. ")")
+end
+
 function M.wait_for_list(picker)
     return M.wait_for(function()
         local lines = M.get_list_lines(picker)

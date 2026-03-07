@@ -70,6 +70,13 @@ function M.open_jumps_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%[[^%]]+%]", "Identifier" },
+                { "^%[[^%]]+%]%s(%S+)", "Directory", 1 },
+                { "%d+:%d+", "Number" },
+            }),
+        },
         display = function(entry)
             local display_path = util.format_display_path(entry.filename, opts)
             if not display_path or #display_path == 0 then

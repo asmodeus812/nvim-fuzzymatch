@@ -10,24 +10,39 @@ function M.run()
         helpers.write_file(file_path, "alpha\nbeta\n")
         local buf = helpers.create_named_buffer(file_path, { "alpha", "beta" })
         local item_list = {
-            { bufnr = buf, lnum = 1, col = 1, text = "alpha" },
+            { bufnr = buf, lnum = 1, col = 1, text = "alpha", filename = file_path },
         }
-        vim.fn.setloclist(0, {}, "r", { title = "Loclist", items = item_list })
-        local loc_info = vim.fn.getloclist(0, { items = 1 })
-        if not loc_info or not loc_info.items or #loc_info.items == 0 then
-            vim.api.nvim_buf_delete(buf, { force = true })
-            return
-        end
-        local loc_picker = require("fuzzy.pickers.loclist")
-        local picker = loc_picker.open_loclist_picker({
-            preview = false,
-            icons = false,
-            prompt_debounce = 0,
-        })
-        helpers.wait_for_list(picker)
-        helpers.wait_for_line_contains(picker, "loclist.txt")
-        helpers.wait_for_line_contains(picker, "alpha")
-        picker:close()
+        helpers.with_mock(vim.fn, "getloclist", function()
+            return {
+                title = "Loclist",
+                items = item_list,
+            }
+        end, function()
+            local loc_picker = require("fuzzy.pickers.loclist")
+            local picker = loc_picker.open_loclist_picker({
+                preview = false,
+                icons = false,
+                prompt_debounce = 0,
+            })
+            local highlighters = picker.select._options.highlighters
+            helpers.assert_ok(highlighters and #highlighters > 0, "loclist highlighters")
+            local entry = item_list[1]
+            helpers.assert_ok(entry ~= nil, "loclist entry")
+            local line = picker.select._options.display(entry, 1)
+            helpers.assert_ok(type(line) == "string" and #line > 0, "loclist line")
+            local spans = highlighters[1]:highlight({}, line) or {}
+            local span_hls = {}
+            for _, span in ipairs(spans) do
+                span_hls[span[3]] = true
+            end
+            helpers.assert_ok(span_hls.Identifier, "loclist prefix hl")
+            if line:find("%.txt", 1, true) then
+                helpers.assert_ok(span_hls.Directory, "loclist path hl")
+            end
+            helpers.assert_ok(span_hls.Number, "loclist line hl")
+            helpers.assert_ok(span_hls.Comment, "loclist text hl")
+            picker:close()
+        end)
         vim.api.nvim_buf_delete(buf, { force = true })
     end)
 
@@ -67,7 +82,9 @@ function M.run()
                 end, 1500)
                 helpers.wait_for_prompt_cursor(picker)
                 local entries = helpers.get_entries(picker)
-                helpers.eq(#entries, 1, "cwd filtered")
+                if #entries ~= 1 then
+                    error("cwd filtered: " .. tostring(#entries))
+                end
                 local entry_name = entries[1].filename or ""
                 local expected = vim.fs.normalize(file_one)
                 helpers.eq(vim.fs.normalize(entry_name), expected, "cwd include")

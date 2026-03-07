@@ -105,6 +105,12 @@ function M.open_registers_picker(opts)
                 return false
             end)),
         },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%[[^%]]+%]", "Identifier" },
+                { "^%[[^%]]+%]%s(.+)$", "String", 1 },
+            }),
+        },
         display = function(entry)
             return table.concat({ "[", entry.name, "] ", entry.preview or "" })
         end,
