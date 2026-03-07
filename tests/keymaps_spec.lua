@@ -17,6 +17,7 @@ function M.run()
                 preview = false,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "gx")
             helpers.wait_for_line_contains(picker, "map-test")
@@ -50,6 +51,7 @@ function M.run()
                 preview = false,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_entries(picker)
             local entries = helpers.get_entries(picker)

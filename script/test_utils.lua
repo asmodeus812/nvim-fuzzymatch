@@ -93,6 +93,11 @@ function M.reset_state()
     end)
     pcall(function() vim.cmd("silent! only") end)
     pcall(function() vim.cmd("enew") end)
+    pcall(function()
+        vim.wait(120, function()
+            return true
+        end, 10)
+    end)
 end
 
 function M.open_buffers_picker(opts)
@@ -205,7 +210,11 @@ end
 
 function M.wait_for_stream(picker, timeout)
     M.assert_ok(picker and picker.stream, "picker stream missing")
-    return picker.stream:wait(timeout or 1500)
+    local wait_timeout = timeout or 1500
+    M.wait_for(function()
+        return picker.stream:running()
+    end, wait_timeout)
+    return picker.stream:wait(wait_timeout)
 end
 
 function M.wait_for_match(picker, timeout)

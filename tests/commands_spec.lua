@@ -17,6 +17,7 @@ function M.run()
                 include_user = true,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "TestPickerCmd")
             helpers.assert_line_missing(helpers.get_list_lines(picker), "edit", "builtin exclude")
@@ -40,6 +41,7 @@ function M.run()
                     include_user = false,
                     prompt_debounce = 0,
                 })
+                helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
                 helpers.wait_for_line_contains(picker, "edit")

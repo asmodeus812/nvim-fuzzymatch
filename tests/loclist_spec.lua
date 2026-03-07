@@ -75,6 +75,7 @@ function M.run()
                     cwd = dir_path,
                     prompt_debounce = 0,
                 })
+                helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
                 helpers.wait_for(function()

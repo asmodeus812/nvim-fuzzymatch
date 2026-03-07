@@ -12,11 +12,12 @@ local path = require("fuzzy.path")
 --- @field private match Match
 --- @field private _options PickerOptions
 --- @field private _state table
---- @field private _state.context table
---- @field private _state.matcher table
+--- @field private _state.caching table|nil
+--- @field private _state.matching table|nil
+--- @field private _state.staging boolean|nil
+--- @field private _state.context table|nil
 --- @field private _state.display function|string|nil
 --- @field private _state.content string|function|table
---- @field private _state.staging boolean
 --- @field private _state.stage? table|nil
 --- @field private _state.stage.select Select
 --- @field private _state.stage.match Match
@@ -177,35 +178,44 @@ function Picker.Converter:unbind()
     self.picker = nil
 end
 
-function Picker:_cancel_picker()
-    self.select:close()
-    self.match:destroy()
-    self.stream:stop()
-    self:_running_match()
-    self:_cached_display()
-end
-
 function Picker:_close_picker()
     self.select:close()
     self.match:destroy()
     self.stream:destroy()
+    self.stream:stop()
     self:_running_match()
-    self:_cached_display()
+    self:_caching_display()
+end
+
+function Picker:_cancel_picker()
+    self.select:close()
+    self.match:destroy()
+    if self.stream:running() then
+        self.stream:destroy()
+        self:_caching_display()
+    else
+        self.stream:stop()
+    end
+    self:_running_match()
 end
 
 function Picker:_clear_picker()
     self.select:clear()
     self.match:destroy()
-    self.stream:destroy()
+    if self.stream:running() then
+        self.stream:destroy()
+        self:_caching_display()
+    else
+        self.stream:stop()
+    end
     self:_running_match()
-    self:_cached_display()
 end
 
 function Picker:_hide_picker()
     self.select:hide()
 end
 
-function Picker:_cancel_stage()
+function Picker:_close_stage()
     local stage = self._state.stage
     if stage and next(stage) then
         stage.select:close()
@@ -213,7 +223,7 @@ function Picker:_cancel_stage()
     end
 end
 
-function Picker:_close_stage()
+function Picker:_cancel_stage()
     local stage = self._state.stage
     if stage and next(stage) then
         stage.select:close()
@@ -355,10 +365,7 @@ function Picker:_input_prompt()
             -- when there is a query we need to match against it, in this scenario the picker is non-interactive, there are
             -- two options, either it was configured to use a stream or a user provided table of entries - strings, or other
             -- tables
-            local data = self.stream.results or self._state.content
-            if type(data) ~= "table" then
-                return
-            end
+            local data = assert(self.stream.results or self._state.content)
             if #data > 0 and type(query) == "string" and #query > 0 then
                 self.match:match(data, query, function(matching)
                     if matching == nil then
@@ -381,7 +388,7 @@ function Picker:_input_prompt()
                         ))
                     end
                     self:_running_match()
-                end, self._state.matcher)
+                end, self._state.display)
             else
                 -- just render all the results as they are, when there is no query, nothing can be matched against, so we dump all the
                 -- results into the list
@@ -429,7 +436,7 @@ function Picker:_create_stage()
                                 #self.stream.results
                             ))
                         end
-                    end, self._state.matcher)
+                    end, self._state.display)
                 else
                     stage.select:list(
                         self.stream.results,
@@ -557,38 +564,47 @@ function Picker:_compute_headers(headers, actions)
     return vim.list_extend(headers, action_headers)
 end
 
-function Picker:_cached_display(display)
+function Picker:_caching_display(init)
     local state = assert(self._state)
-    if display == nil and state.caching then
+    if not init and state.caching then
         for key, _ in pairs(state.caching) do
             state.caching[key] = nil
         end
+        for idx, _ in ipairs(state.caching) do
+            state.caching[idx] = nil
+        end
         state.caching = nil
-        return display
-    elseif display ~= nil then
-        if state.caching == nil and state.caching then
-            state.caching = {}
-        end
-        return function(entry)
+        return nil
+    elseif init == true and type(state.display) == "function" then
+        local old_display = state.display
+        local new_display = function(entry)
             local id = nil
-            local _type = type(entry)
-            if _type == "number" then
+            local _type = type(assert(entry))
+            if _type ~= "boolean" and _type == "number" then
                 id = -entry
-            elseif _type == "string" then
+            elseif _type == "table" or _type == "string" then
                 id = entry
-            elseif _type == "table" then
-                id = tostring(entry):gsub("table: ", "")
+            else
+                return old_display(entry)
             end
-            if state.caching[id] then
+            assert(id and id ~= nil)
+            if not state.caching then
+                state.caching = {}
+            end
+            if state.caching[id] ~= nil then
                 return state.caching[id]
+            else
+                local value = old_display(entry)
+                state.caching[id] = assert(value)
+                return value
             end
-            assert(id ~= false and id ~= nil)
-            local value = display(entry)
-            state.caching[id] = value
-            return value
         end
+        state.display = new_display
+        return new_display
+    elseif init == true and type(state.display) == "string" then
+        return state.display
     end
-    return display
+    return nil
 end
 
 function Picker:_running_match(matching, query)
@@ -740,7 +756,7 @@ function Picker:_flush_direct()
                             "%d/%d", #matching[1], #all
                         ))
                     end
-                end, self._state.matcher)
+                end, self._state.display)
             else
                 -- No query, render all of the results as-is and reset any running accumulator, as it will have become
                 -- invalid anyway with an empty query
@@ -846,7 +862,7 @@ function Picker:open()
         -- that is in a hidden state at this moment
         local stage = self._state.stage
         local active = self._state.staging
-        if active and stage and stage.select:isvalid() then
+        if active == true and stage and stage.select:isvalid() then
             stage.select:open()
         else
             self.select:open()
@@ -991,11 +1007,6 @@ function Picker.new(opts)
     }, opts)
 
     local is_lines = opts.stream_type == "lines"
-    if type(opts.display) == "function" then
-        opts.matcher = { text_cb = opts.display }
-    elseif type(opts.display) == "string" then
-        opts.matcher = { key = opts.display }
-    end
 
     local self = setmetatable({
         match = nil,
@@ -1004,13 +1015,14 @@ function Picker.new(opts)
         results = {},
         _options = opts,
         _state = {
-            staging = false,
             display = opts.display,
             content = opts.content,
             context = opts.context,
-            matcher = opts.matcher,
         },
     }, Picker)
+
+    -- initialize display caching wrapper
+    opts.display = self:_caching_display(true)
 
     if self:_is_interactive() then
         -- ensure that picker is not marked interactive when a table

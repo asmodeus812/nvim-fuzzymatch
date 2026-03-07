@@ -15,6 +15,7 @@ function M.run()
                 preview = false,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for(function()
                 return helpers.get_entries(picker) ~= nil
             end, 1500)
@@ -36,6 +37,7 @@ function M.run()
                     preview = false,
                     prompt_debounce = 0,
                 })
+                helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
                 local action = picker.select._options.mappings["<cr>"]

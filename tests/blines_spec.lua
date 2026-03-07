@@ -16,6 +16,7 @@ function M.run()
             preview = false,
             prompt_debounce = 0,
         })
+        helpers.wait_for_stream(picker)
         helpers.wait_for_list(picker)
         helpers.wait_for_line_contains(picker, "1 ")
         helpers.wait_for_line_contains(picker, "first")
@@ -24,6 +25,8 @@ function M.run()
         assert(type(prompt_input) == "function")
         --- @cast prompt_input fun(string)
         prompt_input("second")
+        helpers.wait_for_stream(picker)
+        helpers.wait_for_match(picker)
         helpers.wait_for_line_contains(picker, "second")
         picker:close()
 

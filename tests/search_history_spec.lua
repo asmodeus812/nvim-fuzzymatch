@@ -20,6 +20,7 @@ function M.run()
                 preview = false,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "needle")
             helpers.wait_for_line_contains(picker, "needle-two")
@@ -45,6 +46,7 @@ function M.run()
                     preview = false,
                     prompt_debounce = 0,
                 })
+                helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
                 local action = picker.select._options.mappings["<cr>"]

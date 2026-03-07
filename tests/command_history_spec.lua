@@ -20,6 +20,7 @@ function M.run()
             local picker = history_picker.open_command_history({
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "echo 123")
             helpers.wait_for_line_contains(picker, "echo 456")
@@ -41,6 +42,7 @@ function M.run()
                 local picker = history_picker.open_command_history({
                     prompt_debounce = 0,
                 })
+                helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
                 local action = picker.select._options.mappings["<cr>"]

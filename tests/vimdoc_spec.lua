@@ -40,9 +40,11 @@ function M.run()
                 preview = false,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_entries(picker)
             helpers.wait_for_line_contains(picker, "nvim_buf_get_lines()")
             helpers.type_query(picker, "win_get")
+            helpers.wait_for_stream(picker)
             helpers.wait_for_line_contains(picker, "nvim_win_get_cursor()")
             helpers.assert_line_missing(
                 helpers.get_list_lines(picker),
@@ -70,6 +72,7 @@ function M.run()
                 deprecated_only = true,
                 prefix = false,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_entries(picker)
             helpers.assert_line_contains(helpers.get_list_lines(picker), "nvim_old_fn()", "deprecated shown")
             helpers.assert_line_contains(helpers.get_list_lines(picker), "vim_old_fn()", "non-prefix shown")
@@ -112,6 +115,10 @@ function M.run()
                     preview = false,
                     prompt_debounce = 0,
                 })
+                helpers.wait_for(function()
+                    return picker.stream and picker.stream:running()
+                end, 1500)
+                helpers.wait_for_stream(picker)
                 helpers.wait_for_entries(picker)
                 picker.select._options.mappings["<cr>"](picker.select)
                 helpers.wait_for(function()
@@ -150,6 +157,7 @@ function M.run()
                     preview = false,
                     prompt_debounce = 0,
                 })
+                helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
                 local map = picker.select._options.mappings
@@ -185,6 +193,7 @@ function M.run()
                 preview = true,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_entries(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "nvim_deprecated_fn()")

@@ -13,13 +13,13 @@ function M.run()
                 preview = false,
                 prompt_debounce = 0,
             })
-            helpers.wait_for(function()
-                return helpers.get_entries(picker) ~= nil
-            end, 1500)
+            helpers.wait_for_stream(picker)
             local prompt_input = picker.select._options.prompt_input
             assert(type(prompt_input) == "function")
             --- @cast prompt_input fun(string)
             prompt_input("help-tag")
+            helpers.wait_for_stream(picker)
+            helpers.wait_for_match(picker)
             helpers.wait_for_line_contains(picker, "help-tag")
             picker:close()
         end)
@@ -35,6 +35,7 @@ function M.run()
                     preview = false,
                     prompt_debounce = 0,
                 })
+                helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
                 local map = picker.select._options.mappings

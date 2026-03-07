@@ -4,6 +4,8 @@ local Picker = require("fuzzy.picker")
 local M = {}
 
 local sizes = {
+    25000,
+    50000,
     100000,
     500000,
     1000000,
@@ -37,6 +39,24 @@ local function build_line(i)
     return base:sub(1, 20) .. "_" .. i .. "_" .. base:sub(21)
 end
 
+local function build_entries(size, mode)
+    local entries = {}
+    if mode == "object" then
+        for i = 1, size do
+            local line = build_line(i)
+            entries[i] = {
+                display = line,
+                value = line,
+            }
+        end
+    else
+        for i = 1, size do
+            entries[i] = build_line(i)
+        end
+    end
+    return entries
+end
+
 local function build_awk_args(size)
     local program = table.concat({
         "BEGIN{",
@@ -67,68 +87,25 @@ local function open_picker(opts)
     return picker
 end
 
-local function run_command_bench(size)
-    local picker = open_picker({
-        content = "awk",
-        context = {
-            args = build_awk_args(size),
-        },
-        preview = false,
-        prompt_debounce = 0,
-        match_timer = 75,
-        match_step = 75000,
-        stream_step = 150000,
-    })
-
-    helpers.wait_for_stream(picker, 600000)
-
-    local t0 = now_ms()
-    helpers.type_query(picker, query)
-    local results = helpers.wait_for_match(picker, 600000)
-    local t1 = now_ms()
-
-    local count = results and results[1] and #results[1] or 0
-    picker:close()
-    helpers.reset_state()
-    return {
-        size = size,
-        expected = expected_count(size),
-        count = count,
-        ms = t1 - t0,
-        mode = "command",
-    }
+local function cancel_and_reopen(picker)
+    picker:_cancel_picker()
+    picker:open()
 end
 
-local function build_entries(size, mode)
-    local entries = {}
-    if mode == "object" then
-        for i = 1, size do
-            local line = build_line(i)
-            entries[i] = {
-                display = line,
-                value = line,
-            }
-        end
+local function wait_ready(picker, mode)
+    if mode == "command" then
+        helpers.wait_for_stream(picker, 600000)
     else
-        for i = 1, size do
-            entries[i] = build_line(i)
-        end
+        helpers.wait_for_entries(picker)
     end
-    return entries
 end
 
-local function run_content_bench(entries, mode)
-    local display = mode == "object" and "display" or nil
-
-    local picker = open_picker({
-        content = entries,
-        display = display,
-        preview = false,
-        prompt_debounce = 0,
-        match_timer = 75,
-        match_step = 75000,
-        stream_step = 150000,
-    })
+local function run_cycle(picker, size, expected, allow_mismatch)
+    helpers.wait_for_prompt_cursor(picker)
+    helpers.type_query(picker, "")
+    helpers.wait_for(function()
+        return not picker.match:running()
+    end, 600000)
 
     local t0 = now_ms()
     helpers.type_query(picker, query)
@@ -136,21 +113,44 @@ local function run_content_bench(entries, mode)
     local t1 = now_ms()
 
     local count = results and results[1] and #results[1] or 0
-    picker:close()
-    helpers.reset_state()
-    local size = #entries
-    return {
-        size = size,
-        expected = expected_count(size),
-        count = count,
-        ms = t1 - t0,
-        mode = mode,
-    }
+    local target = expected or expected_count(size)
+    if not allow_mismatch then
+        assert(count == target, string.format(
+            "bench mismatch expected=%d count=%d",
+            target,
+            count
+        ))
+    end
+    return t1 - t0, count
+end
+
+local function run_reusable_bench(picker, mode, size, runs)
+    local output = {}
+    wait_ready(picker, mode)
+
+    local expected = nil
+    for i = 1, runs do
+        local ms, count = run_cycle(picker, size, expected, i == 1)
+        if i == 1 then
+            expected = count
+        end
+        output[#output + 1] = {
+            size = size,
+            expected = expected_count(size),
+            count = count,
+            ms = ms,
+            mode = mode,
+        }
+        cancel_and_reopen(picker)
+        wait_ready(picker, mode)
+    end
+
+    return output
 end
 
 local function log_result(result, sink)
     local line = string.format(
-        "%s size=%d expected=%d count=%d ms=%.2f",
+        "\n%s size=%d expected=%d count=%d ms=%.2f",
         result.mode,
         result.size,
         result.expected,
@@ -170,18 +170,89 @@ function M.run()
 
     for _, size in ipairs(sizes) do
         print(string.format("bench size=%d", size))
-        log_result(run_command_bench(size), output)
+
+        print("Command entries\n")
+        local command_picker = open_picker({
+            content = "awk",
+            context = {
+                args = build_awk_args(size),
+            },
+            preview = false,
+            prompt_debounce = 0,
+            match_timer = 75,
+            match_step = 75000,
+            stream_step = 150000,
+        })
+        for _, result in ipairs(run_reusable_bench(command_picker, "command", size, 3)) do
+            log_result(result, output)
+        end
+        command_picker:close()
+        helpers.reset_state()
         collectgarbage()
 
+        print("String entries\n")
         local string_entries = build_entries(size, "string")
-        log_result(run_content_bench(string_entries, "string"), output)
+        local string_picker = open_picker({
+            content = string_entries,
+            preview = false,
+            prompt_debounce = 0,
+            match_timer = 75,
+            match_step = 75000,
+            stream_step = 150000,
+        })
+        for _, result in ipairs(run_reusable_bench(string_picker, "string", size, 3)) do
+            log_result(result, output)
+        end
+        string_picker:close()
+        helpers.reset_state()
         string_entries = nil
         collectgarbage()
 
+        print("Object entries (key)\n")
         local object_entries = build_entries(size, "object")
-        log_result(run_content_bench(object_entries, "object"), output)
+        local object_key_picker = open_picker({
+            content = object_entries,
+            display = "display",
+            preview = false,
+            prompt_debounce = 0,
+            match_timer = 75,
+            match_step = 75000,
+            stream_step = 150000,
+        })
+        for _, result in ipairs(run_reusable_bench(object_key_picker, "object_key", size, 6)) do
+            log_result(result, output)
+        end
+        object_key_picker:close()
+        helpers.reset_state()
+        collectgarbage()
+
+        print("Object entries (cb)\n")
+        local display_cb = function(entry)
+            local value = entry.display
+            local work = value
+            work = work:gsub("[aeiou]", value)
+            work = work:reverse()
+            work = work:sub(1, 12) .. tostring(1)
+            return value
+        end
+        local object_cb_picker = open_picker({
+            content = object_entries,
+            display = display_cb,
+            preview = false,
+            prompt_debounce = 0,
+            match_timer = 75,
+            match_step = 75000,
+            stream_step = 150000,
+        })
+        for _, result in ipairs(run_reusable_bench(object_cb_picker, "object_cb", size, 6)) do
+            log_result(result, output)
+        end
+        object_cb_picker:close()
+        helpers.reset_state()
         object_entries = nil
         collectgarbage()
+
+        print("\n")
     end
 
     local out_path = "/tmp/fuzzymatch_picker_bench.log"

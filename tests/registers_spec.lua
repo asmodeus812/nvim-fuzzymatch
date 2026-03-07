@@ -11,6 +11,7 @@ function M.run()
             prompt_debounce = 0,
             preview = false,
         })
+        helpers.wait_for_stream(picker)
         helpers.wait_for_list(picker)
         helpers.wait_for_line_contains(picker, "[a]")
         helpers.wait_for_line_contains(picker, "...")
@@ -42,6 +43,7 @@ function M.run()
             local picker = registers_picker.open_registers_picker({
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_entries(picker)
             local action = picker.select._options.mappings["<cr>"]
@@ -60,6 +62,7 @@ function M.run()
             preview = true,
             filter = "^a$",
         })
+        helpers.wait_for_stream(picker)
         helpers.wait_for_list(picker)
         helpers.wait_for_entries(picker)
         helpers.wait_for(function()
@@ -89,6 +92,7 @@ function M.run()
             preview = false,
             filter = "^a$",
         })
+        helpers.wait_for_stream(picker)
         helpers.wait_for_list(picker)
         helpers.wait_for_line_contains(picker, "[a]")
         helpers.assert_line_missing(helpers.get_list_lines(picker), "[b]", "filter")

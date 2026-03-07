@@ -526,9 +526,6 @@ end
 --- @param entries table Data
 --- @param display function|string|nil Display/formatter
 local function populate_range(buffer, start, _end, entries, display)
-    if buffer == nil or not vim.api.nvim_buf_is_valid(buffer) then
-        return
-    end
     local lines = utils.EMPTY_TABLE
 
     if _end > 0 then
@@ -547,6 +544,9 @@ local function populate_range(buffer, start, _end, entries, display)
         Async.yield()
     end
 
+    if buffer == nil or not vim.api.nvim_buf_is_valid(buffer) then
+        return
+    end
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
     vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)

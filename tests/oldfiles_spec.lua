@@ -33,6 +33,7 @@ function M.run()
             cwd_only = true,
         })
 
+        helpers.wait_for_stream(picker)
         helpers.wait_for_list(picker)
         helpers.wait_for_line_contains(picker, "old.txt")
         helpers.assert_line_missing(helpers.get_list_lines(picker), "other.txt", "cwd only")
@@ -100,6 +101,7 @@ function M.run()
             prompt_debounce = 0,
             stat_file = true,
         })
+        helpers.wait_for_stream(picker)
         helpers.wait_for_list(picker)
         helpers.wait_for_entries(picker)
         local select = picker.select
@@ -138,8 +140,11 @@ function M.run()
             prompt_debounce = 0,
             stat_file = true,
         })
+        helpers.wait_for_stream(picker)
         helpers.wait_for_entries(picker)
         helpers.type_query(picker, "alpha")
+        helpers.wait_for_stream(picker)
+        helpers.wait_for_match(picker)
         helpers.wait_for_line_contains(picker, "alpha.txt")
         vim.wait(80, function()
             return true
@@ -176,6 +181,7 @@ function M.run()
             stat_file = true,
         })
 
+        helpers.wait_for_stream(picker)
         helpers.wait_for_list(picker)
         helpers.wait_for_line_contains(picker, "file.txt")
         helpers.assert_line_missing(helpers.get_list_lines(picker), "nested", "dir excluded")

@@ -31,6 +31,7 @@ function M.run()
                 preview = false,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "hello")
 
@@ -45,6 +46,7 @@ function M.run()
             vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "hello wrld" })
             set_cursor(1, 7)
             picker:open()
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "world")
             helpers.assert_line_missing(
@@ -73,6 +75,7 @@ function M.run()
                 preview = false,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "wrong")
             picker:close()

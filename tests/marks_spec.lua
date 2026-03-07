@@ -29,6 +29,7 @@ function M.run()
                 icons = false,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "[a]")
             helpers.wait_for_line_contains(picker, "marks.txt")
@@ -72,6 +73,7 @@ function M.run()
                 include_global = true,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "[A]")
             helpers.assert_line_missing(
@@ -114,6 +116,7 @@ function M.run()
                 marks = "^[a]$",
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "[a]")
             helpers.assert_line_missing(

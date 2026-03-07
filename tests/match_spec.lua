@@ -31,9 +31,7 @@ local function run_transform_key()
         { text = "beta" },
     }
 
-    match:match(list, "alp", function() end, {
-        key = "text",
-    })
+    match:match(list, "alp", function() end, "text")
     local results = match:wait(1500)
     helpers.assert_ok(results ~= nil, "transform nil")
 
@@ -54,11 +52,9 @@ local function run_text_cb()
         end,
     })
 
-    match:match(list, "foo", function() end, {
-        text_cb = function(entry)
-            return entry.text
-        end,
-    })
+    match:match(list, "foo", function() end, function(entry)
+        return entry.text
+    end)
     local results = match:wait(1500)
     helpers.assert_ok(results ~= nil, "text_cb nil")
     assert(results)

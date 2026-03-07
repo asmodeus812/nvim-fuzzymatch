@@ -6,7 +6,7 @@ local utils = require("fuzzy.utils")
 --- @field private list string[] The list of strings to match against.
 --- @field private pattern string The pattern to match.
 --- @field private callback fun(results: (string[]|integer[]|number[])[]|nil) The callback function to be called on each match iteration.
---- @field private transform? table A table of transformation rules to apply to the strings before matching, if items are of type table, using matchfuzzypos options, key or/and text_cb
+--- @field private transform? table Internal matchfuzzypos options table (text_cb only).
 --- @field private _options MatchOptions The options for the matcher.
 --- @field private _state table The internal state of the matcher, used for managing the matching process.
 local Match = {}
@@ -67,7 +67,18 @@ function Match:_populate_chunks()
         -- move the items into the destination chunk, either the regular chunks or the tail chunk, based on the left over size
         -- of the total items in the list, and update the offsets accordingly
         for i = start_index, iteration_limit do
-            destination[size + 1] = self.list[i]
+            if self.transform ~= nil then
+                local target = destination[size + 1]
+                if type(target) == "table" and target.__idx then
+                    local idx, count = next(target)
+                    assert(idx and count)
+                    target.__idx = i
+                else
+                    destination[size + 1] = { __idx = i }
+                end
+            else
+                destination[size + 1] = self.list[i]
+            end
             size = size + 1
         end
         utils.resize_table(destination, size)
@@ -200,34 +211,39 @@ function Match:_match_worker()
     -- equal size, only the tail can be smaller and usually it is.
     local items = self._state.tail or self._state.chunks
     local args = { items, self.pattern, self.transform }
-    -- TODO: blocker issue match - https://github.com/vim/vim/issues/19540
     local results, _ = utils.timed_call(vim.fn.matchfuzzypos, unpack(args))
 
-    local strings = results[1]
+    local matches = results[1]
     local positions = results[2]
     local scores = results[3]
 
     -- there should never be more results than items processed
-    assert(items and #items >= #strings)
-    if strings and #strings > 0 then
+    assert(items and #items >= #matches)
+    if matches and #matches > 0 then
         -- when there are results convert positions to offset continuous pairs, reuse the positions table to avoid new table allocations,
         -- these positions are normalized to a continuous numbers represented as start, length pairs
-        for idx, pos in ipairs(positions) do
-            positions[idx] = convert_positions(pos)
+        for __idx, pos in ipairs(positions) do
+            positions[__idx] = convert_positions(pos)
+        end
+        -- matchfuzzypos returns dicts, map them back to the original list entries using __idx
+        if self.transform ~= nil then
+            for __idx, item in ipairs(matches) do
+                matches[__idx] = self.list[item.__idx]
+            end
         end
         if #self._state.accum == 0 then
             -- the very first time we just move the results into the accumulator, and also attach them to the pool to make them tracked by
             -- the pool, eventually either this will be returned to the user as results, or the buffer. Either one will be detached from the
             -- pool, when returned to the user, the other one will be returned to the pool. If ephemeral the next time a match is started the
             -- results will be returned to the pool as well making them invalid.
-            self._state.accum[1] = Pool.attach(strings)
+            self._state.accum[1] = Pool.attach(matches)
             self._state.accum[2] = Pool.attach(positions)
             self._state.accum[3] = Pool.attach(scores)
         else
             -- merge the new results with the accumulated ones, using double buffering to avoid allocations
             local result, _ = utils.timed_call(Match.merge,
                 self._state.buffer, self._state.accum,
-                { strings, positions, scores }
+                { matches, positions, scores }
             )
             -- here is where we swap buffers, the buffer now becomes the accumulator and the accumulator becomes the buffer, accum always
             -- holds the latest accumulated results however
@@ -292,13 +308,13 @@ end
 --- @param list? string[] The list of strings to match against.
 --- @param pattern? string The pattern to match.
 --- @param callback? fun(results: (string[]|integer[]|number[])[]|nil) The callback called with accumulated results each cycle, and nil when done.
---- @param transform? table A table of transformation rules to apply to the strings before matching, if items are of type table, using matchfuzzypos options, key or/and text_cb
+--- @param transform? string|fun(entry:any):string|nil Optional key or callback to provide the string used for matching.
 function Match:match(list, pattern, callback, transform)
     vim.validate({
         list = { list, "table" },
         pattern = { pattern, "string" },
         callback = { callback, { "function" }, true },
-        transform = { transform, { "table", "nil" }, true },
+        transform = { transform, { "function", "string", "nil" }, true },
     })
     -- each time we start a new match we make sure to stop any ongoing processing and clean up the context, any old state will be lost,
     -- depending on the ephemeral option more aggressive clean up might be done
@@ -318,13 +334,32 @@ function Match:match(list, pattern, callback, transform)
         self.results = nil
     end
 
-    -- initialize the core matching context
+    -- init core match context
     self.list = assert(list)
     self.pattern = assert(pattern)
     self.callback = assert(callback)
-    self.transform = transform or nil
+    if transform ~= nil then
+        if type(transform) == "string" then
+            local key = transform
+            self.transform = {
+                text_cb = function(item)
+                    return self.list[item.__idx][key]
+                end
+            }
+        elseif type(transform) == "function" then
+            local cb = transform
+            self.transform = {
+                text_cb = function(item)
+                    return cb(self.list[item.__idx])
+                end
+            }
+        end
+        assert(self.transform)
+    else
+        self.transform = nil
+    end
 
-    -- ensure offset is restored
+    -- ensure offset restored
     self._state.offset = 0
 
     if not self._state.accum then

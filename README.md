@@ -970,6 +970,9 @@ default `Select.actions` and `Select.previewers`. By default if no converter is 
 default converter is used which attempts to convert the entry to a valid structure to its best ability - that is the actually the provided
 `Select.default_converter`. Entries can be of the following types:
 
+Matching uses a `string value per entry`. For table entries, the matcher `accepts either a key name or a callback` to extract or compute
+that string.
+
 - `Numbers` are interpreted and are required to be valid loaded or unloaded buffer number handles in the current neovim instance
 
 - `Strings` they represent a single line of text, and by default they are interpreted as filename, these are required to be valid

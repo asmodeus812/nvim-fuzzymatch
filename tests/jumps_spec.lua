@@ -26,6 +26,7 @@ function M.run()
                 icons = false,
                 prompt_debounce = 0,
             })
+            helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "jumps.txt")
             helpers.wait_for_line_contains(picker, ":")
