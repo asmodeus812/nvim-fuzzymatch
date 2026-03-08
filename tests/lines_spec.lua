@@ -29,10 +29,7 @@ function M.run()
         helpers.wait_for_line_contains(picker, "line_two.txt")
         helpers.wait_for_line_contains(picker, "gamma line")
 
-        local prompt_input = picker.select._options.prompt_input
-        assert(type(prompt_input) == "function")
-        --- @cast prompt_input fun(string)
-        prompt_input("gamma")
+        helpers.type_query(picker, "gamma")
         helpers.wait_for_stream(picker)
         helpers.wait_for_match(picker)
         helpers.wait_for_line_contains(picker, "gamma line")
@@ -87,9 +84,7 @@ function M.run()
                 show_unloaded = true,
                 prompt_debounce = 0,
             })
-            helpers.wait_for(function()
-                return helpers.get_query(picker) == "alpha"
-            end, 1500)
+            helpers.wait_for_prompt_text(picker, "alpha")
             helpers.wait_for_prompt_cursor(picker)
             picker:close()
         end)
@@ -104,9 +99,7 @@ function M.run()
                 show_unloaded = true,
                 prompt_debounce = 0,
             })
-            helpers.wait_for(function()
-                return helpers.get_query(picker) == "line"
-            end, 1500)
+            helpers.wait_for_prompt_text(picker, "line")
             helpers.wait_for_prompt_cursor(picker)
             picker:close()
         end)
@@ -185,9 +178,6 @@ function M.run()
                 show_unloaded = true,
                 prompt_debounce = 0,
             })
-            helpers.wait_for(function()
-                return picker.stream and picker.stream:running()
-            end, 1500)
             helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "cwd_line.txt")

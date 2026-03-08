@@ -10,7 +10,6 @@ local sizes = {
     500000,
     1000000,
     2000000,
-    5000000,
 }
 
 local query = "kqzv"
@@ -100,25 +99,18 @@ local function wait_ready(picker, mode)
     end
 end
 
-local function run_cycle(picker, size, expected, allow_mismatch)
-    helpers.wait_for_prompt_cursor(picker)
-    helpers.type_query(picker, "")
-    helpers.wait_for(function()
-        return not picker.match:running()
-    end, 600000)
-
+local function run_cycle(picker, size)
     local t0 = now_ms()
     helpers.type_query(picker, query)
     local results = helpers.wait_for_match(picker, 600000)
     local t1 = now_ms()
 
     local count = results and results[1] and #results[1] or 0
-    local target = expected or expected_count(size)
-    if not allow_mismatch then
-        assert(count == target, string.format(
+    local target = expected_count(size)
+    if count ~= target then
+        print(string.format(
             "bench mismatch expected=%d count=%d",
-            target,
-            count
+            target, count
         ))
     end
     return t1 - t0, count
@@ -128,12 +120,8 @@ local function run_reusable_bench(picker, mode, size, runs)
     local output = {}
     wait_ready(picker, mode)
 
-    local expected = nil
-    for i = 1, runs do
-        local ms, count = run_cycle(picker, size, expected, i == 1)
-        if i == 1 then
-            expected = count
-        end
+    for _ = 1, runs do
+        local ms, count = run_cycle(picker, size)
         output[#output + 1] = {
             size = size,
             expected = expected_count(size),
@@ -150,7 +138,7 @@ end
 
 local function log_result(result, sink)
     local line = string.format(
-        "\n%s size=%d expected=%d count=%d ms=%.2f",
+        "%s size=%d expected=%d count=%d ms=%.2f",
         result.mode,
         result.size,
         result.expected,

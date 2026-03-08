@@ -1981,7 +1981,7 @@ function Select:move_cursor(dir, callback)
     if not entries or #entries == 0 then
         return
     end
-    if dir < 0 and self._state.streaming then
+    if cursor[1] == 1 and dir < 0 and self._state.streaming then
         return
     end
 

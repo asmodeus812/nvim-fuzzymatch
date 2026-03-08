@@ -79,6 +79,7 @@ function Stream:_close_stream()
         self._state.accum = nil
         self._state.total = 0
     end
+    self._state.pending = nil
 
     self.callback = nil
     self.transform = nil
@@ -174,6 +175,11 @@ function Stream:_handle_out(code, chunk)
         -- that was being run and what went wrong.
         self:destroy()
     else
+        local pending_line = self._state.pending
+        if self._options.lines == true and pending_line ~= nil and #pending_line > 0 then
+            self:_handle_data(pending_line, self._state.size)
+            self._state.pending = nil
+        end
         -- on exit make sure that there is nothing more to flush, if there is any size accumulated over the very last call toThe handle
         -- of stdout or stderr, then we need to finally flush it as well, this is to ensure that there is no left over unprocessed data
         -- after the stream has closed
@@ -191,6 +197,11 @@ function Stream:_handle_in(err, chunk)
     assert(type(chunk) == "string")
 
     if self._options.lines == true then
+        local pending_line = self._state.pending
+        if pending_line ~= nil and #pending_line > 0 then
+            chunk = pending_line .. chunk
+            self._state.pending = nil
+        end
         -- when the type of stream is defined as lines, split the output based on new lines, this might produce some empty lines
         -- which are filtered afterwards.
         local start = 1
@@ -216,7 +227,7 @@ function Stream:_handle_in(err, chunk)
             if not pos then
                 if start <= #chunk then
                     local line = chunk:sub(start)
-                    self:_handle_data(line, size)
+                    self._state.pending = line
                 end
                 break
             end
@@ -254,7 +265,7 @@ function Stream:_handle_stdout(e, c)
         Scheduler.add(self._state.streamer)
     end
 
-    if self:_is_streaming() and self._state.streamer then
+    if self:_is_streaming() then
         self._state.streamer:await(streamer)
     else
         streamer()
@@ -269,7 +280,7 @@ function Stream:_handle_exit(e, c)
         Scheduler.add(self._state.streamer)
     end
 
-    if self:_is_streaming() and self._state.streamer then
+    if self:_is_streaming() then
         self._state.streamer:await(streamer)
     else
         streamer()
@@ -277,10 +288,7 @@ function Stream:_handle_exit(e, c)
 end
 
 function Stream:_is_streaming()
-    if self._state.streamer then
-        return self._state.streamer:is_running()
-    end
-    return self._state.handle ~= nil
+    return self._state.streamer ~= nil
 end
 
 function Stream:_stop_streaming()
@@ -290,10 +298,10 @@ function Stream:_stop_streaming()
     end
 end
 
---- Returns true if the stream is currently running, i.e. has been started and not yet stopped, exited or aborted, false otherwise
---- @return boolean True if the stream is running, false otherwise
+--- Returns true if the stream is started or is already running, i.e. has been started and not yet stopped, exited or aborted, false otherwise
+--- @return boolean True if the stream is started or running, false otherwise
 function Stream:running()
-    return self:_is_streaming()
+    return self._state.handle ~= nil or self:_is_streaming()
 end
 
 --- Return the stream options table.
@@ -325,7 +333,7 @@ function Stream:wait(timeout)
         return self.results ~= nil
     end, 25, false)
 
-    if not done then
+    if not done and self:running() then
         self:stop()
     end
     return self.results
@@ -339,7 +347,8 @@ end
 --- @field callback fun(buffer: string[], accum: string[]) A function to be called when new data is available, this function receives two arguments, the first is the current buffer of data, the second is the accumulation of all data so far, this function is required
 
 --- Starts the stream with the given command and options, if a stream is already running it is stopped first, if the new stream is for
---- new command the previous results and state are destroyed.
+--- new command the previous results and state are destroyed. Starting a stream does not imply that it will begin emitting values
+--- immediately but it implies that is considered `running`, guaranteeing that at some future point values will be emitted and streamed to consumers
 --- @param cmd string|function The command to run, or a function which accepts a callback to be invoked with data chunks to supply data to the stream
 --- @param opts StreamStartOpts|nil The options for starting the stream, see StreamStartOpts for details
 function Stream:start(cmd, opts)
@@ -435,6 +444,7 @@ function Stream:start(cmd, opts)
     -- make sure the state is clear for the processing to start from the start
     self._state.total = 0
     self._state.size = 0
+    self._state.pending = nil
 end
 
 --- @class StreamOptions

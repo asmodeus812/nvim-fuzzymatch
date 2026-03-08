@@ -68,19 +68,29 @@ function M.run()
         end
     end)
 
+    helpers.run_test_case("util_format_display_path_strip_cwd", function()
+        local cwd = "/tmp/fuzzymatch-root"
+        local value = "/tmp/fuzzymatch-root/dir/file.txt"
+        local result = util.format_display_path(value, {
+            cwd = cwd,
+            absolute_path = false,
+        })
+        helpers.eq(result, "dir/file.txt", "format_display_path strip cwd")
+    end)
+
     helpers.run_test_case("util_format_display_path_non_string_cwd", function()
         local ok, result = pcall(util.format_display_path, "/tmp/file.txt", {
             cwd = true,
             home_to_tilde = true,
         })
-        helpers.assert_ok(ok, "format_display_path threw on non-string cwd")
-        helpers.assert_ok(type(result) == "string" and #result > 0, "format_display_path empty")
+        helpers.assert_ok(not ok, "format_display_path should reject non-string cwd")
+        helpers.assert_ok(type(result) == "string" and #result > 0, "format_display_path error")
     end)
 
     helpers.run_test_case("util_format_display_path_home_to_tilde", function()
         local original = vim.loop.os_homedir
         vim.loop.os_homedir = function()
-            return "/tmp/home/"
+            return "/tmp/home"
         end
         local ok, result = pcall(util.format_display_path, "/tmp/home/file.txt", {
             home_to_tilde = true,
@@ -100,7 +110,7 @@ function M.run()
         })
         vim.loop.os_homedir = original
         helpers.assert_ok(ok, "format_display_path threw on home exact")
-        helpers.eq(result, "~", "format_display_path home exact")
+        helpers.eq(result, "/tmp/home", "format_display_path home exact")
     end)
 
     helpers.run_test_case("util_format_display_path_filename_only", function()
@@ -126,9 +136,13 @@ function M.run()
         helpers.assert_ok(actions["<c-q>"] ~= nil, "default actions qf")
     end)
 
-    helpers.run_test_case("util_build_picker_options", function()
-        local opts = { a = 1 }
-        helpers.eq(util.build_picker_options(opts), opts, "build_picker_options passthrough")
+    helpers.run_test_case("util_merge_picker_options", function()
+        local defaults = { a = 1, nested = { x = 1 } }
+        local merged = util.merge_picker_options(defaults, { b = 2, nested = { y = 2 } })
+        helpers.eq(merged.a, 1, "merge defaults")
+        helpers.eq(merged.b, 2, "merge user")
+        helpers.eq(merged.nested.x, 1, "merge nested default")
+        helpers.eq(merged.nested.y, 2, "merge nested user")
     end)
 end
 

@@ -283,7 +283,7 @@ function Match:wait(timeout)
         return self.results ~= nil
     end, 25, false)
 
-    if not done then
+    if not done and self:running() then
         self:stop()
     end
     return self.results

@@ -1,26 +1,13 @@
 local M = {}
 
-local function termcodes(keys)
-    return vim.api.nvim_replace_termcodes(keys, true, false, true)
-end
-
-local function feed(keys)
-    vim.api.nvim_feedkeys(termcodes(keys), "n", false)
-end
-
-function M.assert_ok(condition, message)
-    assert(condition, message or "assert failed")
+function M.count_table_entries(value)
+    return vim.tbl_count(value or {})
 end
 
 function M.eq(actual, expected, message)
     if not vim.deep_equal(actual, expected) then
         error(message or "value mismatch")
     end
-end
-
-function M.wait_for(fn, timeout)
-    local ok = vim.wait(timeout or 1500, fn, 10)
-    return ok
 end
 
 function M.setup_global_state()
@@ -50,6 +37,60 @@ function M.setup_runtime()
     end
 end
 
+function M.open_buffers_picker(opts)
+    local buffers_picker = require("fuzzy.pickers.buffers")
+    local picker = buffers_picker.open_buffers_picker(opts or {})
+    M.wait_for(function() return picker:isopen() end)
+    return picker
+end
+
+function M.reset_state()
+    pcall(function()
+        local ok, registry = pcall(require, "fuzzy.registry")
+        if ok and registry and registry.items then
+            for picker, _ in pairs(registry.items) do
+                if picker and picker.close then
+                    picker:close()
+                end
+            end
+        end
+    end)
+    pcall(function()
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+            vim.api.nvim_set_option_value("winfixbuf", false, { win = win })
+        end
+    end)
+    pcall(function()
+        vim.cmd("silent! only")
+        vim.cmd("enew")
+    end)
+end
+
+function M.assert_ok(condition, message)
+    assert(condition, message or "assert failed")
+end
+
+function M.assert_has_hl(extmarks, hl_name, label)
+    local seen = {}
+    for _, mark in ipairs(extmarks or {}) do
+        local details = mark[4] or {}
+        local name = details.hl_name or details.hl_group
+        if name then
+            seen[name] = true
+        end
+        if name == hl_name then
+            return true
+        end
+    end
+    local seen_list = {}
+    for name, _ in pairs(seen) do
+        seen_list[#seen_list + 1] = name
+    end
+    table.sort(seen_list)
+    error((label or ("missing hl: " .. tostring(hl_name)))
+        .. " (seen: " .. table.concat(seen_list, ", ") .. ")")
+end
+
 function M.create_named_buffer(name, lines, listed)
     local buf = vim.api.nvim_create_buf(listed ~= false, false)
     if name and #name > 0 then
@@ -70,77 +111,54 @@ function M.create_temp_path(prefix)
     return path
 end
 
-function M.reset_state()
-    -- Ensure picker windows/buffers are fully closed between tests.
-    pcall(function()
-        local ok, Registry = pcall(require, "fuzzy.registry")
-        if ok and Registry and Registry.items then
-            for picker, _ in pairs(Registry.items) do
-                if picker and picker.close then
-                    pcall(function()
-                        picker:close()
-                    end)
-                end
-            end
-        end
-    end)
-    pcall(function()
-        for _, win in ipairs(vim.api.nvim_list_wins()) do
-            pcall(function()
-                vim.api.nvim_set_option_value("winfixbuf", false, { win = win })
-            end)
-        end
-    end)
-    pcall(function() vim.cmd("silent! only") end)
-    pcall(function() vim.cmd("enew") end)
-    pcall(function()
-        vim.wait(120, function()
-            return true
-        end, 10)
-    end)
-end
-
-function M.open_buffers_picker(opts)
-    local buffers_picker = require("fuzzy.pickers.buffers")
-    local picker = buffers_picker.open_buffers_picker(opts or {})
-    M.wait_for(function()
-        --- @diagnostic disable-next-line: invisible
-        return picker and picker.select and picker.select:isopen()
-    end, 1500)
-    return picker
+function M.create_temp_dir()
+    local base_dir = vim.uv.os_tmpdir()
+    local dir_name = table.concat({ "fuzzy-tests-", tostring(vim.uv.hrtime()) })
+    local full_path = vim.fs.joinpath(base_dir, dir_name)
+    vim.uv.fs_mkdir(full_path, 448)
+    return full_path
 end
 
 function M.type_query(picker, text)
-    --- @diagnostic disable-next-line: invisible
     M.assert_ok(picker and picker.select, "picker not available")
-    --- @diagnostic disable-next-line: invisible
-    local prompt_input = picker.select._options.prompt_input
-    if type(prompt_input) == "function" then
-        prompt_input(text)
+    local select = picker.select
+    local ready = M.wait_for(function()
+        local buf = select and select.prompt_buffer or nil
+        return buf and vim.api.nvim_buf_is_valid(buf)
+    end, 1500)
+    if not ready then
+        return
+    end
+    local buf = select.prompt_buffer
+    local next_text = text
+    if text == "<c-u>" then
+        next_text = ""
+    end
+    vim.api.nvim_buf_set_lines(buf, 0, 1, false, { next_text })
+    vim.api.nvim_exec_autocmds({ "TextChangedI", "TextChangedP" }, {
+        buffer = buf,
+    })
+    if next_text ~= "" then
+        M.wait_for_prompt_text(picker, next_text)
     else
-        --- @diagnostic disable-next-line: invisible
-        picker.select:position_prompt(text)
+        M.wait_for(function()
+            return (select:query() or "") == ""
+        end, 1500)
     end
 end
 
 function M.get_query(picker)
-    --- @diagnostic disable-next-line: invisible
     M.assert_ok(picker and picker.select, "picker not available")
-    --- @diagnostic disable-next-line: invisible
     return picker.select:query()
 end
 
 function M.get_entries(picker)
-    --- @diagnostic disable-next-line: invisible
     M.assert_ok(picker and picker.select, "picker not available")
-    --- @diagnostic disable-next-line: invisible
     return picker.select._state.entries
 end
 
 function M.get_list_lines(picker)
-    --- @diagnostic disable-next-line: invisible
     M.assert_ok(picker and picker.select, "picker not available")
-    --- @diagnostic disable-next-line: invisible
     local buf = picker.select.list_buffer
     if not buf or not vim.api.nvim_buf_is_valid(buf) then
         return {}
@@ -166,63 +184,50 @@ function M.get_list_extmarks(picker, namespace)
     )
 end
 
-function M.wait_for_list_extmarks(picker, namespace)
+function M.wait_for(fn, timeout)
+    timeout = timeout or 1500
+    local mul = tonumber(
+        vim.env.FUZZY_TEST_TIMEOUT_MULT or "1"
+    )
+    timeout = math.floor(timeout * mul)
+    local ok = vim.wait(timeout, fn, 50)
+    return ok
+end
+
+function M.wait_for_list_extmarks(picker, namespace, timeout)
     return M.wait_for(function()
         local extmarks = M.get_list_extmarks(picker, namespace)
         return extmarks and #extmarks > 0
-    end, 1500)
+    end, timeout or 1500)
 end
 
-function M.assert_has_hl(extmarks, hl_name, label)
-    local seen = {}
-    for _, mark in ipairs(extmarks or {}) do
-        local details = mark[4] or {}
-        local name = details.hl_name or details.hl_group
-        if name then
-            seen[name] = true
-        end
-        if name == hl_name then
-            return true
-        end
-    end
-    local seen_list = {}
-    for name, _ in pairs(seen) do
-        seen_list[#seen_list + 1] = name
-    end
-    table.sort(seen_list)
-    error((label or ("missing hl: " .. tostring(hl_name)))
-        .. " (seen: " .. table.concat(seen_list, ", ") .. ")")
-end
-
-function M.wait_for_list(picker)
+function M.wait_for_list(picker, timeout)
     return M.wait_for(function()
         local lines = M.get_list_lines(picker)
         return lines and #lines > 0
-    end, 1500)
+    end, timeout or 1500)
 end
 
-function M.wait_for_entries(picker)
+function M.wait_for_entries(picker, timeout)
     return M.wait_for(function()
         local entries = M.get_entries(picker)
         return entries and #entries > 0
-    end, 1500)
+    end, timeout or 1500)
 end
 
 function M.wait_for_stream(picker, timeout)
     M.assert_ok(picker and picker.stream, "picker stream missing")
     local wait_timeout = timeout or 1500
-    M.wait_for(function()
-        return picker.stream:running()
-    end, wait_timeout)
     return picker.stream:wait(wait_timeout)
 end
 
 function M.wait_for_match(picker, timeout)
     M.assert_ok(picker and picker.match, "picker match missing")
-    return picker.match:wait(timeout or 1500)
+    local wait_timeout = timeout or 1500
+    return picker.match:wait(wait_timeout)
 end
 
-function M.wait_for_prompt_cursor(picker)
+function M.wait_for_prompt_cursor(picker, timeout)
     return M.wait_for(function()
         local select = picker and picker.select or nil
         local win = select and select.prompt_window or nil
@@ -233,38 +238,30 @@ function M.wait_for_prompt_cursor(picker)
         local cursor = vim.api.nvim_win_get_cursor(win)
         return cursor[1] == 1
             and cursor[2] == vim.str_byteindex(query, #query)
-    end, 1500)
+    end, timeout or 1500)
 end
 
-function M.wait_for_line_contains(picker, text)
+function M.wait_for_prompt_text(picker, text, timeout)
+    return M.wait_for(function()
+        local select = picker and assert(picker.select)
+        local buf = select.prompt_buffer or -1
+        if not vim.api.nvim_buf_is_valid(buf) then
+            return false
+        end
+        local lines = vim.api.nvim_buf_get_lines(buf, 0, 1, false)
+        if lines and (lines[1] or ""):find(text, 1, true) == nil then
+            return false
+        end
+        local query = select.query and select:query() or nil
+        return query and query:find(text, 1, true) ~= nil
+    end, timeout or 1500)
+end
+
+function M.wait_for_line_contains(picker, text, timeout)
     return M.wait_for(function()
         local lines = M.get_list_lines(picker)
-        for _, line in ipairs(lines or {}) do
-            if line:find(text, 1, true) then
-                return true
-            end
-        end
-        return false
-    end, 1500)
-end
-
-function M.get_lines(buf, start, finish)
-    if not buf or not vim.api.nvim_buf_is_valid(buf) then
-        return {}
-    end
-    return vim.api.nvim_buf_get_lines(buf, start or 0, finish or -1, false)
-end
-
-function M.get_buffer_lines(buffer_number, start, finish)
-    return M.get_lines(buffer_number, start, finish)
-end
-
-function M.create_temp_dir()
-    local base_dir = vim.uv.os_tmpdir()
-    local dir_name = table.concat({ "fuzzy-tests-", tostring(vim.uv.hrtime()) })
-    local full_path = vim.fs.joinpath(base_dir, dir_name)
-    vim.uv.fs_mkdir(full_path, 448)
-    return full_path
+        return M._line_contains(lines, text)
+    end, timeout or 1500)
 end
 
 function M.write_file(file_path, text_value)
@@ -380,6 +377,17 @@ function M.is_buffer_valid(buffer_number)
     return buffer_number and vim.api.nvim_buf_is_valid(buffer_number) or false
 end
 
+function M.get_lines(buf, start, finish)
+    if not buf or not vim.api.nvim_buf_is_valid(buf) then
+        return {}
+    end
+    return vim.api.nvim_buf_get_lines(buf, start or 0, finish or -1, false)
+end
+
+function M.get_buffer_lines(buffer_number, start, finish)
+    return M.get_lines(buffer_number, start, finish)
+end
+
 function M.get_buffer_line_count(buffer_number)
     if not buffer_number or not vim.api.nvim_buf_is_valid(buffer_number) then
         return 0
@@ -387,25 +395,26 @@ function M.get_buffer_line_count(buffer_number)
     return vim.api.nvim_buf_line_count(buffer_number)
 end
 
-function M.count_table_entries(value)
-    return vim.tbl_count(value or {})
-end
-
 function M.assert_line_contains(lines, text, message)
-    for _, line in ipairs(lines or {}) do
-        if line:find(text, 1, true) then
-            return
-        end
+    if M._line_contains(lines, text) then
+        return
     end
     error(message or "missing text")
 end
 
 function M.assert_line_missing(lines, text, message)
+    if M._line_contains(lines, text) then
+        error(message or "unexpected text")
+    end
+end
+
+function M._line_contains(lines, text)
     for _, line in ipairs(lines or {}) do
         if line:find(text, 1, true) then
-            error(message or "unexpected text")
+            return true
         end
     end
+    return false
 end
 
 function M.assert_list_contains(list, value, message)
@@ -426,13 +435,9 @@ function M.assert_list_missing(list, value, message)
 end
 
 function M.close_picker(picker)
-    if picker and picker.select and picker.select.close then
+    if picker and picker.select then
         picker:close()
     end
-end
-
-function M.feed(keys)
-    feed(keys)
 end
 
 return M

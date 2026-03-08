@@ -78,9 +78,7 @@ function M.run()
                 helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
-                helpers.wait_for(function()
-                    return helpers.get_query(picker) == "one"
-                end, 1500)
+                    helpers.wait_for_prompt_text(picker, "one")
                 helpers.wait_for_prompt_cursor(picker)
                 local entries = helpers.get_entries(picker)
                 if #entries ~= 1 then

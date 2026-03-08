@@ -42,9 +42,9 @@ function M.run()
             })
             helpers.wait_for_stream(picker)
             helpers.wait_for_entries(picker)
+            helpers.type_query(picker, "nvim_get")
+            helpers.wait_for_match(picker)
             helpers.wait_for_line_contains(picker, "nvim_buf_get_lines()")
-            helpers.type_query(picker, "win_get")
-            helpers.wait_for_stream(picker)
             helpers.wait_for_line_contains(picker, "nvim_win_get_cursor()")
             helpers.assert_line_missing(
                 helpers.get_list_lines(picker),
@@ -81,6 +81,36 @@ function M.run()
         end)
     end)
 
+    helpers.run_test_case("vimdoc_action", function()
+        helpers.with_mock(vim.fn, "api_info", function()
+            return {
+                functions = {
+                    { name = "nvim_buf_get_lines", since = 1 },
+                },
+            }
+        end, function()
+            helpers.with_cmd_capture(function(calls)
+                local api_picker = require("fuzzy.pickers.vimdoc")
+                local picker = api_picker.open_vimdoc_picker({
+                    preview = false,
+                    prompt_debounce = 0,
+                })
+                helpers.wait_for_stream(picker)
+                helpers.wait_for_list(picker)
+                helpers.wait_for_entries(picker)
+                local map = picker.select._options.mappings
+                map["<cr>"](picker.select)
+                local saw_help = false
+                for _, call in ipairs(calls) do
+                    local arg = call.args and call.args[1] or nil
+                    if type(arg) == "table" and arg.cmd == "help" then
+                        saw_help = true
+                    end
+                end
+                helpers.assert_ok(saw_help, "help cmd")
+            end)
+        end)
+    end)
     helpers.run_test_case("vimdoc_help_content", function()
         local original_rtp = vim.o.runtimepath
         local original_helplang = vim.o.helplang
@@ -115,9 +145,6 @@ function M.run()
                     preview = false,
                     prompt_debounce = 0,
                 })
-                helpers.wait_for(function()
-                    return picker.stream and picker.stream:running()
-                end, 1500)
                 helpers.wait_for_stream(picker)
                 helpers.wait_for_entries(picker)
                 picker.select._options.mappings["<cr>"](picker.select)
@@ -141,37 +168,6 @@ function M.run()
         if not ok then
             error(err)
         end
-    end)
-
-    helpers.run_test_case("vimdoc_action", function()
-        helpers.with_mock(vim.fn, "api_info", function()
-            return {
-                functions = {
-                    { name = "nvim_buf_get_lines", since = 1 },
-                },
-            }
-        end, function()
-            helpers.with_cmd_capture(function(calls)
-                local api_picker = require("fuzzy.pickers.vimdoc")
-                local picker = api_picker.open_vimdoc_picker({
-                    preview = false,
-                    prompt_debounce = 0,
-                })
-                helpers.wait_for_stream(picker)
-                helpers.wait_for_list(picker)
-                helpers.wait_for_entries(picker)
-                local map = picker.select._options.mappings
-                map["<cr>"](picker.select)
-                local saw_help = false
-                for _, call in ipairs(calls) do
-                    local arg = call.args and call.args[1] or nil
-                    if type(arg) == "table" and arg.cmd == "help" then
-                        saw_help = true
-                    end
-                end
-                helpers.assert_ok(saw_help, "help cmd")
-            end)
-        end)
     end)
 
     helpers.run_test_case("vimdoc_preview_content", function()

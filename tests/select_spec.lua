@@ -655,18 +655,13 @@ local function run_prompt_case()
         return helpers.is_window_valid(select.prompt_window)
     end, 1500)
     helpers.assert_ok(prompt_ready, "prompt window")
-    vim.api.nvim_buf_set_lines(select.prompt_buffer, 0, 1, false, { "hello" })
-    local query = select:_prompt_getquery()
-    select:_prompt_input(query, select._options.prompt_input)
-    select._state.query = query
+    helpers.type_query({ select = select }, "hello")
+    helpers.assert_ok(helpers.wait_for_prompt_text({ select = select }, "hello", 1500), "prompt text")
     helpers.wait_for(function()
         return select:query() == "hello"
     end, 1500)
     helpers.eq(select:query(), "hello", "prompt query")
-    vim.api.nvim_buf_set_lines(select.prompt_buffer, 0, 1, false, { "" })
-    query = select:_prompt_getquery()
-    select:_prompt_input(query, select._options.prompt_input)
-    select._state.query = query
+    helpers.type_query({ select = select }, "<c-u>")
     helpers.eq(select:query(), "", "prompt delete")
     select:close()
 end
@@ -694,13 +689,13 @@ local function run_prompt_sync_results_case()
     end, 1500)
     helpers.assert_ok(list_ready, "prompt sync list window")
 
-    select:_prompt_input("sync", select._options.prompt_input)
+    helpers.type_query({ select = select }, "sync")
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 2
     end, 1500)
     helpers.eq(select._state.entries[1], "alpha", "prompt sync entries")
 
-    select:_prompt_input("sync-pos", select._options.prompt_input)
+    helpers.type_query({ select = select }, "sync-pos")
     helpers.wait_for(function()
         return select._state.entries and #select._state.entries == 2
     end, 1500)
@@ -863,10 +858,14 @@ local function run_command_preview_case()
         prompt_list = true,
         prompt_input = false,
         preview = preview,
+        display = "filename",
     })
 
     select:open()
-    select:list({ first, second })
+    select:list({
+        { filename = first },
+        { filename = second },
+    })
     helpers.wait_for(function()
         return select.preview_window
             and helpers.is_window_valid(select.preview_window)

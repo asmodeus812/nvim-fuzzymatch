@@ -61,9 +61,7 @@ local function run_test_case(name, opts, expectations)
 
     if expectations.query then
         helpers.type_query(picker, expectations.query)
-        helpers.wait_for(function()
-            return helpers.get_query(picker) == expectations.query
-        end, 1500)
+        helpers.wait_for_prompt_text(picker, expectations.query)
         helpers.wait_for_match(picker)
         helpers.eq(helpers.get_query(picker), expectations.query, "query")
     end

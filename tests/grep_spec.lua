@@ -39,17 +39,14 @@ function M.run()
                 watch = true,
             })
 
-            local prompt_input = picker.select._options.prompt_input
-            assert(type(prompt_input) == "function")
-            --- @cast prompt_input fun(string)
-            prompt_input("needle")
+            helpers.type_query(picker, "needle")
             helpers.wait_for_stream(picker)
             helpers.wait_for_match(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "alpha.txt")
             helpers.wait_for_line_contains(picker, "needle match")
 
-            prompt_input("first")
+            helpers.type_query(picker, "first")
             helpers.wait_for_stream(picker)
             helpers.wait_for_match(picker)
             helpers.wait_for_line_contains(picker, "first line")
@@ -90,10 +87,7 @@ function M.run()
                 grep_opts = has_grep and "-n -H -r --line-buffered" or nil,
             })
 
-            local prompt_input = picker.select._options.prompt_input
-            assert(type(prompt_input) == "function")
-            --- @cast prompt_input fun(string)
-            prompt_input("middle")
+            helpers.type_query(picker, "middle")
             helpers.wait_for_stream(picker)
             helpers.wait_for_match(picker)
             helpers.wait_for_list(picker)
@@ -103,13 +97,24 @@ function M.run()
             cancel(picker.select)
 
             picker:open()
-            local prompt_input_again = picker.select._options.prompt_input
-            assert(type(prompt_input_again) == "function")
-            prompt_input_again("middle")
+            helpers.type_query(picker, "middle")
             helpers.wait_for_stream(picker)
             helpers.wait_for_match(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "middle line")
+            helpers.assert_ok(helpers.wait_for(function()
+                local lines = helpers.get_list_lines(picker)
+                local has_middle = false
+                local has_needle = false
+                for _, line in ipairs(lines or {}) do
+                    if line:find("middle line", 1, true) then
+                        has_middle = true
+                    elseif line:find("needle match", 1, true) then
+                        has_needle = true
+                    end
+                end
+                return has_middle and not has_needle
+            end, 1500), "cancel reopen list")
             local reopen_lines = helpers.get_list_lines(picker)
             helpers.assert_line_contains(reopen_lines, "middle line", "cancel reopen list")
 
@@ -129,9 +134,7 @@ function M.run()
             cancel_after(picker.select)
 
             picker:open()
-            local prompt_input_final = picker.select._options.prompt_input
-            assert(type(prompt_input_final) == "function")
-            prompt_input_final("needle")
+            helpers.type_query(picker, "needle")
             helpers.wait_for_stream(picker)
             helpers.wait_for_match(picker)
             helpers.wait_for_line_contains(picker, "needle match")
@@ -173,10 +176,7 @@ function M.run()
                 watch = false,
             })
 
-            local prompt_input = picker.select._options.prompt_input
-            assert(type(prompt_input) == "function")
-            --- @cast prompt_input fun(string)
-            prompt_input("middle")
+            helpers.type_query(picker, "middle")
             helpers.wait_for_stream(picker)
             helpers.wait_for_match(picker)
             helpers.wait_for_list(picker)
@@ -186,9 +186,7 @@ function M.run()
             cancel(picker.select)
 
             picker:open()
-            local prompt_input_again = picker.select._options.prompt_input
-            assert(type(prompt_input_again) == "function")
-            prompt_input_again("middle")
+            helpers.type_query(picker, "middle")
             helpers.wait_for_stream(picker)
             helpers.wait_for_match(picker)
             helpers.wait_for_list(picker)
@@ -204,9 +202,7 @@ function M.run()
             local cancel_after = picker:_cancel_prompt()
             cancel_after(picker.select)
             picker:open()
-            local prompt_input_final = picker.select._options.prompt_input
-            assert(type(prompt_input_final) == "function")
-            prompt_input_final("needle")
+            helpers.type_query(picker, "needle")
             helpers.wait_for_stream(picker)
             helpers.wait_for_match(picker)
             helpers.wait_for_line_contains(picker, "needle match")

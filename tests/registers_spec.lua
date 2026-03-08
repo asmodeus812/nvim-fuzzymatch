@@ -10,12 +10,19 @@ function M.run()
         local picker = registers_picker.open_registers_picker({
             prompt_debounce = 0,
             preview = false,
+            filter = "^a$",
         })
         helpers.wait_for_stream(picker)
         helpers.wait_for_list(picker)
         helpers.wait_for_line_contains(picker, "[a]")
         helpers.wait_for_line_contains(picker, "...")
         helpers.wait_for_list_extmarks(picker)
+        helpers.wait_for(function()
+            local extmarks = helpers.get_list_extmarks(picker)
+            local ok_id = pcall(helpers.assert_has_hl, extmarks, "Identifier")
+            local ok_str = pcall(helpers.assert_has_hl, extmarks, "String")
+            return ok_id and ok_str
+        end, 1500)
         local extmarks = helpers.get_list_extmarks(picker)
         helpers.assert_has_hl(extmarks, "Identifier", "registers prefix hl")
         helpers.assert_has_hl(extmarks, "String", "registers value hl")

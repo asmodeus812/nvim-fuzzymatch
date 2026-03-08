@@ -19,9 +19,8 @@ local function run_basic_case()
     helpers.assert_ok(results ~= nil, "match nil")
     local entries = results and results[1] or {}
     helpers.assert_ok(type(entries) == "table", "results")
-    if #entries > 0 then
-        helpers.assert_list_contains(entries, "alpha", "missing")
-    end
+    helpers.assert_ok(#entries > 0, "results empty")
+    helpers.assert_list_contains(entries, "alpha", "missing")
 end
 
 local function run_transform_key()
@@ -34,8 +33,9 @@ local function run_transform_key()
     match:match(list, "alp", function() end, "text")
     local results = match:wait(1500)
     helpers.assert_ok(results ~= nil, "transform nil")
-
-    helpers.assert_ok(results ~= nil, "entry")
+    local entries = results and results[1] or {}
+    helpers.assert_ok(#entries == 1, "transform count")
+    helpers.eq(entries[1].text, "alpha", "transform entry")
 end
 
 local function run_text_cb()
@@ -71,9 +71,9 @@ local function run_stop_case()
     end
 
     match:match(list, "item", function() end)
-    helpers.wait_for(function()
+    helpers.assert_ok(helpers.wait_for(function()
         return match:running()
-    end, 500)
+    end, 500), "running")
     match:stop()
     helpers.assert_ok(match:running() == false, "stopped")
 end

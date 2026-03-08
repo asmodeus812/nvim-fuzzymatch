@@ -41,19 +41,28 @@ function M.run()
                     helpers.wait_for(function()
                         local entry_list = helpers.get_entries(picker) or {}
                         return #entry_list >= 2
-                    end, 1500)
+                    end)
                     helpers.wait_for_line_contains(picker, "alpha.txt")
                     helpers.wait_for_line_contains(picker, "beta.txt")
 
-                    local prompt_input = picker.select._options.prompt_input
-                    assert(type(prompt_input) == "function")
-                    --- @cast prompt_input fun(string)
-                    prompt_input("beta")
+                    helpers.type_query(picker, "beta")
                     helpers.wait_for_stream(picker)
-                    helpers.wait_for(function()
-                        return picker.select:query():find("beta", 1, true) ~= nil
-                    end, 1500)
+                    helpers.wait_for_match(picker)
                     helpers.wait_for_line_contains(picker, "beta.txt")
+                    helpers.assert_ok(helpers.wait_for(function()
+                        local lines = helpers.get_list_lines(picker)
+                        local has_beta = false
+                        local has_alpha = false
+                        for _, line in ipairs(lines or {}) do
+                            if line:find("beta.txt", 1, true) then
+                                has_beta = true
+                            end
+                            if line:find("alpha.txt", 1, true) then
+                                has_alpha = true
+                            end
+                        end
+                        return has_beta and not has_alpha
+                    end), "filter")
                     helpers.assert_line_missing(helpers.get_list_lines(picker), "alpha.txt", "filter")
                     picker:close()
                 end)
@@ -100,6 +109,22 @@ function M.run()
                 helpers.wait_for_list(picker)
                 helpers.wait_for_line_contains(picker, "alpha.txt")
                 helpers.wait_for_line_contains(picker, "beta.txt")
+                helpers.assert_ok(helpers.wait_for(function()
+                    local lines = helpers.get_list_lines(picker)
+                    local has_alpha = false
+                    local has_beta = false
+                    local has_gamma = false
+                    for _, line in ipairs(lines or {}) do
+                        if line:find("alpha.txt", 1, true) then
+                            has_alpha = true
+                        elseif line:find("beta.txt", 1, true) then
+                            has_beta = true
+                        elseif line:find("gamma.txt", 1, true) then
+                            has_gamma = true
+                        end
+                    end
+                    return has_alpha and has_beta and not has_gamma
+                end), "cancel reopen list")
                 local reopen_lines = helpers.get_list_lines(picker)
                 helpers.assert_line_contains(reopen_lines, "alpha.txt", "cancel reopen list")
                 helpers.assert_line_contains(reopen_lines, "beta.txt", "cancel reopen list")
@@ -118,7 +143,7 @@ function M.run()
 
                 helpers.wait_for(function()
                     return tick_state.tick ~= before_version
-                end, 1500)
+                end)
 
                 local cancel_after = picker:_cancel_prompt()
                 cancel_after(picker.select)

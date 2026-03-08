@@ -21,10 +21,7 @@ function M.run()
         helpers.wait_for_line_contains(picker, "1 ")
         helpers.wait_for_line_contains(picker, "first")
 
-        local prompt_input = picker.select._options.prompt_input
-        assert(type(prompt_input) == "function")
-        --- @cast prompt_input fun(string)
-        prompt_input("second")
+        helpers.type_query(picker, "second")
         helpers.wait_for_stream(picker)
         helpers.wait_for_match(picker)
         helpers.wait_for_line_contains(picker, "second")
@@ -46,9 +43,7 @@ function M.run()
                 preview = false,
                 prompt_debounce = 0,
             })
-            helpers.wait_for(function()
-                return helpers.get_query(picker) == "alpha"
-            end, 1500)
+            helpers.wait_for_prompt_text(picker, "alpha")
             helpers.wait_for_prompt_cursor(picker)
             picker:close()
         end)
@@ -60,9 +55,7 @@ function M.run()
                 preview = false,
                 prompt_debounce = 0,
             })
-            helpers.wait_for(function()
-                return helpers.get_query(picker) == "alpha"
-            end, 1500)
+            helpers.wait_for_prompt_text(picker, "alpha")
             helpers.wait_for_prompt_cursor(picker)
             picker:close()
         end)

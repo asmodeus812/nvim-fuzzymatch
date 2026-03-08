@@ -169,10 +169,10 @@ function M.run()
     picker:open()
     helpers.wait_for_list(picker)
     helpers.wait_for_line_contains(picker, "alpha")
-    helpers.wait_for(function()
+    helpers.assert_ok(helpers.wait_for(function()
         return picker.select and picker.select._state.entries
             and #picker.select._state.entries == 3
-    end, 1500)
+    end, 1500), "entries")
 
     helpers.eq(#picker.select._state.entries, 3, "entries")
     local lines = helpers.get_list_lines(picker)
@@ -180,24 +180,21 @@ function M.run()
     helpers.assert_line_contains(lines, "alpha", "missing")
 
     helpers.type_query(picker, "gam")
-    helpers.wait_for(function()
-        return picker.select:query():find("gam", 1, true) ~= nil
-    end, 1500)
     helpers.wait_for_match(picker)
 
-    helpers.wait_for(function()
+    helpers.assert_ok(helpers.wait_for(function()
         local status = get_status_text(picker.select.prompt_buffer)
         return status and status:find("1/3", 1, true) ~= nil
-    end, 1500)
+    end, 1500), "status filtered")
 
     helpers.type_query(picker, "<c-u>")
-    helpers.wait_for(function()
+    helpers.assert_ok(helpers.wait_for(function()
         return picker.select:query() == ""
-    end, 1500)
-    helpers.wait_for(function()
+    end, 1500), "prompt cleared")
+    helpers.assert_ok(helpers.wait_for(function()
         local status = get_status_text(picker.select.prompt_buffer)
         return status and status:find("3/3", 1, true) ~= nil
-    end, 1500)
+    end, 1500), "status reset")
 
     picker:close()
 
@@ -220,11 +217,11 @@ function M.run()
     stream_picker:open()
     helpers.wait_for_list(stream_picker)
     helpers.wait_for_line_contains(stream_picker, "ONE")
-    helpers.wait_for(function()
+    helpers.assert_ok(helpers.wait_for(function()
         return stream_picker.select
             and stream_picker.select._state.entries
             and #stream_picker.select._state.entries == 3
-    end, 1500)
+    end, 1500), "stream entries")
 
     local stream_lines = helpers.get_list_lines(stream_picker)
     helpers.assert_line_contains(stream_lines, "ONE", "display")
@@ -260,10 +257,10 @@ function M.run()
         end
 
         local function wait_for_entries(picker, min_count)
-            helpers.wait_for(function()
+            helpers.assert_ok(helpers.wait_for(function()
                 local entries = helpers.get_entries(picker)
                 return entries and #entries >= min_count
-            end, 1500)
+            end, 1500), "entries count")
         end
 
         local picker = Picker.new({
@@ -301,23 +298,23 @@ function M.run()
 
         picker:open()
         helpers.type_query(picker, "ta")
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return picker.select:query() == "ta"
-        end, 1500)
+        end, 1500), "prompt query")
 
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return state.sent >= 1
-        end, 1500)
+        end, 1500), "chunk 1 sent")
         wait_for_entries(picker, 1)
 
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return state.sent >= 2
-        end, 1500)
+        end, 1500), "chunk 2 sent")
         wait_for_entries(picker, 3)
 
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return state.sent >= 3
-        end, 1500)
+        end, 1500), "chunk 3 sent")
         wait_for_entries(picker, 6)
 
         helpers.wait_for_stream(picker)
@@ -391,29 +388,29 @@ function M.run()
 
         picker:open()
         helpers.type_query(picker, "ta")
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return picker.select:query() == "ta"
-        end, 1500)
+        end, 1500), "prompt query")
         state.allow_start = true
 
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return state.sent >= 2
-        end, 1500)
+        end, 1500), "chunk 2 sent")
         helpers.wait_for_match(picker, 1500)
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             local entries = helpers.get_entries(picker)
             return entries and #entries >= 1
-        end, 1500)
+        end, 1500), "entries after chunk 2")
 
         helpers.type_query(picker, "th")
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return picker.select:query() == "th"
-        end, 1500)
+        end, 1500), "prompt query")
         state.allow_chunk3 = true
 
         helpers.wait_for_stream(picker)
         helpers.wait_for_match(picker, 1500)
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             local entries = helpers.get_entries(picker) or {}
             if #entries < 1 then
                 return false
@@ -424,7 +421,7 @@ function M.run()
                 end
             end
             return true
-        end, 1500, "th match from later chunk")
+        end, 1500), "th match from later chunk")
         picker:close()
     end)
 
@@ -442,16 +439,16 @@ function M.run()
                 end,
             })
             interactive_picker:open()
-            helpers.wait_for(function()
+            helpers.assert_ok(helpers.wait_for(function()
                 return interactive_picker.select and interactive_picker.select:isopen()
-            end, 1500)
+            end, 1500), "interactive open")
             helpers.eq(interactive_picker._test_stream_count(), 0, "interactive open should not start stream")
             interactive_picker._state.context.args = { "--test-open" }
             interactive_picker:hide()
             interactive_picker:open()
-            helpers.wait_for(function()
+            helpers.assert_ok(helpers.wait_for(function()
                 return interactive_picker.select and interactive_picker.select:isopen()
-            end, 1500)
+            end, 1500), "interactive reopen")
             helpers.eq(interactive_picker._test_stream_count(), 0, "interactive reopen should not start stream")
             interactive_picker:close()
         end)
@@ -510,18 +507,18 @@ function M.run()
             prompt_debounce = 0,
         })
         picker:open()
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return helpers.is_window_valid(picker.select.prompt_window)
-        end, 1500)
+        end, 1500), "prompt window")
         local header = get_header_text(picker.select.prompt_buffer)
         helpers.assert_ok(header and header:find("fuzzy-header-a", 1, true), "header cwd a")
 
         picker:hide()
         cwd = "/tmp/fuzzy-header-b"
         picker:open()
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return helpers.is_window_valid(picker.select.prompt_window)
-        end, 1500)
+        end, 1500), "prompt window")
         header = get_header_text(picker.select.prompt_buffer)
         helpers.assert_ok(header and header:find("fuzzy-header-b", 1, true), "header cwd b")
         picker:close()
@@ -539,9 +536,9 @@ function M.run()
             },
         })
         picker:open()
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return helpers.is_window_valid(picker.select.prompt_window)
-        end, 1500)
+        end, 1500), "prompt window")
         local header = get_header_text(picker.select.prompt_buffer) or ""
         helpers.assert_ok(header:find("Picker", 1, true), "header title")
         helpers.assert_ok(header:find("<c-x>", 1, true), "header action key")
@@ -563,9 +560,9 @@ function M.run()
             prompt_debounce = 0,
         })
         picker:open()
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return helpers.is_window_valid(picker.select.prompt_window)
-        end, 1500)
+        end, 1500), "prompt window")
         local header = get_header_text(picker.select.prompt_buffer) or ""
         helpers.assert_ok(header:find("Alpha", 1, true), "header alpha")
         helpers.assert_ok(header:find("Beta", 1, true), "header beta")
@@ -586,9 +583,9 @@ function M.run()
             prompt_debounce = 0,
         })
         picker:open()
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             return helpers.is_window_valid(picker.select.prompt_window)
-        end, 1500)
+        end, 1500), "prompt window")
         local header = get_header_text(picker.select.prompt_buffer) or ""
         helpers.assert_ok(header:find("/.../", 1, true), "header cwd ellipsis")
         helpers.assert_ok(header:find("fuzzymatch", 1, true), "header cwd tail")
@@ -694,7 +691,7 @@ function M.run()
             },
         })
     end, function(_, _, picker)
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             local current = get_last_args(picker)
             for _, entry in ipairs((current.args and current.args.items) or {}) do
                 if entry.text == "rerun-quickfix-marker" and entry.bufnr == picker._test_qf_buf then
@@ -702,7 +699,7 @@ function M.run()
                 end
             end
             return false
-        end, 1500)
+        end, 1500), "quickfix rerun args ready")
         local after = get_last_args(picker)
         local found = false
         for _, entry in ipairs((after.args and after.args.items) or {}) do
@@ -746,7 +743,7 @@ function M.run()
             },
         })
     end, function(_, _, picker)
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             local current = get_last_args(picker)
             for _, entry in ipairs((current.args and current.args.items) or {}) do
                 if entry.text == "rerun-loclist-marker" and entry.bufnr == picker._test_ll_buf then
@@ -754,7 +751,7 @@ function M.run()
                 end
             end
             return false
-        end, 1500)
+        end, 1500), "loclist rerun args ready")
         local after = get_last_args(picker)
         local found = false
         for _, entry in ipairs((after.args and after.args.items) or {}) do
@@ -789,7 +786,7 @@ function M.run()
                 picker:hide()
                 picker:open()
                 helpers.wait_for_stream(picker)
-                helpers.wait_for(function()
+                helpers.assert_ok(helpers.wait_for(function()
                     local current = get_last_args(picker)
                     for _, item in ipairs((current.args and current.args.items) or {}) do
                         if item.nr == 1 then
@@ -797,7 +794,7 @@ function M.run()
                         end
                     end
                     return false
-                end, 1500)
+                end, 1500), "jumps marker")
                 local after = get_last_args(picker)
                 helpers.assert_ok(
                     picker._test_stream_count() > count_before,
@@ -830,7 +827,7 @@ function M.run()
                 picker:hide()
                 picker:open()
                 helpers.wait_for_stream(picker)
-                helpers.wait_for(function()
+                helpers.assert_ok(helpers.wait_for(function()
                     local current = get_last_args(picker)
                     for _, item in ipairs((current.args and current.args.items) or {}) do
                         if item.mark == "a" then
@@ -838,7 +835,7 @@ function M.run()
                         end
                     end
                     return false
-                end, 1500)
+                end, 1500), "marks marker")
                 local after = get_last_args(picker)
                 helpers.assert_ok(
                     picker._test_stream_count() > count_before,
@@ -864,7 +861,17 @@ function M.run()
         })
     end, function()
         vim.fn.setreg("a", "alpha")
-    end, function(_, after)
+    end, function(_, _, picker)
+        helpers.assert_ok(helpers.wait_for(function()
+            local current = get_last_args(picker)
+            for _, entry in ipairs((current.args and current.args.items) or {}) do
+                if entry.name == "a" and (entry.linecount or 0) > 0 then
+                    return true
+                end
+            end
+            return false
+        end, 1500), "registers args ready")
+        local after = get_last_args(picker)
         local found = false
         for _, entry in ipairs(after.args.items or {}) do
             if entry.name == "a" and (entry.linecount or 0) > 0 then
@@ -883,7 +890,7 @@ function M.run()
     end, function()
         vim.keymap.set("n", "gz", "echo 1", { silent = true })
     end, function(_, _, picker)
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             local current = get_last_args(picker)
             for _, mode_entry in ipairs((current.args and current.args.items) or {}) do
                 for _, sig in ipairs(mode_entry.global_sig or {}) do
@@ -893,7 +900,7 @@ function M.run()
                 end
             end
             return false
-        end, 1500)
+        end, 1500), "keymaps args ready")
         local after = get_last_args(picker)
         local found = false
         for _, mode_entry in ipairs((after.args and after.args.items) or {}) do
@@ -919,10 +926,10 @@ function M.run()
         vim.cmd("tabnew")
         picker._test_tab_opened = true
     end, function(before, _, picker)
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             local current = get_last_args(picker)
             return #(current.args and current.args.items or {}) > #(before.args.items or {})
-        end, 1500)
+        end, 1500), "tabs args ready")
         local after = get_last_args(picker)
         helpers.assert_ok(#(after.args and after.args.items or {}) > #(before.args.items or {}), "tabs args")
         if #vim.api.nvim_list_tabpages() > 1 then
@@ -945,7 +952,7 @@ function M.run()
         picker._test_oldfiles = { one, two }
         vim.v.oldfiles = { one, two }
     end, function(_, _, picker)
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             local current = get_last_args(picker)
             for _, item in ipairs((current.args and current.args.items) or {}) do
                 if item == picker._test_oldfiles[2] then
@@ -953,7 +960,7 @@ function M.run()
                 end
             end
             return false
-        end, 1500)
+        end, 1500), "oldfiles args ready")
         local after = get_last_args(picker)
         helpers.assert_list_contains(after.args.items, picker._test_oldfiles[2], "oldfiles args")
     end)
@@ -966,7 +973,7 @@ function M.run()
     end, function()
         vim.fn.histadd("search", "needle")
     end, function(_, _, picker)
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             local current = get_last_args(picker)
             for _, item in ipairs((current.args and current.args.items) or {}) do
                 if item == "needle" then
@@ -974,7 +981,7 @@ function M.run()
                 end
             end
             return false
-        end, 1500)
+        end, 1500), "search history args ready")
         local after = get_last_args(picker)
         helpers.assert_list_contains(after.args.items, "needle", "search history args")
     end)
@@ -987,7 +994,7 @@ function M.run()
     end, function()
         vim.fn.histadd("cmd", "echo rerun")
     end, function(_, _, picker)
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             local current = get_last_args(picker)
             for _, item in ipairs((current.args and current.args.items) or {}) do
                 if item == "echo rerun" then
@@ -995,7 +1002,7 @@ function M.run()
                 end
             end
             return false
-        end, 1500)
+        end, 1500), "command history args ready")
         local after = get_last_args(picker)
         helpers.assert_list_contains(after.args.items, "echo rerun", "command history args")
     end)
@@ -1009,11 +1016,11 @@ function M.run()
         vim.fn.setqflist({}, "r", { title = "StackA", items = {} })
         vim.fn.setqflist({}, "r", { title = "StackB", items = {} })
     end, function(_, _, picker)
-        helpers.wait_for(function()
+        helpers.assert_ok(helpers.wait_for(function()
             local current = get_last_args(picker)
             local history_text = current.args and current.args.history_text or ""
             return history_text:find("StackB", 1, true) ~= nil
-        end, 1500)
+        end, 1500), "quickfix stack args ready")
         local after = get_last_args(picker)
         helpers.assert_ok(after.args.history_text:find("StackB", 1, true) ~= nil, "quickfix stack args")
     end)
@@ -1039,11 +1046,11 @@ function M.run()
                 picker:hide()
                 picker:open()
                 helpers.wait_for_stream(picker)
-                helpers.wait_for(function()
+                helpers.assert_ok(helpers.wait_for(function()
                     local current = get_last_args(picker)
                     local history_text = current.args and current.args.history_text or ""
                     return history_text:find("list 2", 1, true) ~= nil
-                end, 1500)
+                end, 1500), "loclist stack args ready")
                 local after = get_last_args(picker)
                 helpers.assert_ok(
                     picker._test_stream_count() > count_before,

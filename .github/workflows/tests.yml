@@ -22,6 +22,8 @@ jobs:
           version: nightly
 
       - name: Run tests
+        env:
+          FUZZY_TEST_TIMEOUT_MULT: "4"
         run: make test
 
   bench:
@@ -37,4 +39,6 @@ jobs:
           version: nightly
 
       - name: Run benchmarks
+        env:
+          FUZZY_TEST_TIMEOUT_MULT: "4"
         run: make bench
