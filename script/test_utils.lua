@@ -1,4 +1,9 @@
 local M = {}
+M._counts = {
+    total = 0,
+    spec = {},
+    current = nil,
+}
 
 function M.count_table_entries(value)
     return vim.tbl_count(value or {})
@@ -21,6 +26,7 @@ function M.setup_global_state()
     vim.o.shada = ""
     vim.o.updatecount = 0
     vim.o.hidden = true
+    vim.o.showmode = false
 end
 
 function M.setup_runtime()
@@ -288,13 +294,31 @@ function M.with_cwd(dir_path, callback)
 end
 
 function M.run_test_case(name, callback)
-    print(string.format("running: %s", tostring(name)))
+    print(string.format("case: %s", tostring(name)))
+    local current = M._counts.current or "unknown"
+    M._counts.total = M._counts.total + 1
+    M._counts.spec[current] = (M._counts.spec[current] or 0) + 1
     M.reset_state()
     local ok, err = pcall(callback)
     M.reset_state()
     if not ok then
         error(string.format("%s: %s", name, err))
     end
+end
+
+function M.start_spec(name)
+    M._counts.current = tostring(name or "unknown")
+    M._counts.spec[M._counts.current] = M._counts.spec[M._counts.current] or 0
+end
+
+function M.finish_spec(name)
+    local spec_name = tostring(name or M._counts.current or "unknown")
+    M._counts.current = nil
+    return M._counts.spec[spec_name] or 0
+end
+
+function M.total_cases()
+    return M._counts.total or 0
 end
 
 function M.with_mock(target, key, value, callback)

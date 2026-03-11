@@ -6,7 +6,7 @@ local Picker = require("fuzzy.picker")
 local M = { name = "files" }
 
 function M.run()
-    helpers.run_test_case("files", function()
+    helpers.run_test_case("files_basic", function()
         helpers.with_mock(util, "command_is_available", function(command_name)
             if command_name == "rg" or command_name == "fd" then
                 return false

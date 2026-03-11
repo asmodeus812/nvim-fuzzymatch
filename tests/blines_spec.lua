@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "blines" }
 
 function M.run()
-    helpers.run_test_case("blines", function()
+    helpers.run_test_case("blines_basic", function()
         local buf = helpers.create_named_buffer("blines.txt", {
             "first",
             "second",

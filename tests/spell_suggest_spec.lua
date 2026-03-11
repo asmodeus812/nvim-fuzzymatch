@@ -8,7 +8,7 @@ local function set_cursor(row, col)
 end
 
 function M.run()
-    helpers.run_test_case("spell_suggest", function()
+    helpers.run_test_case("spell_suggest_basic", function()
         local buf = helpers.create_named_buffer("spell.txt", {
             "helo world",
         })

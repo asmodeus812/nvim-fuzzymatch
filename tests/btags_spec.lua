@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "btags" }
 
 function M.run()
-    helpers.run_test_case("btags", function()
+    helpers.run_test_case("btags_basic", function()
         local buf = helpers.create_named_buffer("btags.txt", { "alpha", "beta" })
         vim.api.nvim_set_current_buf(buf)
         local tag_list = {

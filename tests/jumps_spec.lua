@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "jumps" }
 
 function M.run()
-    helpers.run_test_case("jumps", function()
+    helpers.run_test_case("jumps_basic", function()
         local dir_path = helpers.create_temp_dir()
         local file_path = vim.fs.joinpath(dir_path, "jumps.txt")
         helpers.write_file(file_path, "one\ntwo\nthree\n")

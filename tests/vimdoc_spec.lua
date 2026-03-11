@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "vimdoc" }
 
 function M.run()
-    helpers.run_test_case("vimdoc", function()
+    helpers.run_test_case("vimdoc_basic", function()
         helpers.with_mock(vim.fn, "api_info", function()
             return {
                 functions = {

@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "tabs" }
 
 function M.run()
-    helpers.run_test_case("tabs", function()
+    helpers.run_test_case("tabs_basic", function()
         helpers.with_mock_map(vim.api, {
             nvim_list_tabpages = function()
                 return { "tab-one" }

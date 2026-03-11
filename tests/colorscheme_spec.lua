@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "colorscheme" }
 
 function M.run()
-    helpers.run_test_case("colorscheme", function()
+    helpers.run_test_case("colorscheme_basic", function()
         helpers.with_mock(vim.fn, "getcompletion", function(_, _)
             return { "colorscheme-a" }
         end, function()

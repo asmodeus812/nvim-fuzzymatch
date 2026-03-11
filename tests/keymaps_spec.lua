@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "keymaps" }
 
 function M.run()
-    helpers.run_test_case("keymaps", function()
+    helpers.run_test_case("keymaps_basic", function()
         helpers.with_mock(vim.api, "nvim_get_keymap", function()
             return {
                 { lhs = "gx", rhs = "do", desc = "map-test" },

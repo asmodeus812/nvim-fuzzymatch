@@ -6,7 +6,7 @@ local Picker = require("fuzzy.picker")
 local M = { name = "grep" }
 
 function M.run()
-    helpers.run_test_case("grep", function()
+    helpers.run_test_case("grep_basic", function()
         local has_rg = util.command_is_available("rg")
         local has_grep = util.command_is_available("grep")
         if not has_rg and not has_grep then

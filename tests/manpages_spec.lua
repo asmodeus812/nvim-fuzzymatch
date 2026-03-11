@@ -5,7 +5,7 @@ local util = require("fuzzy.pickers.util")
 local M = { name = "manpages" }
 
 function M.run()
-    helpers.run_test_case("manpages", function()
+    helpers.run_test_case("manpages_basic", function()
         helpers.with_mock_map(util, {
             pick_first_command = function()
                 return "apropos"

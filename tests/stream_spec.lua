@@ -169,13 +169,13 @@ local function run_trailing_partial_case()
 end
 
 function M.run()
-    run_lines_case()
-    run_transform_case()
-    run_bytes_case()
-    run_restart_case()
-    run_context_case()
-    run_partial_line_case()
-    run_trailing_partial_case()
+    helpers.run_test_case("stream_lines", run_lines_case)
+    helpers.run_test_case("stream_transform", run_transform_case)
+    helpers.run_test_case("stream_bytes", run_bytes_case)
+    helpers.run_test_case("stream_restart", run_restart_case)
+    helpers.run_test_case("stream_context", run_context_case)
+    helpers.run_test_case("stream_partial_line", run_partial_line_case)
+    helpers.run_test_case("stream_trailing_partial", run_trailing_partial_case)
 end
 
 return M

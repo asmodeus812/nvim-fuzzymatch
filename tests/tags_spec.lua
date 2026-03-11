@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "tags" }
 
 function M.run()
-    helpers.run_test_case("tags", function()
+    helpers.run_test_case("tags_basic", function()
         helpers.with_mock(vim.fn, "getcompletion", function(_, _)
             return { "tag-one" }
         end, function()

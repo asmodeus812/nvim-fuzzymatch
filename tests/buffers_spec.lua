@@ -133,17 +133,19 @@ function M.run()
         }),
     }
 
-    run_test_case("default", {
-        sort_lastused = true,
-        ignore_current_buffer = false,
-        show_unlisted = true,
-        show_unloaded = true,
-        preview = false,
-        icons = false,
-    }, {
-        include = { bufs.buf1, bufs.buf2 },
-        display = display,
-    })
+    helpers.run_test_case("buffers_default", function()
+        run_test_case("default", {
+            sort_lastused = true,
+            ignore_current_buffer = false,
+            show_unlisted = true,
+            show_unloaded = true,
+            preview = false,
+            icons = false,
+        }, {
+            include = { bufs.buf1, bufs.buf2 },
+            display = display,
+        })
+    end)
 
     helpers.run_test_case("buffers_highlights", function()
         local picker = helpers.open_buffers_picker({
@@ -161,59 +163,69 @@ function M.run()
         picker:close()
     end)
 
-    run_test_case("ignore_current", {
-        ignore_current_buffer = true,
-        show_unlisted = true,
-        show_unloaded = true,
-        preview = false,
-        icons = false,
-    }, {
-        exclude = { vim.api.nvim_get_current_buf() },
-        include = { bufs.buf2 },
-        display = display,
-    })
+    helpers.run_test_case("buffers_ignore_current", function()
+        run_test_case("ignore_current", {
+            ignore_current_buffer = true,
+            show_unlisted = true,
+            show_unloaded = true,
+            preview = false,
+            icons = false,
+        }, {
+            exclude = { vim.api.nvim_get_current_buf() },
+            include = { bufs.buf2 },
+            display = display,
+        })
+    end)
 
-    run_test_case("unlisted", {
-        show_unlisted = false,
-        show_unloaded = true,
-        preview = false,
-        icons = false,
-    }, {
-        exclude = { bufs.buf3 },
-        display = display,
-    })
+    helpers.run_test_case("buffers_unlisted", function()
+        run_test_case("unlisted", {
+            show_unlisted = false,
+            show_unloaded = true,
+            preview = false,
+            icons = false,
+        }, {
+            exclude = { bufs.buf3 },
+            display = display,
+        })
+    end)
 
-    run_test_case("listed", {
-        show_unlisted = true,
-        show_unloaded = true,
-        preview = false,
-        icons = false,
-    }, {
-        include = { bufs.buf3 },
-        display = display,
-    })
+    helpers.run_test_case("buffers_listed", function()
+        run_test_case("listed", {
+            show_unlisted = true,
+            show_unloaded = true,
+            preview = false,
+            icons = false,
+        }, {
+            include = { bufs.buf3 },
+            display = display,
+        })
+    end)
 
-    run_test_case("query", {
-        show_unlisted = true,
-        show_unloaded = true,
-        preview = false,
-        icons = false,
-    }, {
-        query = "buffer one",
-        display = display,
-    })
+    helpers.run_test_case("buffers_query", function()
+        run_test_case("query", {
+            show_unlisted = true,
+            show_unloaded = true,
+            preview = false,
+            icons = false,
+        }, {
+            query = "buffer one",
+            display = display,
+        })
+    end)
 
-    run_test_case("cwd", {
-        show_unlisted = true,
-        show_unloaded = true,
-        preview = false,
-        icons = false,
-        cwd = cwd_dir,
-    }, {
-        include = { cwd_buf },
-        exclude = { other_buf },
-        display = display,
-    })
+    helpers.run_test_case("buffers_cwd", function()
+        run_test_case("cwd", {
+            show_unlisted = true,
+            show_unloaded = true,
+            preview = false,
+            icons = false,
+            cwd = cwd_dir,
+        }, {
+            include = { cwd_buf },
+            exclude = { other_buf },
+            display = display,
+        })
+    end)
 
     helpers.run_test_case("cwd_uses_content_arg", function()
         local Picker = require("fuzzy.picker")

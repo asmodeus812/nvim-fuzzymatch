@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "registry" }
 
 function M.run()
-    helpers.run_test_case("registry", function()
+    helpers.run_test_case("registry_basic", function()
         local registry = require("fuzzy.pickers.registry")
         registry.clear_picker_registry()
 

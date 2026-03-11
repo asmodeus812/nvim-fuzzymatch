@@ -3,7 +3,7 @@ local helpers = require("script.test_utils")
 local M = { name = "loclist_stack" }
 
 function M.run()
-    helpers.run_test_case("loclist_stack", function()
+    helpers.run_test_case("loclist_stack_basic", function()
         helpers.with_mock(vim.fn, "execute", function(command_name)
             if command_name == "lhistory" then
                 return "  list 1  Loclist-1\n  list 2  Loclist-2\n"

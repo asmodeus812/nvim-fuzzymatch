@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "changes" }
 
 function M.run()
-    helpers.run_test_case("changes", function()
+    helpers.run_test_case("changes_basic", function()
         local buf = helpers.create_named_buffer("changes.txt", { "one", "two" })
         vim.api.nvim_set_current_buf(buf)
         local change_list = {

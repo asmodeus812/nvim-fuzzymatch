@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "marks" }
 
 function M.run()
-    helpers.run_test_case("marks", function()
+    helpers.run_test_case("marks_basic", function()
         local dir_path = helpers.create_temp_dir()
         local file_path = vim.fs.joinpath(dir_path, "marks.txt")
         helpers.write_file(file_path, "mark one\nmark two\n")

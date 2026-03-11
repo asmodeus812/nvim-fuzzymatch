@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "uiselect" }
 
 function M.run()
-    helpers.run_test_case("uiselect", function()
+    helpers.run_test_case("uiselect_basic", function()
         local picked = nil
         local items = { "one", "two" }
         local picker = require("fuzzy.pickers.select").open_select_picker(

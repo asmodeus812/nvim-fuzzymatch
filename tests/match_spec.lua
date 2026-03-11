@@ -112,12 +112,12 @@ local function run_merge_case()
 end
 
 function M.run()
-    run_basic_case()
-    run_transform_key()
-    run_text_cb()
-    run_stop_case()
-    run_destroy_case()
-    run_merge_case()
+    helpers.run_test_case("match_basic", run_basic_case)
+    helpers.run_test_case("match_transform_key", run_transform_key)
+    helpers.run_test_case("match_text_cb", run_text_cb)
+    helpers.run_test_case("match_stop", run_stop_case)
+    helpers.run_test_case("match_destroy", run_destroy_case)
+    helpers.run_test_case("match_merge", run_merge_case)
 end
 
 return M

@@ -3,7 +3,7 @@ local helpers = require("script.test_utils")
 local M = { name = "quickfix_stack" }
 
 function M.run()
-    helpers.run_test_case("quickfix_stack", function()
+    helpers.run_test_case("quickfix_stack_basic", function()
         helpers.with_mock(vim.fn, "execute", function(command_name)
             if command_name == "chistory" then
                 return "  list 1  Quickfix-1\n  list 2  Quickfix-2\n"

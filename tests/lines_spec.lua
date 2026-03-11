@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "lines" }
 
 function M.run()
-    helpers.run_test_case("lines", function()
+    helpers.run_test_case("lines_basic", function()
         local buf_one = helpers.create_named_buffer("line_one.txt", {
             "alpha line",
             "beta line",

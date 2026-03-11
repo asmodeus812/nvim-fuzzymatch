@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "quickfix" }
 
 function M.run()
-    helpers.run_test_case("quickfix", function()
+    helpers.run_test_case("quickfix_basic", function()
         local dir_path = helpers.create_temp_dir()
         local file_path = vim.fs.joinpath(dir_path, "quickfix.txt")
         helpers.write_file(file_path, "alpha\nbeta\n")

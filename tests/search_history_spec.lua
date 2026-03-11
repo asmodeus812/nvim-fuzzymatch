@@ -3,7 +3,7 @@ local helpers = require("script.test_utils")
 local M = { name = "search_history" }
 
 function M.run()
-    helpers.run_test_case("search_history", function()
+    helpers.run_test_case("search_history_basic", function()
         helpers.with_mock_map(vim.fn, {
             histnr = function()
                 return 2

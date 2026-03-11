@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "commands" }
 
 function M.run()
-    helpers.run_test_case("commands", function()
+    helpers.run_test_case("commands_basic", function()
         helpers.with_mock(vim.api, "nvim_get_commands", function(opts)
             if opts and opts.builtin then
                 return { edit = {}, write = {} }

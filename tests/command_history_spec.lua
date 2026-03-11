@@ -4,7 +4,7 @@ local helpers = require("script.test_utils")
 local M = { name = "command_history" }
 
 function M.run()
-    helpers.run_test_case("command_history", function()
+    helpers.run_test_case("command_history_basic", function()
         helpers.with_mock_map(vim.fn, {
             histnr = function()
                 return 2
