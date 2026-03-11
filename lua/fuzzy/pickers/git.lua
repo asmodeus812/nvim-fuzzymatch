@@ -100,6 +100,11 @@ local function build_git_picker(opts, config)
         decorators = config.decorators,
         display = config.display,
         actions = config.actions,
+        match_timer = 15,
+        match_step = 25000,
+        stream_step = 100000,
+        stream_debounce = 0,
+        prompt_debounce = 60,
     }, opts))
 
     picker:open()

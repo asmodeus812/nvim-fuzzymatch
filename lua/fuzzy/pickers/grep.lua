@@ -198,7 +198,13 @@ function M.open_grep_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(convert, opts),
         decorators = decorators,
-    }, opts))
+    }, opts, {
+        match_timer = 30,
+        match_step = 75000,
+        stream_step = 250000,
+        stream_debounce = 0,
+        prompt_debounce = 125,
+    }))
 
     converter:bind(picker)
     picker:open()
