@@ -3,7 +3,6 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class HelptagsPickerOptions
---- @field preview? boolean Enable preview window
 
 local M = {}
 

@@ -3,13 +3,14 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class FilesPickerOptions
---- @field cwd? string|fun(): string Working directory for the scan
+--- @field cwd? boolean|string|fun(): string Working directory for the scan; `true` resolves to `vim.loop.cwd`
 --- @field hidden? boolean Include hidden files
 --- @field follow? boolean Follow symlinks
 --- @field no_ignore? boolean Disable ignore files
 --- @field no_ignore_vcs? boolean Disable VCS ignore files
---- @field preview? boolean Enable preview window
+--- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 --- @field icons? boolean Enable file icons
+--- @field watch? boolean Refresh on reopen when the directory changes
 
 local M = {}
 

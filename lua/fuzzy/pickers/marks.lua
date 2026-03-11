@@ -7,10 +7,7 @@ local utils = require("fuzzy.utils")
 --- @field marks? string Pattern of marks to include
 --- @field include_local? boolean Include buffer-local marks
 --- @field include_global? boolean Include global marks
---- @field filename_only? boolean Display only the filename
---- @field path_shorten? number|nil Path shorten value for display
---- @field home_to_tilde? boolean Replace home prefix with ~ in display
---- @field preview? boolean Enable preview window
+--- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 --- @field icons? boolean Enable file icons
 
 local M = {}

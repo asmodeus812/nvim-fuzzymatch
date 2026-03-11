@@ -4,7 +4,7 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class BufferLinesPickerOptions
---- @field preview? boolean Enable preview window
+--- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 --- @field prompt_query? string|nil Initial prompt query
 
 local M = {}

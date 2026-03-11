@@ -13,11 +13,11 @@ local util = require("fuzzy.pickers.util")
 ---   true: include all special buftypes
 ---   table: include only listed buftypes, as an array or map
 --- @field sort_lastused? boolean Sort by last used, current/alternate pinned
---- @field cwd? string|fun(): string Working directory for path display
+--- @field cwd? boolean|string|fun(): string Working directory for path display; `true` resolves to `vim.loop.cwd`
 --- @field filename_only? boolean Display only the filename
 --- @field path_shorten? number|nil Path shorten value for display
 --- @field home_to_tilde? boolean Replace home prefix with ~ in display
---- @field preview? boolean Enable preview window
+--- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 --- @field icons? boolean Enable file icons
 
 local M = {}

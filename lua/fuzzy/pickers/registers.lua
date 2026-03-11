@@ -4,7 +4,7 @@ local util = require("fuzzy.pickers.util")
 
 --- @class RegistersPickerOptions
 --- @field filter? string|nil Pattern to filter register names
---- @field preview? boolean Enable preview window
+--- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 
 local M = {}
 

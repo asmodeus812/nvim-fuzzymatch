@@ -3,9 +3,9 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class KeymapsPickerOptions
---- @field show_desc? boolean Include descriptions in display
---- @field show_details? boolean Include verbose details in display
---- @field preview? boolean Enable preview window
+--- @field include_buffer? boolean Include buffer-local keymaps
+--- @field modes? string[] Modes to include
+--- @field max_text? integer Maximum displayed rhs width before truncation
 
 local M = {}
 

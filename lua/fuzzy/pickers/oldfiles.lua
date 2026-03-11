@@ -4,10 +4,10 @@ local utils = require("fuzzy.utils")
 local util = require("fuzzy.pickers.util")
 
 --- @class OldfilesPickerOptions
---- @field stat_file? boolean Stat entries to filter missing files
---- @field preview? boolean Enable preview window
+--- @field max? integer|nil Maximum number of entries to emit
+--- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 --- @field icons? boolean Enable file icons
---- @field cwd? string|fun(): string Working directory for path display
+--- @field cwd? boolean|string|fun(): string Working directory for path display; `true` resolves to `vim.loop.cwd`
 --- @field filename_only? boolean Display only the filename
 --- @field path_shorten? number|nil Path shorten value for display
 --- @field home_to_tilde? boolean Replace home prefix with ~ in display

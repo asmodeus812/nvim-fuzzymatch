@@ -4,22 +4,23 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class GrepPickerOptions
---- @field cwd? string|fun(): string Working directory for the search
+--- @field cwd? boolean|string|fun(): string Working directory for the search; `true` resolves to `vim.loop.cwd`
 --- @field hidden? boolean Include hidden files
 --- @field follow? boolean Follow symlinks
 --- @field no_ignore? boolean Disable ignore files
 --- @field no_ignore_vcs? boolean Disable VCS ignore files
 --- @field rg_glob? boolean Enable `query -- args` parsing
---- @field rg_glob_fn? fun(query: string, opts: table): string, string Custom query/args split
+--- @field rg_glob_fn? fun(query: string, opts: table): string, string[]|string|nil Custom query/args split
 --- @field glob_flag? string Flag used for glob arguments
 --- @field glob_separator? string Separator pattern for query/args
---- @field rg_opts? string Startup options for ripgrep
---- @field grep_opts? string Startup options for grep
+--- @field rg_opts? string|string[] Startup options for ripgrep
+--- @field grep_opts? string|string[] Startup options for grep
 --- @field RIPGREP_CONFIG_PATH? string|nil Ripgrep config path to inject
---- @field preview? boolean Enable preview window
+--- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 --- @field icons? boolean Enable file icons
 --- @field prompt_debounce? integer Prompt debounce in milliseconds
 --- @field prompt_query? string|nil Initial prompt query
+--- @field watch? boolean Refresh on reopen when the directory changes
 
 local M = {}
 
@@ -100,6 +101,8 @@ function M.open_grep_picker(opts)
         watch = false,
     }, opts)
 
+    local cmd, args = build_grep_command(opts)
+
     local function parse_query_value(query)
         if not opts.rg_glob then
             return query, nil
@@ -126,25 +129,23 @@ function M.open_grep_picker(opts)
         return regex_text or query, extra_args
     end
 
-    local cmd, args = build_grep_command(opts)
-    local function build_interactive_arguments(query, ctx)
-        local args_list = vim.list_extend({}, ctx.args or {})
+    local function build_interactive_arguments(query, arguments)
         local pattern, extra = parse_query_value(query)
 
         if cmd == "rg" then
-            table.insert(args_list, pattern)
+            table.insert(arguments, pattern)
             if extra and #extra > 0 then
-                table.insert(args_list, "--")
-                vim.list_extend(args_list, split_argument_list(extra))
+                table.insert(arguments, "--")
+                vim.list_extend(arguments, split_argument_list(extra))
             elseif type(extra) == "table" and #extra > 0 then
-                table.insert(args_list, "--")
-                vim.list_extend(args_list, extra)
+                table.insert(arguments, "--")
+                vim.list_extend(arguments, extra)
             end
         else
-            table.insert(args_list, pattern)
-            table.insert(args_list, ".")
+            table.insert(arguments, pattern)
+            table.insert(arguments, ".")
         end
-        return args_list
+        return arguments
     end
 
     if opts.cwd == true then

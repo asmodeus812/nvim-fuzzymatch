@@ -4,8 +4,9 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class TabsPickerOptions
---- @field tab_marker? string Marker for current tab display
---- @field preview? boolean Enable preview window
+--- @field filename_only? boolean Display only the filename
+--- @field path_shorten? number|nil Path shorten value for display
+--- @field home_to_tilde? boolean Replace home prefix with ~ in display
 
 local M = {}
 

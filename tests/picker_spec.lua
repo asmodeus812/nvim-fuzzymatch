@@ -434,8 +434,8 @@ function M.run()
                     args = { "--test" },
                     cwd = vim.loop.cwd,
                 },
-                interactive = function(_, ctx)
-                    return ctx.args
+                interactive = function(_, arguments)
+                    return arguments
                 end,
             })
             interactive_picker:open()
@@ -590,6 +590,33 @@ function M.run()
         helpers.assert_ok(header:find("/.../", 1, true), "header cwd ellipsis")
         helpers.assert_ok(header:find("fuzzymatch", 1, true), "header cwd tail")
         picker:close()
+    end)
+
+    helpers.run_test_case("picker_tick_true_reruns_on_open", function()
+        with_stream_count(function()
+            local picker = Picker.new({
+                content = function(callback)
+                    callback("alpha")
+                    callback(nil)
+                end,
+                context = {
+                    tick = true,
+                },
+                preview = false,
+                prompt_debounce = 0,
+            })
+            picker:open()
+            helpers.wait_for_stream(picker)
+            local count_before = picker._test_stream_count()
+            picker:hide()
+            picker:open()
+            helpers.wait_for_stream(picker)
+            helpers.assert_ok(
+                picker._test_stream_count() > count_before,
+                "tick=true should rerun on open"
+            )
+            picker:close()
+        end)
     end)
 
     run_rerun_case("rerun_buffers", function()

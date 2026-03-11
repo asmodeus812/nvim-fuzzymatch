@@ -4,7 +4,6 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class BufferTagsPickerOptions
---- @field preview? boolean Enable preview window
 
 local M = {}
 

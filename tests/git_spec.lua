@@ -5,6 +5,11 @@ local util = require("fuzzy.pickers.util")
 
 local M = { name = "git" }
 
+local function reload_git_picker_module()
+    package.loaded["fuzzy.pickers.git"] = nil
+    return require("fuzzy.pickers.git")
+end
+
 local function eval(value, picker)
     if type(value) == "function" then
         return value(picker)
@@ -57,6 +62,15 @@ local function tick_value(opts)
     return eval(opts.context.tick, picker_stub)
 end
 
+local function trigger_default_action(action, entry)
+    action({
+        _list_selection = function()
+            return { entry }
+        end,
+        _close_view = function() end,
+    })
+end
+
 function M.run()
     helpers.run_test_case("git_files", function()
         helpers.with_mock_map(util, {
@@ -68,7 +82,7 @@ function M.run()
             end,
         }, function()
             capture_picker(function(get)
-                require("fuzzy.pickers.git").open_git_files({
+                reload_git_picker_module().open_git_files({
                     preview = false,
                     icons = false,
                     prompt_debounce = 0,
@@ -106,7 +120,7 @@ function M.run()
             end,
         }, function()
             capture_picker(function(get)
-                require("fuzzy.pickers.git").open_git_status({
+                reload_git_picker_module().open_git_status({
                     preview = false,
                     icons = false,
                     prompt_debounce = 0,
@@ -133,7 +147,7 @@ function M.run()
             end,
         }, function()
             capture_picker(function(get)
-                require("fuzzy.pickers.git").open_git_branches({
+                reload_git_picker_module().open_git_branches({
                     preview = false,
                     prompt_debounce = 0,
                 })
@@ -159,7 +173,7 @@ function M.run()
             end,
         }, function()
             capture_picker(function(get)
-                require("fuzzy.pickers.git").open_git_commits({
+                reload_git_picker_module().open_git_commits({
                     preview = false,
                     prompt_debounce = 0,
                 })
@@ -190,7 +204,7 @@ function M.run()
             end,
         }, function()
             capture_picker(function(get)
-                require("fuzzy.pickers.git").open_git_bcommits({
+                reload_git_picker_module().open_git_bcommits({
                     preview = false,
                     prompt_debounce = 0,
                 })
@@ -200,7 +214,7 @@ function M.run()
                         return opts
                     end,
                 }
-                helpers.eq(eval(opts.context.cwd, picker_stub), vim.loop.cwd(), "cwd")
+                helpers.eq(eval(opts.context.cwd, picker_stub), dir, "cwd")
                 local args_value = eval(opts.context.args, picker_stub)
                 helpers.assert_list_contains(args_value, "log", "args")
                 helpers.assert_list_contains(args_value, "--", "args")
@@ -228,7 +242,7 @@ function M.run()
             end,
         }, function()
             capture_picker(function(get)
-                require("fuzzy.pickers.git").open_git_stash({
+                reload_git_picker_module().open_git_stash({
                     preview = false,
                     prompt_debounce = 0,
                 })
@@ -241,6 +255,75 @@ function M.run()
                 helpers.assert_list_contains(opts.context.args, "stash", "args")
                 helpers.assert_list_contains(opts.context.args, "list", "args")
             end)
+        end)
+    end)
+
+    helpers.run_test_case("git_branches_action_checkout", function()
+        local repo, _ = init_repo()
+        git_cmd(repo, { "branch", "feature/test" })
+        capture_picker(function(get)
+            reload_git_picker_module().open_git_branches({
+                cwd = repo,
+                preview = false,
+            })
+            local opts = get()
+            local action = assert(opts.actions["<cr>"])[1]
+            trigger_default_action(action, "feature/test 1234567 init <Fuzzy Test>")
+            local head = vim.trim(git_cmd(repo, { "branch", "--show-current" }).stdout or "")
+            helpers.eq(head, "feature/test", "branch checkout")
+        end)
+    end)
+
+    helpers.run_test_case("git_commits_action_checkout", function()
+        local repo, _ = init_repo()
+        capture_picker(function(get)
+            reload_git_picker_module().open_git_commits({
+                cwd = repo,
+                preview = false,
+            })
+            local opts = get()
+            local action = assert(opts.actions["<cr>"])[1]
+            local hash = vim.trim(git_cmd(repo, { "rev-parse", "--short", "HEAD" }).stdout or "")
+            trigger_default_action(action, table.concat({ hash, " now init <Fuzzy Test>" }))
+            local checked = vim.trim(git_cmd(repo, { "rev-parse", "--short", "HEAD" }).stdout or "")
+            helpers.eq(checked, hash, "commit checkout")
+        end)
+    end)
+
+    helpers.run_test_case("git_bcommits_action_checkout", function()
+        local repo, file_path = init_repo()
+        local buf = helpers.create_named_buffer(file_path, { "alpha" })
+        vim.api.nvim_set_current_buf(buf)
+        capture_picker(function(get)
+            reload_git_picker_module().open_git_bcommits({
+                cwd = repo,
+                preview = false,
+            })
+            local opts = get()
+            local action = assert(opts.actions["<cr>"])[1]
+            local hash = vim.trim(git_cmd(repo, { "rev-parse", "--short", "HEAD" }).stdout or "")
+            trigger_default_action(action, table.concat({ hash, " now init <Fuzzy Test>" }))
+            local checked = vim.trim(git_cmd(repo, { "rev-parse", "--short", "HEAD" }).stdout or "")
+            helpers.eq(checked, hash, "bcommit checkout")
+        end)
+        vim.api.nvim_buf_delete(buf, { force = true })
+    end)
+
+    helpers.run_test_case("git_stash_action_unstash", function()
+        local repo, file_path = init_repo()
+        helpers.write_file(file_path, "alpha\nbeta\n")
+        git_cmd(repo, { "add", "file.txt" })
+        git_cmd(repo, { "stash", "push", "-m", "save" })
+        capture_picker(function(get)
+            reload_git_picker_module().open_git_stash({
+                cwd = repo,
+                preview = false,
+            })
+            local opts = get()
+            local action = assert(opts.actions["<cr>"])[1]
+            trigger_default_action(action, "stash@{0}: On main: save")
+            local status = vim.trim(git_cmd(repo, { "status", "--short" }).stdout or "")
+            helpers.assert_ok(status:find("file.txt", 1, true) ~= nil, "stash popped")
         end)
     end)
 
@@ -269,7 +352,7 @@ function M.run()
 
         helpers.with_cwd(repo, function()
             capture_picker(function(get)
-                require("fuzzy.pickers.git").open_git_status({
+                reload_git_picker_module().open_git_status({
                     preview = false,
                     icons = false,
                     prompt_debounce = 0,
@@ -295,7 +378,7 @@ function M.run()
         end
         local repo, _ = init_repo()
         capture_picker(function(get)
-            require("fuzzy.pickers.git").open_git_files({
+            reload_git_picker_module().open_git_files({
                 cwd = repo,
                 preview = false,
                 icons = false,
@@ -316,7 +399,7 @@ function M.run()
         end
         local repo, file_path = init_repo()
         capture_picker(function(get)
-            require("fuzzy.pickers.git").open_git_status({
+            reload_git_picker_module().open_git_status({
                 cwd = repo,
                 preview = false,
                 icons = false,
@@ -336,7 +419,7 @@ function M.run()
         end
         local repo, _ = init_repo()
         capture_picker(function(get)
-            require("fuzzy.pickers.git").open_git_branches({
+            reload_git_picker_module().open_git_branches({
                 cwd = repo,
                 watch = true,
             })
@@ -354,7 +437,7 @@ function M.run()
         end
         local repo, file_path = init_repo()
         capture_picker(function(get)
-            require("fuzzy.pickers.git").open_git_commits({
+            reload_git_picker_module().open_git_commits({
                 cwd = repo,
                 watch = true,
             })
@@ -377,7 +460,7 @@ function M.run()
         vim.api.nvim_set_current_buf(buf)
 
         capture_picker(function(get)
-            require("fuzzy.pickers.git").open_git_bcommits({
+            reload_git_picker_module().open_git_bcommits({
                 cwd = repo,
                 watch = true,
             })
@@ -399,7 +482,7 @@ function M.run()
         end
         local repo, file_path = init_repo()
         capture_picker(function(get)
-            require("fuzzy.pickers.git").open_git_stash({
+            reload_git_picker_module().open_git_stash({
                 cwd = repo,
                 watch = true,
             })
@@ -419,7 +502,7 @@ function M.run()
         end
         local repo, _ = init_repo()
         capture_picker(function(get)
-            require("fuzzy.pickers.git").open_git_status({
+            reload_git_picker_module().open_git_status({
                 cwd = repo,
                 preview = false,
                 icons = false,
@@ -438,7 +521,7 @@ function M.run()
         end
         local repo, _ = init_repo()
         capture_picker(function(get)
-            require("fuzzy.pickers.git").open_git_stash({
+            reload_git_picker_module().open_git_stash({
                 cwd = repo,
                 watch = true,
             })

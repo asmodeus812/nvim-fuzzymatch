@@ -7,12 +7,12 @@ local utils = require("fuzzy.utils")
 --- @field show_unlisted? boolean Include unlisted buffers
 --- @field show_unloaded? boolean Include unloaded buffers
 --- @field ignore_current_buffer? boolean Exclude current buffer
---- @field cwd? string|fun(): string Working directory to filter buffers
+--- @field cwd? boolean|string|fun(): string Working directory to filter buffers; `true` resolves to `vim.loop.cwd`
 --- @field include_special? boolean|string[]|table<string, boolean> Include special buffers:
 ---   false: only normal buffers (buftype == "")
 ---   true: include all special buftypes
 ---   table: include only listed buftypes, as an array or map
---- @field preview? boolean Enable preview window
+--- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 --- @field prompt_query? string|nil Initial prompt query
 
 local M = {}

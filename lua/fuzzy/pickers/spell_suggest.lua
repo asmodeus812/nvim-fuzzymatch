@@ -5,7 +5,6 @@ local util = require("fuzzy.pickers.util")
 --- @class SpellSuggestPickerOptions
 --- @field target_word_text? string|nil Override the word under cursor
 --- @field suggest_limit_count? integer Maximum number of suggestions
---- @field preview? boolean Enable preview window
 
 local M = {}
 

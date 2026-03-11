@@ -4,8 +4,7 @@ local util = require("fuzzy.pickers.util")
 
 --- @class CommandsPickerOptions
 --- @field include_builtin? boolean Include built-in commands
---- @field sort_lastused? boolean Sort by last used
---- @field preview? boolean Enable preview window
+--- @field include_user? boolean Include user-defined commands
 
 local M = {}
 

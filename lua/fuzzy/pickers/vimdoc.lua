@@ -3,7 +3,7 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class VimdocPickerOptions
---- @field preview? boolean|Select.Preview Enable preview window
+--- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 --- @field prefix? string|false Prefix filter for API names (default: "nvim_")
 --- @field include_deprecated? boolean Include deprecated API items
 --- @field deprecated_only? boolean Show only deprecated API items

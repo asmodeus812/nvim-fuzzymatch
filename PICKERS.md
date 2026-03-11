@@ -88,8 +88,8 @@ git_picker.open_git_files({
 
 Options and behavior:
 
-- `cwd`: Controls where the git command is executed. If you work in nested repositories, pass the root to avoid
-  confusing output. If omitted, the picker detects the git root from the current buffer when possible.
+- `cwd`: Controls where the git command is executed. This can be a string path, a function returning a path, or `true`
+  to use `vim.loop.cwd()`. If you work in nested repositories, pass the root to avoid confusing output.
 
 - `untracked`: Includes untracked files in addition to tracked files. This is useful for new files during development.
   It is less suitable when you want a clean list of tracked files only.
@@ -122,8 +122,8 @@ git_picker.open_git_status({
 
 Options and behavior:
 
-- `cwd`: Must be inside a repository. The picker asserts if a repo root cannot be found. This is intentional so failures
-  are obvious.
+- `cwd`: This can be a string path, a function returning a path, or `true` to use `vim.loop.cwd()`. It must resolve
+  inside a repository. The picker asserts if a repo root cannot be found.
 
 - `preview`: Previews the selected file if the status entry can be mapped to a path.
 
@@ -149,7 +149,8 @@ git_picker.open_git_branches({
 
 Options and behavior:
 
-- `cwd`: Repository root or a path inside the repo.
+- `cwd`: Repository root, a path inside the repo, a function returning one of those, or `true` to use
+  `vim.loop.cwd()`.
 
 - `stream_step`, `match_step`: For very large repos with many branches, lowering these values can smooth UI.
 
@@ -170,7 +171,8 @@ git_picker.open_git_commits({
 
 Options and behavior:
 
-- `cwd`: Repository root. If you are inside a submodule, pass its root explicitly to avoid ambiguity.
+- `cwd`: Repository root, a path inside the repo, a function returning one of those, or `true` to use
+  `vim.loop.cwd()`. If you are inside a submodule, pass its root explicitly to avoid ambiguity.
 
 - `stream_step`, `match_step`: Useful only for repos with very long histories.
 
@@ -192,6 +194,9 @@ Options and behavior:
 
 - Uses the current buffer path as input. If the buffer has not been written to disk, the picker will assert.
 
+- `cwd`: Optional repository root override. This can be a string path, a function returning a path, or `true` to use
+  `vim.loop.cwd()`.
+
 - `stream_step`, `match_step` behave as above.
 
 ### Git Stash
@@ -211,7 +216,8 @@ git_picker.open_git_stash({
 
 Options and behavior:
 
-- `cwd` should be inside a repository.
+- `cwd`: This can be a string path, a function returning a path, or `true` to use `vim.loop.cwd()`. It should resolve
+  inside a repository.
 
 - Use this picker when you need fast stash inspection. It is not ideal for bulk stash manipulation since actions are
   intentionally minimal.
@@ -231,9 +237,6 @@ local files_picker = require("fuzzy.pickers.files")
 
 files_picker.open_files_picker({
     cwd = vim.loop.cwd,
-    cwd_prompt = true,
-    cwd_prompt_shorten_val = 1,
-    cwd_prompt_shorten_len = 32,
     hidden = true,
     follow = false,
     no_ignore = false,
@@ -247,11 +250,8 @@ files_picker.open_files_picker({
 
 Options and behavior:
 
-- `cwd`: Root for the file scan. Set this explicitly if you work in multiple projects.
-
-- `cwd_prompt`, `cwd_prompt_shorten_val`, `cwd_prompt_shorten_len`: Control the prompt header that shows the current
-  working directory. These are display-only and do not affect matching. Use these if you often open the picker from
-  different locations.
+- `cwd`: Root for the file scan. This can be a string path, a function returning a path, or `true` to use
+  `vim.loop.cwd()`.
 
 - `watch` (default `false`): Enables a filesystem `tick` to refresh results on reopen.
 
@@ -276,7 +276,7 @@ local oldfiles_picker = require("fuzzy.pickers.oldfiles")
 
 oldfiles_picker.open_oldfiles_picker({
     cwd = vim.loop.cwd,
-    max = nil,
+    max = 256,
     filename_only = false,
     path_shorten = nil,
     home_to_tilde = true,
@@ -287,9 +287,10 @@ oldfiles_picker.open_oldfiles_picker({
 
 Options and behavior:
 
-- `cwd`: Base directory for filtering and path display. When set, only entries under `cwd` are included.
+- `cwd`: Base directory for filtering and path display. This can be a string path, a function returning a path, or
+  `true` to use `vim.loop.cwd()`. When set, only entries under `cwd` are included.
 
-- `max`: Limit the number of entries emitted from `:oldfiles`.
+- `max`: Limit the number of entries emitted from `:oldfiles`. The default is `256`.
 
 - `filename_only`, `path_shorten`, `home_to_tilde`: Path display helpers.
 
@@ -342,7 +343,8 @@ Options and behavior:
 - `sort_lastused`: Sort buffers by recent use with current and alternate buffers pinned at the top. Disable if you want
   raw buffer order.
 
-- `cwd`: Base directory for filtering and path display. When set, only buffers under `cwd` are included.
+- `cwd`: Base directory for filtering and path display. This can be a string path, a function returning a path, or
+  `true` to use `vim.loop.cwd()`. When set, only buffers under `cwd` are included.
 
 - `filename_only`: Display just the filename, not the full path.
 
@@ -359,13 +361,17 @@ buffer details, giving you a lightweight overview of which files are visible in 
 local tabs_picker = require("fuzzy.pickers.tabs")
 
 tabs_picker.open_tabs_picker({
-    preview = false,
+    filename_only = false,
+    path_shorten = nil,
+    home_to_tilde = true,
 })
 ```
 
 Options and behavior:
 
-- `preview`: Tabs are not preview-heavy; keep this off unless you add a custom previewer.
+- `filename_only`: Display just the filename for the first window in each tab.
+
+- `path_shorten`, `home_to_tilde`: Path display helpers for the tab filename summary.
 
 ## Lines
 
@@ -398,7 +404,8 @@ Options and behavior:
 
 - `ignore_current_buffer`: Excludes the active buffer from the line list.
 
-- `cwd`: When set, only buffers under `cwd` are included.
+- `cwd`: This can be a string path, a function returning a path, or `true` to use `vim.loop.cwd()`. When set, only
+  buffers under `cwd` are included.
 
 - `include_special`: Controls special `buftype` entries.
     - `false`: only normal buffers (`buftype == ""`).
@@ -478,7 +485,7 @@ grep_picker.open_grep_picker({
     rg_glob_fn = nil,
     glob_flag = "--iglob",
     glob_separator = "%s%-%-",
-    rg_opts = "--hidden --column --line-number --no-heading --color=never --smart-case -e",
+    rg_opts = "--hidden --column --line-number --no-heading --color=never --smart-case",
     grep_opts = "-n -H -r --line-buffered",
     RIPGREP_CONFIG_PATH = vim.env.RIPGREP_CONFIG_PATH,
     preview = true,
@@ -491,7 +498,8 @@ grep_picker.open_grep_picker({
 
 Options and behavior:
 
-- `cwd`: Search root. This matters for performance and accuracy, especially in monorepos.
+- `cwd`: Search root. This can be a string path, a function returning a path, or `true` to use `vim.loop.cwd()`.
+  This matters for performance and accuracy, especially in monorepos.
 
 - `watch` (default `false`): Enables a filesystem `tick` to refresh results on reopen.
 
@@ -502,15 +510,15 @@ Options and behavior:
   and extra arguments that are passed back to the command. This is ideal for ad hoc globbing and exclusions during
   interactive use. If you do not need dynamic args, disable it for simpler input.
 
-- `rg_glob_fn`: Custom split logic. It receives the raw query and returns two values: `(regex, args)`. Use this if you
-  need a different separator, or if you want to parse custom flags. The picker uses your returned `args` verbatim when
-  re-running the grep.
+- `rg_glob_fn`: Custom split logic. It receives the raw query and returns two values: `(regex, args)`. `args` can be a
+  string, a list, or `nil`. Use this if you need a different separator, or if you want to parse custom flags. The
+  picker uses your returned `args` verbatim when re-running the grep.
 
 - `glob_flag`, `glob_separator`: Convenience helpers for the default `rg_glob` parser. `glob_separator` defines the
   split point (default matches `" --"`), and `glob_flag` is used when you convert glob fragments into arguments.
 
-- `rg_opts`, `grep_opts`: Startup arguments for the command. Keep these aligned with your expectations for case
-  sensitivity and regex engine.
+- `rg_opts`, `grep_opts`: Startup arguments for the command. These can be either a whitespace-delimited string or a
+  list of arguments. Keep them aligned with your expectations for case sensitivity and regex engine.
 
 - `RIPGREP_CONFIG_PATH`: Allows the picker to respect your ripgrep config even when the shell environment is not
   sourced.
@@ -576,7 +584,8 @@ Options and behavior:
 
 - `path_shorten`, `home_to_tilde`: Display helpers. These are not part of the match content.
 
-- `cwd`: Base directory for filtering and path display. When set, only entries under `cwd` are included.
+- `cwd`: Base directory for filtering and path display. This can be a string path, a function returning a path, or
+  `true` to use `vim.loop.cwd()`. When set, only entries under `cwd` are included.
 
 - `preview`, `icons`: Display only.
 
@@ -615,7 +624,8 @@ Options and behavior:
 
 - `filename_only`, `path_shorten`, `home_to_tilde`: Display helpers. These are not part of the match content.
 
-- `cwd`: Base directory for filtering and path display. When set, only entries under `cwd` are included.
+- `cwd`: Base directory for filtering and path display. This can be a string path, a function returning a path, or
+  `true` to use `vim.loop.cwd()`. When set, only entries under `cwd` are included.
 
 - `preview`, `icons`, `match_step`: Same meaning as quickfix; tune for large lists.
 
@@ -638,7 +648,6 @@ quickfix state without rebuilding it.
 local quickfix_stack_picker = require("fuzzy.pickers.quickfix_stack")
 
 quickfix_stack_picker.open_quickfix_stack({
-    preview = false,
 })
 ```
 
@@ -651,7 +660,6 @@ local.
 local loclist_stack_picker = require("fuzzy.pickers.loclist_stack")
 
 loclist_stack_picker.open_loclist_stack({
-    preview = false,
 })
 ```
 
@@ -739,6 +747,8 @@ marks_picker.open_marks_picker({
     marks = "[a-z]",
     include_local = true,
     include_global = true,
+    preview = true,
+    icons = true,
 })
 ```
 
@@ -751,6 +761,8 @@ Options and behavior:
 
 - `include_global`: Include global marks.
 
+- `preview`, `icons`: Display only.
+
 ### Jumps
 
 Lists jump list entries. Each entry includes the target buffer or file and the recorded cursor position, so you can
@@ -760,13 +772,21 @@ retrace navigation history quickly. The list favors brevity so it stays fast eve
 local jumps_picker = require("fuzzy.pickers.jumps")
 
 jumps_picker.open_jumps_picker({
+    filename_only = false,
+    path_shorten = nil,
+    home_to_tilde = true,
     preview = false,
+    icons = true,
 })
 ```
 
 Options and behavior:
 
-- `preview`: Jumps are lightweight; enable only if you need a previewer.
+- `filename_only`: Display just the filename rather than the full path.
+
+- `path_shorten`, `home_to_tilde`: Path display helpers for jump entries.
+
+- `preview`, `icons`: Display only.
 
 ### Changes
 
@@ -778,12 +798,13 @@ local changes_picker = require("fuzzy.pickers.changes")
 
 changes_picker.open_changes_picker({
     preview = false,
+    icons = true,
 })
 ```
 
 Options and behavior:
 
-- `preview`: Enable if you want a buffer preview when stepping through changes.
+- `preview`, `icons`: Display only.
 
 ### Command History
 
@@ -794,7 +815,6 @@ history manually.
 local command_history_picker = require("fuzzy.pickers.command_history")
 
 command_history_picker.open_command_history({
-    preview = false,
 })
 ```
 
@@ -807,7 +827,6 @@ complex regex.
 local search_history_picker = require("fuzzy.pickers.search_history")
 
 search_history_picker.open_search_history({
-    preview = false,
 })
 ```
 
@@ -862,7 +881,6 @@ Lists helptags. Each entry is a help tag identifier.
 local helptags_picker = require("fuzzy.pickers.helptags")
 
 helptags_picker.open_helptags_picker({
-    preview = false,
 })
 ```
 
@@ -874,7 +892,6 @@ Lists manpages. Entries are collected from `apropos -k .` (fallback: `man -k .`)
 local manpages_picker = require("fuzzy.pickers.manpages")
 
 manpages_picker.open_manpages_picker({
-    preview = false,
 })
 ```
 
@@ -918,7 +935,6 @@ confirm.
 local tags_picker = require("fuzzy.pickers.tags")
 
 tags_picker.open_tags_picker({
-    preview = true,
 })
 ```
 
@@ -931,7 +947,6 @@ within a single file.
 local btags_picker = require("fuzzy.pickers.btags")
 
 btags_picker.open_btags_picker({
-    preview = true,
 })
 ```
 

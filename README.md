@@ -688,8 +688,10 @@ the normal operation of most all types of pickers.
 
 `interactive` controls how prompt input drives the command. When interactive is enabled the command is re-run on each prompt change. If
 `interactive` is `true`, the prompt is appended to `args`. If it's a string, that string is treated as a placeholder token in `args` and is
-replaced with the prompt. If it's a number, the prompt is inserted into `args` at that index. If it's a function, it is called as
-`interactive(query, context)` and must return the full args table. This is a top-level picker option, not part of the context.
+replaced with the user query/prompt. If it's a number, the prompt is inserted into `args` at that index. If it's a function, it is called as
+`interactive(query, arguments)` where `arguments` is always a copy of the original `args` list, and it must return the same `args` table,
+with the appropriate interactive/dynamic `arguments` added/removed/changed into the `args` table. This is a top-level picker option, not
+part of the context.
 
 ### Closing and hiding pickers
 
@@ -729,8 +731,10 @@ state), provide a function that returns the env table.
 `args` is the argument list for the command or the content callback. Keep it focused on values that actually change between runs. Large static
 payloads here make the context comparison noisy and can cause unnecessary reruns.
 
-`tick` is a lightweight change signal. It can be any value and is compared as part of context evaluation; changing `tick` forces a re-run
-without having to mutate `args` or `env`. This is useful for external changes like directory watchers or Git state.
+`tick` is a lightweight change signal. It can be any value and is compared as part of context evaluation; changing `tick` forces a
+re-run without having to mutate `args` or `env`. Setting `tick = true` is a shorthand that installs a per-picker counter and makes the
+picker re-run on every open. This is useful for commands that depend on external changes like changes (find, grep) to directory or files
+or version control status (git, hg, svn).
 
 Only the evaluated values of `args`, `cwd`, `env`, and `tick` are compared for change detection. Changes to these keys trigger a re-run.
 The picker detects when the evaluated context has changed compared to what it was originally used to run the data stream with, and the
@@ -823,7 +827,7 @@ available, how the list and the entries are decorated and whether a preview is a
 | Field          | Type                                | Description                                                                                                                                                                                                                                                                                                 |
 | -------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `content`      | `string,function,table`             | The content for the picker. Can be a string (command executable), function (generates entries), or table (static entries). Tables make the picker non-interactive by implicitly. Functions/tables can contain strings or tables (checkout `display` function for showing table entries).                    |
-| `context`      | `table?`                            | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), and `tick` (any) for additional change detection. The evaluated context is deep-compared on open; keep these table key-value pairs lightweight and limited so reruns happen only when absolutely intended. |
+| `context`      | `table?`                            | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), and `tick` (any) for additional change detection. `tick = true` is a shorthand that reruns on every open. The evaluated context is deep-compared on open; keep these table key-value pairs lightweight and limited so reruns happen only when absolutely intended. |
 | `interactive`  | `boolean\|string\|number\|function` | Marks the picker as interactive and controls how prompt input is inserted into args.                                                                                                                                                                                                                        |
 | `display`      | `function,string,nil`               | Custom function for displaying entries. If `nil`, the entry itself is displayed. If a string, it's treated as a key to extract from the entry table. If a function, it is used as a callback which receives the entry and the entry index as its input arguments and must return a `string`                 |
 | `actions`      | `table?`                            | Key mappings for actions in the picker interface. Specify as `[key] = callback` OR `["key"] = { callback, label }` OR `["key"] = false` to disable the action for that key. Labels (optional) can be `string` or `function`.                                                                                |
@@ -878,12 +882,14 @@ usage of each option, along with any relevant details or examples.
 callback or command instead` `env`: Environment variables passed to the command. Provide as a table; use a function if you need to
   recompute. `cwd`: Working directory used to run the command or resolve relative paths. Use a function for dynamic working directory. `args`:
   Arguments passed to the command or content function. Keep focused on changing inputs; avoid large static payloads. `tick`: Lightweight
-  change signal (string or integer). When `tick` changes, the picker treats context as changed without mutating
+  change signal. When `tick` changes, the picker treats context as changed without mutating other inputs. Set `tick = true` to rerun on every
+  open.
 
 - **interactive**: Marks the picker as interactive and controls how prompt input drives the command. `true` appends the prompt to `args`. A
   string is treated as a placeholder token in `args` and is replaced with the prompt. A number inserts the prompt at that index. A function
-  receives `(query, context)` and must return the full `args` table. Interactive means the content stream is re-run on each prompt change; use
-  it for live search streams (e.g. `rg {prompt}`). Keep in mind that a table / static content pickers can not be interactive.
+  receives `(query, arguments)` where `arguments` is always a copy of the current `context.args` list, and must return the full `args` table.
+  Interactive means the content stream is re-run on each prompt change; use it for live search streams (e.g. `rg {prompt}`). Keep in mind
+  that a table / static content pickers can not be interactive.
 
 - **actions**: Key mappings for actions in the picker interface. This is a table where keys are the keybindings (e.g., `"<CR>"`, `"<C-q>"`)
   and values are either a callback function or a tuple of `{ callback, label }`. The label is optional and can be a string or a function that

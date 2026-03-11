@@ -263,29 +263,27 @@ function Picker:_context_evaluate(key, ...)
     end
 end
 
-function Picker:_interactive_args(context, query)
+function Picker:_interactive_args(query, args)
     local interactive = self._options.interactive
-    if type(interactive) == "function" then
-        local args = interactive(query, context)
-        assert(type(args) == "table")
-        return args
-    end
+    local arguments = args ~= nil and vim.fn.copy(args) or {}
 
-    local command_args = context.args and vim.fn.copy(context.args)
-    if type(interactive) == "string" then
-        for indx, argument in ipairs(command_args or {}) do
+    if type(interactive) == "function" then
+        arguments = interactive(query, arguments)
+        assert(type(arguments) == "table")
+    elseif type(interactive) == "string" then
+        for indx, argument in ipairs(arguments or {}) do
             if argument == interactive then
-                command_args[indx] = query
+                arguments[indx] = query
                 break
             end
-            assert(indx < #command_args)
+            assert(indx < #arguments)
         end
     elseif type(interactive) == "number" then
-        table.insert(assert(command_args), interactive, query)
+        table.insert(arguments, interactive, query)
     else
-        table.insert(assert(command_args), query)
+        table.insert(arguments, query)
     end
-    return command_args
+    return assert(arguments)
 end
 
 function Picker:_confirm_prompt()
@@ -335,7 +333,7 @@ function Picker:_input_prompt()
                     cwd = evaluated_context.cwd,
                     env = evaluated_context.env,
                     args = self:_interactive_args(
-                        evaluated_context, query
+                        query, evaluated_context.args
                     ),
                     callback = self:_flush_interactive(),
                     transform = self._options.stream_map,
@@ -602,6 +600,21 @@ function Picker:_caching_display(init)
     return nil
 end
 
+function Picker:_ticking_counter(init)
+    local state = assert(self._state)
+    local context = assert(state.context)
+    if not init and state.ticking then
+        state.ticking = nil
+    elseif init == true and context.tick == true then
+        state.ticking = 0
+        context.tick = function()
+            state.ticking = assert(state.ticking) + 1
+            return state.ticking
+        end
+    end
+    return context.tick
+end
+
 function Picker:_flush_interactive()
     -- Interactive stream flush: stream is the source of truth (no fuzzy match), render accumulated results and status, debounce to coalesce very fast flushes.
     return utils.debounce_callback(self._options.stream_debounce, function(_, all)
@@ -702,7 +715,7 @@ function Picker:_is_interactive()
     return interactive ~= nil and interactive ~= false
 end
 
---- Extract the context of the picker, the context is a table that contains the evaluated values of the context keys provided to the picker at construction time. The context can contain the following keys: `cwd` can be string or function (evaluated to a string); `env` can be table or function (evaluated to a table of env vars); `args` can be table or function (evaluated to a list of args); `tick` can be any value and is compared to detect external changes without mutating args/env. This is the context after it has been evaluated, meaning that any function values have been called and their return values have been extracted. The context is re-evaluated each time the picker is opened, if the context has changed since the last time it was opened
+--- Extract the context of the picker, the context is a table that contains the evaluated values of the context keys provided to the picker at construction time. The context can contain the following keys: `cwd` can be string or function (evaluated to a string); `env` can be table or function (evaluated to a table of env vars); `args` can be table or function (evaluated to a list of args); `tick` can be any value and is compared to detect external changes without mutating args/env. When `tick` is set to `true`, we normalize it into a per-picker counter callback stored on picker state, which changes on each open. This is the context after it has been evaluated, meaning that any function values have been called and their return values have been extracted. The context is re-evaluated each time the picker is opened, if the context has changed since the last time it was opened
 --- @return table the evaluated context of the current picker instance
 function Picker:context()
     local state = assert(self._state)
@@ -759,16 +772,16 @@ function Picker:open()
     local evaluated_context = self:_context_evaluate(
         { "args", "cwd", "env", "tick" }, self
     )
-    local needs_run = not utils.compare_tables(
+    local needs_rerun = not utils.compare_tables(
         evaluated_context, self._state._evaluated_context
     )
-    if needs_run then
+    if needs_rerun then
         -- evaluated context has to be re-initialized with the newly evaluated context, that reflets the need to re-start and
         -- initialize the picker's running state
         self._state._evaluated_context = assert(evaluated_context)
     end
 
-    if not needs_run and self:isvalid() then
+    if not needs_rerun and self:isvalid() then
         -- in case the picker is not required to run and is still valid simply re-open it that case might happen during a picker
         -- that is in a hidden state at this moment
         local stage = self._state.stage
@@ -781,7 +794,7 @@ function Picker:open()
     else
         -- needs run would imply that new content will populate the select, that means we can freely clear the picker stage if
         -- any is present, and the primary stage as well
-        if needs_run then
+        if needs_rerun then
             self:_clear_stage()
             self:_clear_picker()
         end
@@ -791,7 +804,7 @@ function Picker:open()
             -- when a string or a function is provided the content is expected to be a command that produces output, or a function
             -- that produces output by calling a callback method for each entry in the stream
             assert(type(self._state.content) == "string" or type(self._state.content) == "function")
-            if (needs_run or not self.stream.results) and not self:_is_interactive() then
+            if (needs_rerun or not self.stream.results) and not self:_is_interactive() then
                 -- in case we need to re-run the picker or the stream itself was destroyed, having no-results implies
                 -- that stream requires to be re-started, to obtain results and then fill the select interface
                 self.stream:start(self._state.content, {
@@ -840,8 +853,8 @@ end
 
 --- @class PickerOptions
 --- @field content string|function|table the content to use for the picker, can be a command string, a function that takes a callback (plus optional args/cwd/env) and calls it for each entry, or a table of entries. If a string or function is provided the content is streamed, if a table is provided the content is static, and the picker can not be interactive. When a table or function is provided the entries can be either strings or tables, when tables are used the display option must be provided to extract a valid matching string from the table. The display function will be used for both displaying in the list and matching the entries against the user query, internally.
---- @field context? table a table of context to pass to the content function. Keys: `cwd` string or function; `env` table or function; `args` table or function; `tick` any value to signal source changes without mutating args/env.
---- @field interactive? boolean|string|number|function whether the picker is interactive (true appends prompt, string replaces matching arg token, number inserts at index, function returns full args table).
+--- @field context? table a table of context to pass to the content function. Keys: `cwd` string or function; `env` table or function; `args` table or function; `tick` any value to signal source changes without mutating args/env (`true` means rerun on every open).
+--- @field interactive? boolean|string|number|function whether the picker is interactive (true appends prompt, string replaces matching arg token, number inserts at index, function receives query plus a copy of current context args and returns full args table).
 --- @field stream_map? function|nil function to transform each entry before it is added to the stream (return nil/false to skip).
 --- @field decorators? Select.Decorator[]|nil a list of decorators to use for decorating the entries in the list, each decorator must be a child class derived from Select.Decorator.
 --- @field highlighters? Select.Highlighter[]|nil a list of highlighters to use for highlighting entries in the list, each highlighter must be a child class derived from Select.Highlighter.
@@ -894,6 +907,7 @@ function Picker.new(opts)
         context = {
             args = {},
             env = nil,
+            tick = nil,
             cwd = vim.loop.cwd,
         },
         interactive = false,
@@ -932,8 +946,8 @@ function Picker.new(opts)
         },
     }, Picker)
 
-    -- initialize display caching wrapper
     opts.display = self:_caching_display(true)
+    opts.context.tick = self:_ticking_counter(true)
 
     if self:_is_interactive() then
         -- ensure that picker is not marked interactive when a table
