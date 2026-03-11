@@ -384,6 +384,664 @@ local function run_basic_case()
     select:close()
 end
 
+local function run_display_case()
+    local prefix = "A"
+    local preview = Select.CustomPreview.new(function(entry)
+        return { "preview:" .. tostring(entry.value) }, "lua", ""
+    end)
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        display = function(entry, index)
+            return string.format("%s:%s:%d", prefix, entry.value, index)
+        end,
+    })
+
+    select:open()
+    local entries = {
+        { value = "one" },
+        { value = "two" },
+        { value = "three" },
+    }
+    select:list(entries)
+    helpers.wait_for(function()
+        local lines = helpers.get_buffer_lines(select.list_buffer)
+        return lines and lines[1] == "A:one:1"
+    end, 1500)
+
+    local lines = helpers.get_buffer_lines(select.list_buffer)
+    helpers.eq(lines[1], "A:one:1", "display function line 1")
+    helpers.eq(lines[2], "A:two:2", "display function line 2")
+
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:one"
+    end, 1500)
+
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:two"
+    end, 1500)
+    select:move_up()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:one"
+    end, 1500)
+    select:toggle_entry()
+    helpers.assert_ok(select._state.toggled.entries["1"] ~= nil, "display toggle entry")
+
+    prefix = "B"
+    select:list(entries)
+    helpers.wait_for(function()
+        local next_lines = helpers.get_buffer_lines(select.list_buffer)
+        return next_lines and next_lines[1] == "B:one:1"
+    end, 1500)
+
+    local next_lines = helpers.get_buffer_lines(select.list_buffer)
+    helpers.eq(next_lines[1], "B:one:1", "display function rerender")
+    helpers.assert_ok(next_lines[1] ~= "A:one:1", "display function rerender old")
+
+    select:list({
+        { value = "alpha" },
+        { value = "beta" },
+    })
+    helpers.wait_for(function()
+        local final_lines = helpers.get_buffer_lines(select.list_buffer)
+        return final_lines and final_lines[1] == "B:alpha:1"
+    end, 1500)
+    local final_lines = helpers.get_buffer_lines(select.list_buffer)
+    helpers.eq(final_lines[2], "B:beta:2", "display function new entries")
+    select:close()
+
+    local property_select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = false,
+        display = "label",
+    })
+
+    property_select:open()
+    property_select:list({
+        { label = "alpha" },
+        { other = "missing" },
+    })
+    helpers.wait_for(function()
+        local plines = helpers.get_buffer_lines(property_select.list_buffer)
+        return plines and #plines >= 2
+    end, 1500)
+
+    local plines = helpers.get_buffer_lines(property_select.list_buffer)
+    helpers.eq(plines[1], "alpha", "display string property")
+    helpers.eq(plines[2], "", "display string missing")
+
+    property_select:list({
+        { label = "first" },
+        { label = "second" },
+    })
+    property_select:list({
+        { label = "third" },
+        { label = "fourth" },
+    })
+    helpers.wait_for(function()
+        local lines_latest = helpers.get_buffer_lines(property_select.list_buffer)
+        return lines_latest and lines_latest[1] == "third"
+    end, 1500)
+
+    local lines_latest = helpers.get_buffer_lines(property_select.list_buffer)
+    helpers.eq(lines_latest[1], "third", "display rerender latest")
+    helpers.eq(lines_latest[2], "fourth", "display rerender latest")
+    property_select:move_down()
+    property_select:move_up()
+    property_select:close()
+    preview:clean()
+end
+
+local function run_display_nil_case()
+    local preview = Select.CustomPreview.new(function(entry)
+        return { "preview:" .. tostring(entry.value) }, "lua", ""
+    end)
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        display = function(entry)
+            if entry.value == "skip" then
+                return nil
+            end
+            return entry.value
+        end,
+    })
+
+    select:open()
+    select:list({
+        { value = "keep" },
+        { value = "skip" },
+        { value = "keep-2" },
+    })
+    helpers.wait_for(function()
+        local lines = helpers.get_buffer_lines(select.list_buffer)
+        return lines and #lines >= 3
+    end, 1500)
+
+    local lines = helpers.get_buffer_lines(select.list_buffer)
+    helpers.eq(lines[1], "keep", "display nil line 1")
+    helpers.eq(lines[2], "", "display nil line 2")
+    helpers.eq(lines[3], "keep-2", "display nil line 3")
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:skip"
+    end, 1500)
+    select:toggle_entry()
+    helpers.assert_ok(select._state.toggled.entries["2"] ~= nil, "display nil toggle")
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:keep-2"
+    end, 1500)
+    select:close()
+    preview:clean()
+end
+
+local function run_display_index_case()
+    local preview = Select.CustomPreview.new(function(entry)
+        return { "preview:" .. tostring(entry.value) }, "lua", ""
+    end)
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        display = function(entry, index)
+            return string.format("%d:%s", index, entry.value)
+        end,
+    })
+
+    select:open()
+    select:list({
+        { value = "alpha" },
+        { value = "beta" },
+    })
+    helpers.wait_for(function()
+        local lines = helpers.get_buffer_lines(select.list_buffer)
+        return lines and lines[1] == "1:alpha"
+    end, 1500)
+
+    local lines = helpers.get_buffer_lines(select.list_buffer)
+    helpers.eq(lines[1], "1:alpha", "display index line 1")
+    helpers.eq(lines[2], "2:beta", "display index line 2")
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:beta"
+    end, 1500)
+    select:move_up()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:alpha"
+    end, 1500)
+    select:close()
+    preview:clean()
+end
+
+local function run_display_decorator_case()
+    local seen = {}
+    local preview = Select.CustomPreview.new(function(entry)
+        return { "preview:" .. tostring(entry.value) }, "lua", ""
+    end)
+    local decor = Select.Decorator.new()
+    function decor:decorate(_, line)
+        seen[#seen + 1] = line
+        return nil
+    end
+
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        decorators = { decor },
+        display = function(entry)
+            return "decor:" .. entry.value
+        end,
+    })
+
+    select:open()
+    select:list({
+        { value = "one" },
+        { value = "two" },
+    })
+    helpers.wait_for(function()
+        return #seen >= 2
+    end, 1500)
+
+    helpers.assert_list_contains(seen, "decor:one", "display decorator one")
+    helpers.assert_list_contains(seen, "decor:two", "display decorator two")
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:two"
+    end, 1500)
+    select:move_up()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:one"
+    end, 1500)
+    select:close()
+    preview:clean()
+end
+
+local function run_display_highlighter_case()
+    local seen = {}
+    local preview = Select.CustomPreview.new(function(entry)
+        return { "preview:" .. tostring(entry.value) }, "lua", ""
+    end)
+    local highlighter = Select.Highlighter.new()
+    function highlighter:highlight(_, line)
+        seen[#seen + 1] = line
+        return nil
+    end
+
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        highlighters = { highlighter },
+        display = function(entry)
+            return "hl:" .. entry.value
+        end,
+    })
+
+    select:open()
+    select:list({
+        { value = "alpha" },
+        { value = "beta" },
+    })
+    helpers.wait_for(function()
+        return #seen >= 2
+    end, 1500)
+
+    helpers.assert_list_contains(seen, "hl:alpha", "display highlighter alpha")
+    helpers.assert_list_contains(seen, "hl:beta", "display highlighter beta")
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:beta"
+    end, 1500)
+    select:move_up()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:alpha"
+    end, 1500)
+    select:close()
+    preview:clean()
+end
+
+local function run_display_positions_case()
+    local preview = Select.CustomPreview.new(function(entry)
+        return { "preview:" .. tostring(entry.value) }, "lua", ""
+    end)
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        display = function(entry)
+            return "pos:" .. entry.value
+        end,
+    })
+
+    select:open()
+    select:list(
+        { { value = "aaa" }, { value = "bbb" } },
+        { { 0, 3 }, { 1, 2 } }
+    )
+    helpers.wait_for(function()
+        local lines = helpers.get_buffer_lines(select.list_buffer)
+        return lines and lines[1] == "pos:aaa"
+    end, 1500)
+
+    local lines = helpers.get_buffer_lines(select.list_buffer)
+    helpers.eq(lines[1], "pos:aaa", "display positions line 1")
+    helpers.eq(lines[2], "pos:bbb", "display positions line 2")
+
+    local ns = vim.api.nvim_create_namespace("list_highlight_namespace")
+    helpers.wait_for(function()
+        local extmarks = vim.api.nvim_buf_get_extmarks(
+            select.list_buffer,
+            ns,
+            { 0, 0 },
+            { -1, -1 },
+            { details = true }
+        )
+        return extmarks and #extmarks > 0
+    end, 1500)
+
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:bbb"
+    end, 1500)
+    select:move_up()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:aaa"
+    end, 1500)
+    select:close()
+    preview:clean()
+end
+
+local function run_display_rerender_case()
+    local preview = Select.CustomPreview.new(function(entry)
+        return { "preview:" .. tostring(entry.value) }, "lua", ""
+    end)
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        display = function(entry)
+            return "rr:" .. entry.value
+        end,
+    })
+
+    select:open()
+    select:list({ { value = "first" }, { value = "second" } })
+    select:list({ { value = "third" }, { value = "fourth" } })
+    helpers.wait_for(function()
+        local lines = helpers.get_buffer_lines(select.list_buffer)
+        return lines and lines[1] == "rr:third"
+    end, 1500)
+
+    local lines = helpers.get_buffer_lines(select.list_buffer)
+    helpers.eq(lines[1], "rr:third", "display rerender line 1")
+    helpers.eq(lines[2], "rr:fourth", "display rerender line 2")
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:fourth"
+    end, 1500)
+    select:move_up()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:third"
+    end, 1500)
+    select:close()
+    preview:clean()
+end
+
+local function run_display_rapid_case()
+    local preview = Select.CustomPreview.new(function(entry)
+        return { "preview:" .. tostring(entry.value) }, "lua", ""
+    end)
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        display = function(entry, index)
+            return string.format("rapid:%s:%d", entry.value, index)
+        end,
+    })
+
+    select:open()
+
+    local final_entries = nil
+    local first_entries = nil
+    for i = 1, 60 do
+        local entries = {
+            { value = string.format("v%02d-a", i) },
+            { value = string.format("v%02d-b", i) },
+            { value = string.format("v%02d-c", i) },
+        }
+        if i == 1 then
+            first_entries = entries
+        end
+        if i == 60 then
+            final_entries = entries
+        end
+        select:list(entries)
+    end
+
+    helpers.wait_for(function()
+        local lines = helpers.get_buffer_lines(select.list_buffer)
+        return lines and lines[1] == "rapid:v60-a:1"
+            and lines[2] == "rapid:v60-b:2"
+    end, 1500)
+
+    local lines = helpers.get_buffer_lines(select.list_buffer)
+    helpers.eq(lines[1], "rapid:v60-a:1", "display rapid line 1")
+    helpers.eq(lines[2], "rapid:v60-b:2", "display rapid line 2")
+    helpers.eq(lines[3], "rapid:v60-c:3", "display rapid line 3")
+    helpers.assert_ok(lines[1] ~= "rapid:v01-a:1", "display rapid changed")
+    helpers.eq(select._state.entries, final_entries, "display rapid final entries")
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:v60-b"
+    end, 1500)
+    select:move_up()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:v60-a"
+    end, 1500)
+    select:toggle_entry()
+    helpers.assert_ok(select._state.toggled.entries["1"] ~= nil, "display rapid toggle")
+
+    local long_entries = {}
+    for i = 1, 25 do
+        long_entries[i] = { value = string.format("long-%02d", i) }
+    end
+    select:list(long_entries)
+    helpers.wait_for(function()
+        local lines_long = helpers.get_buffer_lines(select.list_buffer)
+        return lines_long and lines_long[1] == "rapid:long-01:1"
+    end, 1500)
+
+    for _ = 1, 10 do
+        select:move_down()
+    end
+    helpers.wait_for(function()
+        return select._state.cursor[1] == 11
+    end, 1500)
+    helpers.eq(select._state.cursor[1], 11, "display rapid move down")
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:long-11"
+    end, 1500)
+
+    for _ = 1, 5 do
+        select:move_up()
+    end
+    helpers.wait_for(function()
+        return select._state.cursor[1] == 6
+    end, 1500)
+    helpers.eq(select._state.cursor[1], 6, "display rapid move up")
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "preview:long-06"
+    end, 1500)
+
+    select:close()
+    preview:clean()
+end
+
+local function run_preview_fallback_case()
+    local preview = Select.Preview.new()
+    function preview:preview(entry, _)
+        if entry.fail then
+            return false, entry.msg
+        end
+        return nil, entry.msg
+    end
+
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        display = "label",
+    })
+
+    select:open()
+    select:list({
+        { label = "one", fail = true, msg = "Primary failed" },
+        { label = "two", fail = false, msg = "Fallback message" },
+    })
+    helpers.wait_for(function()
+        return select.preview_window
+            and helpers.is_window_valid(select.preview_window)
+    end, 1500)
+
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "Primary failed"
+    end, 1500)
+
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "Fallback message"
+    end, 1500)
+
+    select:close()
+end
+
+local function run_preview_success_case()
+    local preview = Select.Preview.new()
+    function preview:preview(entry, window)
+        local buf = vim.api.nvim_win_get_buf(window)
+        local oldma = vim.bo[buf].modifiable
+        vim.bo[buf].modifiable = true
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+            "ok:" .. tostring(entry.label),
+        })
+        vim.bo[buf].modifiable = oldma
+        return true
+    end
+
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        display = "label",
+    })
+
+    select:open()
+    select:list({
+        { label = "alpha" },
+        { label = "beta" },
+    })
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "ok:alpha"
+    end, 1500)
+
+    select:move_down()
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "ok:beta"
+    end, 1500)
+
+    select:close()
+end
+
+local function run_preview_default_message_case()
+    local preview = Select.Preview.new()
+    function preview:preview(_)
+        return false, nil
+    end
+
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        display = "label",
+    })
+
+    select:open()
+    select:list({ { label = "alpha" } })
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "Unable to preview current entry"
+    end, 1500)
+    select:close()
+end
+
+local function run_preview_error_eventignore_case()
+    local preview = Select.Preview.new()
+    function preview:preview(_)
+        error("Boom")
+    end
+
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = preview,
+        display = "label",
+    })
+
+    local old_ignore = vim.o.eventignore
+    vim.o.eventignore = "BufEnter"
+
+    select:open()
+    select:list({ { label = "alpha" } })
+    helpers.wait_for(function()
+        local buf = select.preview_window
+            and vim.api.nvim_win_get_buf(select.preview_window)
+        local plines = helpers.get_buffer_lines(buf)
+        return plines and plines[1] == "Boom"
+    end, 1500)
+    helpers.eq(vim.o.eventignore, "BufEnter", "preview error restores eventignore")
+
+    select:close()
+    vim.o.eventignore = old_ignore or ""
+end
+
 local function run_toggle_case()
     local select = new_select({
         prompt_list = true,
@@ -1232,6 +1890,18 @@ function M.run()
     run_select_action_case()
     run_toggle_selection_case()
     run_basic_case()
+    run_display_case()
+    run_display_nil_case()
+    run_display_index_case()
+    run_display_decorator_case()
+    run_display_highlighter_case()
+    run_display_positions_case()
+    run_display_rerender_case()
+    run_display_rapid_case()
+    run_preview_fallback_case()
+    run_preview_success_case()
+    run_preview_default_message_case()
+    run_preview_error_eventignore_case()
     run_toggle_quickfix_case()
     run_toggle_case()
     run_toggle_scroll_case()

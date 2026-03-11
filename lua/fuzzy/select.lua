@@ -854,16 +854,17 @@ end
 --- @param window integer Preview window
 --- @param buffer integer Preview buffer
 local function display_default(content, window, buffer)
-    vim.schedule(function()
-        assert(vim.api.nvim_buf_is_valid(buffer))
-        assert(vim.api.nvim_win_is_valid(window))
+    if window == nil or not vim.api.nvim_win_is_valid(window) then
+        return
+    end
+    if buffer ~= nil and vim.api.nvim_buf_is_valid(buffer) then
         local old_ignore = vim.o.eventignore
         vim.o.eventignore = "all"
-        populate_buffer(buffer, content)
+        pcall(populate_buffer, buffer, content)
         vim.api.nvim_win_set_buf(window, buffer)
         vim.api.nvim_win_set_cursor(window, { 1, 0 })
         vim.o.eventignore = old_ignore or ""
-    end)
+    end
 end
 
 --- Asynchronously displays the results of the previewer to the preview window.
@@ -872,22 +873,18 @@ end
 --- @param window integer Preview window
 --- @param buffer integer Preview buffer
 local function display_entry(previewer, entry, window, buffer)
-    vim.schedule(function()
-        if window == nil or not vim.api.nvim_win_is_valid(window) then
-            return
-        end
-        local old_ignore = vim.o.eventignore
-        vim.o.eventignore = "all"
-        local ok, res, msg = pcall(previewer.preview, previewer, entry, window)
-        if ok and (res == false or res == nil) then
-            if buffer ~= nil and vim.api.nvim_buf_is_valid(buffer) then
-                display_default({ msg or "Unable to preview current entry" }, window, buffer)
-            end
-        elseif not ok and res and #res > 0 then
-            error(res, vim.log.levels.ERROR)
-        end
-        vim.o.eventignore = old_ignore or ""
-    end)
+    if window == nil or not vim.api.nvim_win_is_valid(window) then
+        return
+    end
+    local old_ignore = vim.o.eventignore
+    vim.o.eventignore = "all"
+    local ok, res, msg = pcall(previewer.preview, previewer, entry, window)
+    if not ok then
+        display_default({ res or msg or "Unable to preview current entry" }, window, buffer)
+    elseif res == false or res == nil then
+        display_default({ msg or "Unable to preview current entry" }, window, buffer)
+    end
+    vim.o.eventignore = old_ignore or ""
 end
 
 --- Create a new buffer previewer instance, the converter is used to map the entry to a table with bufnr, filename, lnum and col fields. By
@@ -960,10 +957,7 @@ function Select.BufferPreview:preview(entry, window)
         vim.api.nvim_create_autocmd("BufWinEnter", {
             buffer = buffer,
             callback = function(args)
-                assert(utils.table_remove(
-                    self.buffers,
-                    args.buf
-                ) == true)
+                assert(utils.table_remove(self.buffers, args.buf))
                 restore_buffer(assert(args.buf))
                 vim.schedule(function()
                     vim.cmd.edit({ bang = true })
@@ -2684,14 +2678,12 @@ function Select:open()
             initialize_window(prompt_window, opts.window_options.prompt)
         end
 
-        local query = self:query()
+        local query = self:_prompt_getquery()
         if query and #query > 0 then
-            vim.schedule(function()
-                vim.api.nvim_win_set_cursor(prompt_window, {
-                    1, -- set cursor on the first line
-                    vim.str_byteindex(query, #query),
-                })
-            end)
+            vim.api.nvim_win_set_cursor(prompt_window, {
+                1, -- set cursor on the first line
+                vim.str_byteindex(query, #query),
+            })
         end
 
         self.prompt_buffer = prompt_buffer
