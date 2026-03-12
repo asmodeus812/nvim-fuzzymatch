@@ -28,15 +28,15 @@ function M.run()
             helpers.assert_ok(highlighters and #highlighters > 0, "loclist highlighters")
             local entry = item_list[1]
             helpers.assert_ok(entry ~= nil, "loclist entry")
-            local line = picker.select:options().display(entry, 1)
+            local line = picker.select:options().display(entry)
             helpers.assert_ok(type(line) == "string" and #line > 0, "loclist line")
-            local spans = highlighters[1]:highlight({}, line) or {}
+            local spans = assert(highlighters)[1]:highlight({}, line) or {}
             local span_hls = {}
             for _, span in ipairs(spans) do
                 span_hls[span[3]] = true
             end
             helpers.assert_ok(span_hls.Number, "loclist prefix hl")
-            if line:find("%.txt", 1, true) then
+            if assert(line):find("%.txt", 1, true) then
                 helpers.assert_ok(span_hls.Directory, "loclist path hl")
             end
             helpers.assert_ok(span_hls.Function, "loclist name hl")
@@ -132,7 +132,7 @@ function M.run()
             local content_args = {
                 items = vim.fn.getloclist(0, { items = 1, title = 1 }).items or {},
             }
-            captured.content(function(entry)
+            assert(captured).content(function(entry)
                 if entry ~= nil then
                     entries[#entries + 1] = entry
                 end

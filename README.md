@@ -1,69 +1,5 @@
 # Fuzzymatch
 
-## Contents
-
-- [Fuzzymatch](#fuzzymatch)
-    - [Contents](#contents)
-    - [Showcase](#showcase)
-        - [Default](#default)
-        - [Interactive](#interactive)
-            - [Primary stage](#primary-stage)
-            - [Matching stage](#matching-stage)
-    - [Features](#features)
-    - [PICKERS](#pickers)
-    - [Description](#description)
-    - [Installation](#installation)
-        - [Using packer.nvim](#using-packernvimhttpsgithubcomwbthomasonpackernvim)
-        - [Using lazy.nvim](#using-lazynvimhttpsgithubcomfolkelazynvim)
-        - [Using vim-plug](#using-vim-plughttpsgithubcomjunegunnvim-plug)
-    - [Configuration](#configuration)
-    - [User commands](#user-commands)
-    - [Quickstart](#quickstart)
-        - [Static table](#static-table)
-        - [Callback function](#callback-function)
-        - [Executable stream](#executable-stream)
-        - [Stream buffering](#stream-buffering)
-        - [Stream mapping](#stream-mapping)
-        - [Interactive query](#interactive-query)
-        - [Preview & icons](#preview--icons)
-        - [Actions and context](#actions-and-context)
-        - [Dynamic context](#dynamic-context)
-        - [Labels & headers](#labels--headers)
-        - [Dynamic streams](#dynamic-streams)
-        - [Contextual awareness](#contextual-awareness)
-    - [Interaction](#interaction)
-        - [Interactive & Matching stages](#interactive--matching-stages)
-        - [Closing & hiding pickers](#closing--hiding-pickers)
-        - [Dynamic context evaluation](#dynamic-context-evaluation)
-        - [Actions & interaction](#actions--interaction)
-        - [Picker Options](#picker-options)
-        - [Core options](#core-options)
-        - [Advanced options](#advanced-options)
-        - [Option details](#option-details)
-            - [Core options](#core-options-1)
-            - [Advanced options](#advanced-options-1)
-        - [In-depth description](#in-depth-description)
-            - [Actions](#actions)
-            - [Previewers](#previewers)
-            - [Decorators](#decorators)
-            - [Highlighters](#highlighters)
-            - [Converters](#converters)
-    - [Examples](#examples)
-        - [Interactive grep](#interactive-grep)
-        - [Static grep](#static-grep)
-        - [Interactive callbacks](#interactive-callbacks)
-        - [Context aware](#context-aware)
-        - [Static tables](#static-tables)
-        - [Basic ui.select](#basic-uiselect)
-        - [Advanced ui.select](#advanced-uiselect)
-    - [Requirements](#requirements)
-        - [Mandatory](#mandatory)
-        - [Optional](#optional)
-    - [Contributing](#contributing)
-    - [License](#license)
-    - [Acknowledgments](#acknowledgments)
-    - [Changelog](#changelog)
-
 ## Showcase
 
 ### Default
@@ -140,6 +76,24 @@ This means that no more than height number of items are ever decorated and rende
 picker list window, usually around 10-20 lines, depending on the user configuration. Meaning that multi-million item lists can be handled
 with ease, as the picker will only ever render and decorate a small subset of the items at any given time.`
 
+## Contents
+
+- [Showcase](#showcase)
+- [Features](#features)
+- [PICKERS](#pickers)
+- [Description](#description)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Pool Details](#pool-details)
+- [Quickstart](#quickstart)
+- [Interaction](#interaction)
+- [Examples](#examples)
+- [Requirements](#requirements)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+- [Changelog](#changelog)
+
 ## Installation
 
 ### Using [packer.nvim](https://github.com/wbthomason/packer.nvim)
@@ -196,7 +150,10 @@ require("fuzzy").setup({
         max_idle = 5 * 60 * 1000,
         prune_interval = 30 * 1000,
         max_tables = nil,
-        prime_sizes = { 1024, 2048, 4096, 8192, 16384 },
+        prime_min = 16384,
+        prime_max = 524288,
+        prime_chunk = 8192,
+        trace = nil,
     },
 
     -- Registry prunes idle picker instances that are not in use
@@ -213,12 +170,92 @@ Configuration details:
 - `general.user_command.enabled`: Registers the user command that opens pickers by name.
 - `general.user_command.name`: Command name used for pickers (default: `Fzm`).
 - `scheduler.async_budget`: Time budget in microseconds for cooperative async tasks.
+- `scheduler.trace`: Optional debug hook `function(event, data)` for scheduler lifecycle tracing.
 - `pool.max_idle`: Maximum idle time in milliseconds before a pooled table is discarded.
 - `pool.prune_interval`: Interval in milliseconds for pool cleanup.
 - `pool.max_tables`: Maximum number of pooled tables to retain, older idle tables are dropped.
-- `pool.prime_sizes`: Sizes used to pre-allocate pool tables at startup.
+- `pool.prime_min`: Minimum size bucket for pooled table normalization.
+- `pool.prime_max`: Maximum size bucket for pooled table normalization.
+- `pool.prime_chunk`: Resize chunk size for large table normalization.
+- `pool.trace`: Optional debug hook `function(event, data)` for pool lifecycle tracing.
 - `registry.max_idle`: Maximum idle time in milliseconds before an unused picker is destroyed.
 - `registry.prune_interval`: Interval in milliseconds for registry cleanup.
+- `registry.trace`: Optional debug hook `function(event, data)` for registry lifecycle tracing.
+
+## Tracing
+
+Several singleton modules expose a `trace` hook for lightweight diagnostics. Each hook receives `function(event, data)` where `event` is a
+string and `data` is a small table of relevant fields.
+
+Supported modules:
+
+- `pool.trace`: Allocation/reuse, normalization, return, and prune events.
+- `scheduler.trace`: Scheduler start, idle, and setup events.
+- `async.trace`: Async creation and completion events.
+- `registry.trace`: Registry registration, touch, removal, and prune events.
+
+## Pool
+
+The pool is a table-reuse subsystem that keeps allocation pressure low for hot paths (streaming, matching, selection). It is a single global
+pool created during `setup()` and reused by the rest of the runtime. The pool is not a cache of results and does not preserve semantic data;
+it only manages table instances and their sizes.
+
+This implementation is **bucketed and deterministic**: tables are normalized into size buckets on return, and future `obtain()` calls return
+the smallest idle table that fits the requested size. There is no adaptive priming or background allocation. Normalization keeps the pool
+stable and prevents it from filling with many distinct odd sizes.
+
+### Lifecycle
+
+**Obtain**
+
+`Pool.obtain(size)` returns a reusable table for scratch work.
+
+- If `size` is provided and greater than 0, the pool returns the **smallest idle table whose size is >= size**.
+- If no idle table is large enough, the pool falls back to the largest available idle table.
+- If the pool is empty, it allocates a fresh table sized to the normalized bucket for the requested size.
+- The returned table is tracked as “in use” and not eligible for pruning.
+
+**Return**
+
+`Pool._return(tbl)` releases a table back to the pool:
+
+- The table is normalized to a bucket size (power-of-two) within `[prime_min, prime_max]`.
+- If `max_tables == 0`, the table is discarded immediately (no pooling).
+- Otherwise, the table is inserted into the idle pool and becomes eligible for reuse.
+
+For code paths that create tables outside of `obtain()` but still need tracking, `Pool.attach(tbl)` and `Pool.detach(tbl)` mark tables as
+in-use without putting them into the idle pool.
+
+### Normalization
+
+Normalization keeps reuse stable across runs:
+
+- Sizes below `prime_min` are kept as-is.
+- Sizes in `[prime_min, prime_max]` are rounded up to the next power-of-two bucket.
+- Sizes above `prime_max` are clamped down to `prime_max` before pooling.
+
+This means a `125000`-element table becomes `131072`, and a `600000`-element table becomes `524288` (default `prime_max`). The pool prefers
+these normalized buckets to avoid fragmentation.
+
+### Pruning
+
+The pool runs a background prune timer:
+
+- Tables idle longer than `max_idle` are discarded.
+- If `max_tables` is set, the pool removes the least-recently-used idle tables until the limit is satisfied.
+- Tables marked “in use” are never pruned.
+
+### Misc
+
+Beyond `obtain()`/`_return()`, the pool exposes a few utility helpers:
+
+- `Pool.attach(tbl)`: mark a table as “in use” without placing it into the idle pool. Use this when you create a table outside
+  `obtain()` but still want the pool to track it.
+- `Pool.detach(tbl)`: remove a table from pool tracking without returning it to the idle pool.
+- `Pool.is_pooled(tbl)`: returns `true` if the table is tracked by the pool (in use or idle).
+- `Pool.fill(tbl, value)`: in-place fill of a table with a single value.
+- `Pool.resize(tbl, size, default)`: resize a table to `size`, filling new slots with `default` when expanding.
+- `Pool.remove(tbl, value)`: remove all entries that match `value` from `tbl`.
 
 ## Quickstart
 
@@ -721,16 +758,16 @@ display, actions, preview) rather than an advanced one. These core options are t
 functional picker instance, they define how a picker behaves, what content it streams, how it displays the entries, what actions are
 available, how the list and the entries are decorated and whether a preview is available or not.
 
-| Field          | Type                                | Description                                                                                                                                                                                                                                                                                                 |
-| -------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `content`      | `string,function,table`             | The content for the picker. Can be a string (command executable), function (generates entries), or table (static entries). Tables make the picker non-interactive by implicitly. Functions/tables can contain strings or tables (checkout `display` function for showing table entries).                    |
+| Field          | Type                                | Description                                                                                                                                                                                                                                                                                                                                                         |
+| -------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`      | `string,function,table`             | The content for the picker. Can be a string (command executable), function (generates entries), or table (static entries). Tables make the picker non-interactive by implicitly. Functions/tables can contain strings or tables (checkout `display` function for showing table entries).                                                                            |
 | `context`      | `table?`                            | Context to pass to `content`. Includes `cwd` (string), `env` (env vars), `args` (table of args), and `tick` (any) for additional change detection. `tick = true` is a shorthand that reruns on every open. The evaluated context is deep-compared on open; keep these table key-value pairs lightweight and limited so reruns happen only when absolutely intended. |
-| `interactive`  | `boolean\|string\|number\|function` | Marks the picker as interactive and controls how prompt input is inserted into args.                                                                                                                                                                                                                        |
-| `display`      | `function,string,nil`               | Custom function for displaying entries. If `nil`, the entry itself is displayed. If a string, it's treated as a key to extract from the entry table. If a function, it is used as a callback which receives the entry and the entry index as its input arguments and must return a `string`                 |
-| `actions`      | `table?`                            | Key mappings for actions in the picker interface. Specify as `[key] = callback` OR `["key"] = { callback, label }` OR `["key"] = false` to disable the action for that key. Labels (optional) can be `string` or `function`.                                                                                |
-| `preview`      | `Select.Preview,boolean`            | Configures whether entries generate a preview. Set `false` for none, Or provide an instance of a class sub-classing off of `Select.Preview` such as - `Select.BufferPreview`.                                                                                                                               |
-| `decorators`   | `Select.Decorator[]`                | Table of decorators for the entries. The decoration providers are instances of `Select.Decorators` and by default the Select module provides several built in ones like Select.IconDecorator.                                                                                                               |
-| `highlighters` | `Select.Highlighter[]`              | Table of highlighters for the entries. Highlighters add highlights to list lines in the picker interface, and are instances of `Select.Highlighter` implementations.                                                                                                                                        |
+| `interactive`  | `boolean\|string\|number\|function` | Marks the picker as interactive and controls how prompt input is inserted into args.                                                                                                                                                                                                                                                                                |
+| `display`      | `function,string,nil`               | Custom function for displaying entries. If `nil`, the entry itself is displayed. If a string, it's treated as a key to extract from the entry table. If a function, it is used as a callback which receives the entry and the entry index as its input arguments and must return a `string`                                                                         |
+| `actions`      | `table?`                            | Key mappings for actions in the picker interface. Specify as `[key] = callback` OR `["key"] = { callback, label }` OR `["key"] = false` to disable the action for that key. Labels (optional) can be `string` or `function`.                                                                                                                                        |
+| `preview`      | `Select.Preview,boolean`            | Configures whether entries generate a preview. Set `false` for none, Or provide an instance of a class sub-classing off of `Select.Preview` such as - `Select.BufferPreview`.                                                                                                                                                                                       |
+| `decorators`   | `Select.Decorator[]`                | Table of decorators for the entries. The decoration providers are instances of `Select.Decorators` and by default the Select module provides several built in ones like Select.IconDecorator.                                                                                                                                                                       |
+| `highlighters` | `Select.Highlighter[]`              | Table of highlighters for the entries. Highlighters add highlights to list lines in the picker interface, and are instances of `Select.Highlighter` implementations.                                                                                                                                                                                                |
 
 ### Advanced options
 

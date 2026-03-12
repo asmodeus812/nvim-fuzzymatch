@@ -3,6 +3,40 @@ local helpers = require("script.test_utils")
 
 local M = { name = "stream" }
 
+local function build_large_awk_args(size)
+    local query = "kqzv"
+    local match_every = 997
+    local noise = "abcdefghijlmnoprstuwxy"
+    local program = table.concat({
+        "BEGIN{",
+        "for(i=1;i<=n;i++){",
+        "base=noise noise noise;",
+        "if (i%" .. match_every .. "==0){",
+        "if (i%3==0) line=pat \"_\" base \"_\" i;",
+        "else if (i%3==1) line=substr(base,1,12) \"_\" pat \"_\" substr(base,13) \"_\" i;",
+        "else line=substr(base,1,20) \"_\" i \"_\" pat;",
+        "} else {",
+        "line=substr(base,1,20) \"_\" i \"_\" substr(base,21);",
+        "}",
+        "print line;",
+        "}",
+        "}",
+    })
+    return {
+        "-v", "n=" .. size,
+        "-v", "pat=" .. query,
+        "-v", "noise=" .. noise,
+        program,
+    }
+end
+
+local function build_exit_before_eof_args()
+    return {
+        "-c",
+        "(sleep 0.05; printf 'ld\\n') & printf 'hello\\nwor'; exit 0",
+    }
+end
+
 local function run_lines_case()
     local stream = Stream.new({ lines = true, step = 100 })
     helpers.assert_ok(stream:options() ~= nil, "stream options")
@@ -23,7 +57,7 @@ local function run_lines_case()
         onexit = function() end,
     })
 
-    local results = stream:wait(1500)
+    local results = assert(assert(stream:wait(1500)))
     helpers.assert_ok(results ~= nil, "stream nil")
     helpers.assert_ok(type(results) == "table", "results")
     helpers.eq(#results, 500, "results count")
@@ -53,7 +87,7 @@ local function run_transform_case()
         callback = function() end,
     })
 
-    local results = stream:wait(1500)
+    local results = assert(assert(stream:wait(1500)))
     helpers.assert_ok(results ~= nil, "transform nil")
     helpers.assert_ok(type(results) == "table", "transform")
     helpers.eq(#results, 200, "transform count")
@@ -74,7 +108,7 @@ local function run_bytes_case()
         callback = function() end,
     })
 
-    local results = stream:wait(1500)
+    local results = assert(stream:wait(1500))
     helpers.assert_ok(results ~= nil, "bytes nil")
     local joined = table.concat(results or {}, "")
     helpers.eq(joined, "abcdefghijklmnop", "bytes")
@@ -91,7 +125,7 @@ local function run_trim_results_case()
     end, {
         callback = function() end,
     })
-    local results = assert(stream:wait(1500))
+    local results = assert(assert(stream:wait(1500)))
     helpers.assert_ok(type(results) == "table", "empty type")
     helpers.eq(results[1], "item-01", "empty one")
     helpers.eq(results[4], "item-04", "empty last")
@@ -113,7 +147,7 @@ local function run_restart_case()
         },
         callback = function() end,
     })
-    stream:wait(1500)
+    assert(stream:wait(1500))
 
     stream:start("awk", {
         args = {
@@ -124,7 +158,7 @@ local function run_restart_case()
     helpers.assert_ok(helpers.wait_for(function()
         return not stream:running()
     end, 1500), "restart done")
-    local results = stream.results
+    local results = assert(stream.results)
     helpers.assert_ok(results ~= nil, "restart nil")
     helpers.assert_ok(type(results) == "table", "restart")
     helpers.eq(#results, 100, "restart count")
@@ -143,7 +177,7 @@ local function run_context_case()
         },
         callback = function() end,
     })
-    local results = stream:wait(1500)
+    local results = assert(assert(stream:wait(1500)))
     helpers.assert_ok(results ~= nil, "context nil")
     helpers.eq(results[1], "/tmp", "context cwd")
     helpers.eq(results[2], "TEST_ENV=1", "context env")
@@ -158,7 +192,7 @@ local function run_partial_line_case()
         args = { "aaaa_kqzv_bbbb\n" },
         callback = function() end,
     })
-    local results = stream:wait(1500)
+    local results = assert(assert(stream:wait(1500)))
     helpers.assert_ok(results ~= nil, "partial line nil")
     helpers.eq(#results, 1, "partial line count")
     helpers.eq(results[1], "aaaa_kqzv_bbbb", "partial line join")
@@ -172,7 +206,7 @@ local function run_trailing_partial_case()
         args = { "tail_only" },
         callback = function() end,
     })
-    local results = stream:wait(1500)
+    local results = assert(assert(stream:wait(1500)))
     helpers.assert_ok(results ~= nil, "trailing partial nil")
     helpers.eq(#results, 1, "trailing partial count")
     helpers.eq(results[1], "tail_only", "trailing partial value")
@@ -195,7 +229,7 @@ local function run_lines_multi_flush_case()
             end
         end,
     })
-    local results = stream:wait(1500)
+    local results = assert(stream:wait(1500))
     helpers.assert_ok(results ~= nil, "multi flush nil")
     helpers.eq(#results, 350, "multi flush count")
     helpers.eq(buffers, { 100, 100, 100, 50 }, "multi flush buffers")
@@ -212,7 +246,7 @@ local function run_lines_empty_lines_case()
         },
         callback = function() end,
     })
-    local results = stream:wait(1500)
+    local results = assert(stream:wait(1500))
     helpers.assert_ok(results ~= nil, "empty lines nil")
     helpers.assert_list_contains(results, "alpha", "empty lines alpha")
     helpers.assert_list_contains(results, "beta", "empty lines beta")
@@ -230,7 +264,7 @@ local function run_lines_pending_multi_case()
         },
         callback = function() end,
     })
-    local results = stream:wait(1500)
+    local results = assert(stream:wait(1500))
     helpers.assert_ok(results ~= nil, "pending multi nil")
     helpers.assert_ok(#results >= 102, "pending multi count")
     helpers.eq(results[1], "foobar", "pending multi first")
@@ -254,7 +288,7 @@ local function run_bytes_flush_case()
             end
         end,
     })
-    local results = stream:wait(1500)
+    local results = assert(stream:wait(1500))
     helpers.assert_ok(results ~= nil, "bytes flush nil")
     local joined = table.concat(results or {}, "")
     helpers.eq(#joined, 80, "bytes flush count")
@@ -276,7 +310,7 @@ local function run_transform_prefix_case()
         end,
         callback = function() end,
     })
-    local results = stream:wait(1500)
+    local results = assert(stream:wait(1500))
     helpers.assert_ok(results ~= nil, "transform prefix nil")
     helpers.eq(results[1], "x:line-001", "transform prefix one")
     helpers.eq(results[2], "x:line-002", "transform prefix two")
@@ -298,7 +332,7 @@ local function run_callback_nil_case()
             end
         end,
     })
-    stream:wait(1500)
+    assert(stream:wait(1500))
     helpers.assert_ok(saw_nil, "callback nil")
     stream:destroy()
 end
@@ -320,7 +354,7 @@ local function run_onexit_success_case()
         },
         callback = function() end,
     })
-    stream:wait(1500)
+    assert(stream:wait(1500))
     helpers.eq(code, 0, "onexit success code")
     helpers.assert_ok(msg == nil or type(msg) == "number", "onexit success msg")
     stream:destroy()
@@ -356,7 +390,7 @@ local function run_ephemeral_false_case()
         },
         callback = function() end,
     })
-    local results = stream:wait(1500)
+    local results = assert(stream:wait(1500))
     helpers.eq(#results, 200, "ephemeral false first count")
     stream:start("awk", {
         args = {
@@ -364,7 +398,7 @@ local function run_ephemeral_false_case()
         },
         callback = function() end,
     })
-    local next_results = stream:wait(1500)
+    local next_results = assert(stream:wait(1500))
     helpers.eq(#next_results, 200, "ephemeral false second count")
     helpers.eq(next_results[1], "first-001", "ephemeral false second value")
     stream:destroy()
@@ -384,8 +418,59 @@ local function run_accum_sizes_case()
             end
         end,
     })
-    stream:wait(1500)
+    assert(stream:wait(1500))
     helpers.eq(accums, { 100, 200, 250 }, "accum sizes")
+    stream:destroy()
+end
+
+local function run_command_large_integrity_case()
+    local size = 500000
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+
+    for _ = 1, 3 do
+        local stream = Stream.new({ lines = true, step = 150000 })
+        stream:start("awk", {
+            args = build_large_awk_args(size),
+            callback = function() end,
+        })
+
+        local results = assert(stream:wait(600000))
+        helpers.assert_ok(results ~= nil, "large command nil")
+        helpers.eq(#results, size, "large command count")
+        helpers.assert_ok(results[1] ~= nil, "large command first")
+        helpers.assert_ok(results[size] ~= nil, "large command last")
+        helpers.assert_ok(results[size]:find("_" .. size), "large command tail marker")
+        stream:destroy()
+    end
+end
+
+local function run_exit_before_eof_case()
+    local callback_nil = false
+    local exit_code, exit_msg
+    local stream = Stream.new({
+        lines = true,
+        step = 8,
+        onexit = function(code, msg)
+            exit_code = code
+            exit_msg = msg
+        end,
+    })
+    helpers.assert_ok(vim.fn.executable("sh") == 1, "sh missing")
+    stream:start("sh", {
+        args = build_exit_before_eof_args(),
+        callback = function(buffer, accum)
+            if buffer == nil and accum == nil then
+                callback_nil = true
+            end
+        end,
+    })
+
+    local results = assert(stream:wait(1500))
+    helpers.assert_ok(results ~= nil, "exit before eof nil")
+    helpers.eq(results, { "hello", "world" }, "exit before eof final results")
+    helpers.eq(exit_code, 0, "exit before eof code")
+    helpers.assert_ok(exit_msg == nil or type(exit_msg) == "number", "exit before eof msg")
+    helpers.assert_ok(callback_nil, "exit before eof callback nil")
     stream:destroy()
 end
 
@@ -408,6 +493,8 @@ function M.run()
     helpers.run_test_case("stream_onexit_error", run_onexit_error_case)
     helpers.run_test_case("stream_ephemeral_false", run_ephemeral_false_case)
     helpers.run_test_case("stream_accum_sizes", run_accum_sizes_case)
+    helpers.run_test_case("stream_command_large_integrity", run_command_large_integrity_case)
+    helpers.run_test_case("stream_exit_before_eof", run_exit_before_eof_case)
 end
 
 return M

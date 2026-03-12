@@ -5,6 +5,7 @@ local helpers = require("script.test_utils")
 helpers.setup_global_state()
 helpers.setup_runtime()
 
+require("benchmarks.pool_perf").run()
 require("benchmarks.picker_perf").run()
 
 vim.cmd("qa!")

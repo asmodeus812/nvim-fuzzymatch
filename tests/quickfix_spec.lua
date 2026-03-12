@@ -30,7 +30,7 @@ function M.run()
             helpers.assert_ok(entry ~= nil, "quickfix entry")
             local line = picker.select:options().display(entry, 1)
             helpers.assert_ok(type(line) == "string" and #line > 0, "quickfix line")
-            local spans = highlighters[1]:highlight({}, line) or {}
+            local spans = assert(highlighters)[1]:highlight({}, line) or {}
             local span_hls = {}
             for _, span in ipairs(spans) do
                 span_hls[span[3]] = true

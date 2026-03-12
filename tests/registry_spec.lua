@@ -3,78 +3,185 @@ local helpers = require("script.test_utils")
 
 local M = { name = "registry" }
 
+local function reset_registry()
+    local loaded = package.loaded["fuzzy.registry"]
+    if loaded then
+        pcall(function()
+            if loaded.prune_timer and not vim.uv.is_closing(loaded.prune_timer) then
+                loaded.prune_timer:stop()
+                loaded.prune_timer:close()
+            end
+        end)
+    end
+    package.loaded["fuzzy.registry"] = nil
+    package.loaded["fuzzy"] = nil
+end
+
 function M.run()
-    helpers.run_test_case("registry_basic", function()
-        local registry = require("fuzzy.pickers.registry")
-        registry.clear_picker_registry()
-
-        local opened = false
-        local picker = {
-            open = function()
-                opened = true
-            end,
-        }
-
-        registry.register_picker_instance("alpha", picker)
-        helpers.eq(registry.get_picker_instance("alpha"), picker, "get")
-
-        local opened_picker = registry.open_picker_instance("alpha")
-        helpers.eq(opened_picker, picker, "open")
-        helpers.assert_ok(opened, "opened")
-
-        local removed = registry.remove_picker_instance("alpha")
-        helpers.eq(removed, picker, "remove")
-        helpers.eq(registry.get_picker_instance("alpha"), nil, "missing")
-
-        registry.register_picker_instance("beta", picker)
-        registry.clear_picker_registry()
-        helpers.eq(registry.get_picker_instance("beta"), nil, "cleared")
-    end)
-
-    helpers.run_test_case("registry_prune", function()
+    helpers.run_test_case("registry_trace", function()
+        reset_registry()
         local Registry = require("fuzzy.registry")
-        local original_timer = vim.uv.new_timer
-        Registry.items = nil
-        if Registry.prune_timer and Registry.prune_timer.stop then
-            pcall(Registry.prune_timer.stop, Registry.prune_timer)
-        end
-        Registry.prune_timer = nil
-        helpers.with_mock(vim.uv, "new_timer", function()
-            return {
-                start = function() end,
-            }
-        end, function()
+        local events = {}
+
+        helpers.with_mock_map(vim.uv, {
+            new_timer = function()
+                return {
+                    start = function() end,
+                    stop = function() end,
+                    close = function() end,
+                }
+            end,
+            hrtime = vim.uv.hrtime,
+        }, function()
             Registry.new({
-                max_idle = 100,
-                prune_interval = 10,
-                now = function()
-                    return 0
+                max_idle = 0,
+                trace = function(event)
+                    events[#events + 1] = event
                 end,
             })
         end)
-        vim.uv.new_timer = original_timer
 
-        local idle_picker = {}
-        idle_picker.isopen = function() return false end
-        idle_picker.isvalid = function() return false end
-        idle_picker.close = function() idle_picker.closed = true end
+        local picker = {}
+        Registry.register(picker)
+        Registry.touch(picker)
+        Registry.remove(picker)
 
-        local used_picker = {}
-        used_picker.isopen = function() return false end
-        used_picker.isvalid = function() return false end
-        used_picker.close = function() used_picker.closed = true end
-        used_picker.match = { running = function() return true end }
+        helpers.assert_ok(vim.tbl_contains(events, "registry_new"), "trace new")
+        helpers.assert_ok(vim.tbl_contains(events, "registry_register"), "trace register")
+        helpers.assert_ok(vim.tbl_contains(events, "registry_touch"), "trace touch")
+        helpers.assert_ok(vim.tbl_contains(events, "registry_remove"), "trace remove")
+    end)
 
-        Registry.register(idle_picker)
-        Registry.register(used_picker)
+    helpers.run_test_case("registry_register_and_touch", function()
+        reset_registry()
+        local Registry = require("fuzzy.registry")
+        local now = 0
+        helpers.with_mock_map(vim.uv, {
+            new_timer = function()
+                return {
+                    start = function() end,
+                    stop = function() end,
+                    close = function() end,
+                }
+            end,
+            hrtime = vim.uv.hrtime,
+        }, function()
+            Registry.new({
+                max_idle = 10,
+                now = function()
+                    now = now + 1
+                    return now
+                end,
+            })
+        end)
 
-        Registry.prune(200)
+        local picker = {}
+        Registry.register(picker)
+        local first = Registry.items[picker].last_used
+        Registry.touch(picker)
+        local second = Registry.items[picker].last_used
+        helpers.assert_ok(second > first, "touch updates last_used")
+    end)
 
-        helpers.wait_for(function()
-            return idle_picker.closed == true
-        end, 1500)
-        helpers.assert_ok(idle_picker.closed == true, "idle closed")
-        helpers.assert_ok(used_picker.closed ~= true, "used kept")
+    helpers.run_test_case("registry_remove_clears_entry", function()
+        reset_registry()
+        local Registry = require("fuzzy.registry")
+        helpers.with_mock_map(vim.uv, {
+            new_timer = function()
+                return {
+                    start = function() end,
+                    stop = function() end,
+                    close = function() end,
+                }
+            end,
+            hrtime = vim.uv.hrtime,
+        }, function()
+            Registry.new({ max_idle = 10 })
+        end)
+
+        local picker = {}
+        Registry.register(picker)
+        helpers.assert_ok(Registry.items[picker] ~= nil, "registered")
+        Registry.remove(picker)
+        helpers.eq(Registry.items[picker], nil, "removed")
+    end)
+
+    helpers.run_test_case("registry_prune_respects_in_use", function()
+        reset_registry()
+        local Registry = require("fuzzy.registry")
+        local scheduled = {}
+
+        helpers.with_mock_map(vim, {
+            schedule = function(fn)
+                scheduled[#scheduled + 1] = fn
+            end,
+        }, function()
+            helpers.with_mock_map(vim.uv, {
+                new_timer = function()
+                    return {
+                        start = function() end,
+                        stop = function() end,
+                        close = function() end,
+                    }
+                end,
+                hrtime = vim.uv.hrtime,
+            }, function()
+                Registry.new({ max_idle = 1 })
+                helpers.eq(Registry.max_idle, 1, "max_idle set")
+                local open_picker = {
+                    isopen = function() return true end,
+                    close = function() error("should not close") end,
+                }
+                Registry.register(open_picker)
+                Registry.items[open_picker].last_used = 0
+                Registry.prune(10)
+            end)
+        end)
+
+        helpers.eq(#scheduled, 1, "scheduled prune")
+        scheduled[1]()
+        -- picker_in_use should prevent pruning
+        local still = Registry.items and next(Registry.items) ~= nil
+        helpers.assert_ok(still, "in-use not pruned")
+    end)
+
+    helpers.run_test_case("registry_prune_closes_idle", function()
+        reset_registry()
+        local Registry = require("fuzzy.registry")
+        local scheduled = {}
+        local closed = 0
+
+        helpers.with_mock_map(vim, {
+            schedule = function(fn)
+                scheduled[#scheduled + 1] = fn
+            end,
+        }, function()
+            helpers.with_mock_map(vim.uv, {
+                new_timer = function()
+                    return {
+                        start = function() end,
+                        stop = function() end,
+                        close = function() end,
+                    }
+                end,
+                hrtime = vim.uv.hrtime,
+            }, function()
+                Registry.new({ max_idle = 1 })
+                helpers.eq(Registry.max_idle, 1, "max_idle set")
+                local picker = {
+                    close = function() closed = closed + 1 end,
+                }
+                Registry.register(picker)
+                Registry.items[picker].last_used = 0
+                Registry.prune(10)
+            end)
+        end)
+
+        helpers.eq(#scheduled, 1, "scheduled prune")
+        scheduled[1]()
+        helpers.eq(closed, 1, "closed idle picker")
+        local empty = Registry.items == nil or next(Registry.items) == nil
+        helpers.assert_ok(empty, "pruned entry removed")
     end)
 end
 

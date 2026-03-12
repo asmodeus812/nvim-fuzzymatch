@@ -7,7 +7,7 @@ local utils = require("fuzzy.utils")
 --- @field public results string[]|nil The results accumulated so far, this is only valid after the stream has finished, or if the stream is ephemeral and a new stream has not yet started.
 --- @field private onexit fun(number, string) The function that will be invoked when the stream exits, this function reports the exit code and possible error messages to the consumer
 --- @field private callback fun(buffer: string[], accum: string[]) The callback function to be called when new data is available, this function receives two arguments, the first is the current buffer of data, the second is the accumulation of all data so far.
---- @field private mapper? fun(data: string): string|nil A function to transform each line or chunk of data before it is added to the results, defaults to nil
+--- @field private transform? fun(data: string): string|nil A function to transform each line or chunk of data before it is added to the results, defaults to nil
 --- @field private _options StreamOptions The options for the stream
 --- @field private _state table The internal state of the stream, used to manage the stream's lifecycle
 local Stream = {}
@@ -50,10 +50,6 @@ function Stream:_close_stream()
         close_handle(self._state.handle)
         self._state.handle = nil
     end
-    if self._state.streaming then
-        self:_stop_streaming()
-        self._state.streaming = nil
-    end
 
     if self._state.buffer then
         -- clean up the string references to avoid any memory leaks, the buffer could still be reused in future calls to start
@@ -79,10 +75,16 @@ function Stream:_close_stream()
         self._state.accum = nil
         self._state.total = 0
     end
+
     self._state.pending = nil
+    self._state.exitdata = nil
+    self._state.stdouteof = false
+    self._state.stderreof = false
 
     self.callback = nil
     self.transform = nil
+
+    self:_stop_streaming()
 end
 
 function Stream:_make_stream()
@@ -149,7 +151,6 @@ function Stream:_flush_results()
     self._state.size = 0
 
     -- handle result flushing in an async way
-    Async.yield()
 end
 
 function Stream:_handle_data(data, size)
@@ -167,101 +168,142 @@ function Stream:_handle_data(data, size)
     end
 end
 
-function Stream:_handle_out(code, chunk)
+function Stream:_handle_out(code, chunk, kind)
+    assert(kind and kind > 0)
     local callback = self.callback
     local onexit = self._options.onexit
-    if code and code == 1 then
+
+    -- when we hit some type of error we can immediately close and destroy the stream that is non-negotiable as there is something wrong that has happened with it
+    if code and code > 0 then
         -- ensure that the error is reported to the user in some capacity, that can be useful to debug the state of the command
         -- that was being run and what went wrong.
         self:destroy()
-    else
-        local pending_line = self._state.pending
-        if self._options.lines == true and pending_line ~= nil and #pending_line > 0 then
-            self:_handle_data(pending_line, self._state.size)
-            self._state.pending = nil
-        end
-        -- on exit make sure that there is nothing more to flush, if there is any size accumulated over the very last call toThe handle
-        -- of stdout or stderr, then we need to finally flush it as well, this is to ensure that there is no left over unprocessed data
-        -- after the stream has closed
-        if self._state.size > 0 then
-            utils.timed_call(Stream._flush_results, self)
-        end
-        self:stop()
+        utils.safe_call(callback, nil, nil)
+        utils.safe_call(onexit, code, chunk)
+        return
     end
+
+    -- track the exit data for the stream, that is only valid when we receive a handle out that is of kind 3 that signals that the
+    -- exit code and message status have been seen, however we might still have bufferred i/o pending from pipes on the OS level
+    if kind == 3 then self._state.exitdata = { code, chunk } end
+
+    -- in case we have not yet seen exit and any of the eof from both stdout and stderr, we can not yet close or flush the stream or finalize it,
+    -- that can only happen if EOF on both pipes is met
+    if not self._state.exitdata or
+        not self._state.stderreof or
+        not self._state.stdouteof
+    then
+        return
+    end
+
+    -- in case on exit there was any partial pending data that was read but never finalized and flushed down to the client we can do
+    -- it here before killing the stream, that is important as otherwise data might be lost
+    local pending_data = self._state.pending
+    if pending_data ~= nil and #pending_data > 0 then
+        self:_handle_data(pending_data, self._state.size)
+        self._state.pending = nil
+    end
+
+    -- on exit make sure that there is nothing more to flush, if there is any size accumulated over the very last call toThe handle
+    -- of stdout or stderr, then we need to finally flush it as well, this is to ensure that there is no left over unprocessed data
+    -- after the stream has closed
+    if self._state.size > 0 then
+        utils.timed_call(Stream._flush_results, self)
+    end
+
+    -- finally stop the stream, and notify the user of the finalization of the stream itself, with both the exit
+    local exitdata = assert(self._state.exitdata)
+    self:stop() -- first ensure cleanup
     utils.safe_call(callback, nil, nil)
-    utils.safe_call(onexit, code, chunk)
+    utils.safe_call(onexit, exitdata[1], exitdata[2])
 end
 
-function Stream:_handle_in(err, chunk)
-    if err or not chunk then return end
-    assert(type(chunk) == "string")
-
-    if self._options.lines == true then
-        local pending_line = self._state.pending
-        if pending_line ~= nil and #pending_line > 0 then
-            chunk = pending_line .. chunk
-            self._state.pending = nil
+function Stream:_handle_in(err, chunk, kind)
+    if err ~= nil then
+        self:_handle_out(1, nil, kind)
+    elseif not chunk then
+        if kind == 1 then
+            self._state.stdouteof = true
+        elseif kind == 2 then
+            self._state.stderreof = true
         end
-        -- when the type of stream is defined as lines, split the output based on new lines, this might produce some empty lines
-        -- which are filtered afterwards.
-        local start = 1
-        local count = 0
-        local separator = "\n"
+        self:_handle_out(0, nil, kind)
+    else
+        assert(type(chunk) == "string")
 
-        -- manually split the chunk into lines, this is done to avoid creating intermediate tables and strings, which would
-        -- then need to be garbage collected, instead we simply iterate over the chunk and extract substrings as needed, this
-        -- should be more efficient and avoid unnecessary allocations.
-        while true do
-            local size = self._state.size
-            local pos, next = chunk:find(
-                separator, start, false
-            )
-
-            -- yield every N accumulated lines, even though handle_data will yield when the buffer is full, this ensures that we yield more
-            -- often, while still collecting items, allowing other async tasks to run in between, also to avoid blocking the event loop for
-            -- too long. Current line is not stored anywhere might allow the garbage collector to reclaim it faster/sooner.
-            if size % 256 == 0 then
-                Async.yield()
+        if self._options.lines == true then
+            local pending_line = self._state.pending
+            if pending_line ~= nil and #pending_line > 0 then
+                chunk = pending_line .. chunk
+                self._state.pending = nil
             end
+            -- when the type of stream is defined as lines, split the output based on new lines, this might produce some empty lines
+            -- which are filtered afterwards.
+            local start = 1
+            local count = 0
+            local separator = "\n"
 
-            if not pos then
-                if start <= #chunk then
-                    local line = chunk:sub(start)
-                    self._state.pending = line
+            -- manually split the chunk into lines, this is done to avoid creating intermediate tables and strings, which would
+            -- then need to be garbage collected, instead we simply iterate over the chunk and extract substrings as needed, this
+            -- should be more efficient and avoid unnecessary allocations.
+            while true do
+                local size = self._state.size
+                local pos, next = chunk:find(
+                    separator, start, false
+                )
+
+                -- not finding the final new line does not mean the job is done there is still data pending that means
+                -- that we have to store this data for further processing, the first new line we find in the next chunk
+                -- we will append to this one. This needs deterministic ordering in chunk execution order
+                if not pos then
+                    if start <= #chunk then
+                        local line = chunk:sub(start)
+                        self._state.pending = line
+                    end
+                    break
                 end
-                break
+
+                local line = chunk:sub(start, pos - 1)
+                self:_handle_data(line, size)
+
+                start = next + 1
+                count = count + 1
             end
-
-            local line = chunk:sub(start, pos - 1)
-            self:_handle_data(line, size)
-
-            start = next + 1
-            count = count + 1
+        elseif self._options.bytes == true then
+            -- when the type of the stream is defined as bytes, simply append the string chunks to the buffer, once the buffer contains N number
+            -- of chunks, whose total summed string length, is greater than the allowed size (interpreted as byte length), flush the buffer.
+            -- Keep in mind that this is not exact, it will likely exceed the step size, but it is much more efficient to take the entire buffer
+            -- instead of hard splitting it exactly on the step size, which would require more string manipulation and allocations
+            local length = 0
+            local buffer = self._state.buffer
+            for i = 1, self._state.size, 1 do
+                length = length + #buffer[i]
+            end
+            self:_handle_data(chunk, length)
         end
-    elseif self._options.bytes == true then
-        -- when the type of the stream is defined as bytes, simply append the string chunks to the buffer, once the buffer contains N number
-        -- of chunks, whose total summed string length, is greater than the allowed size (interpreted as byte length), flush the buffer.
-        -- Keep in mind that this is not exact, it will likely exceed the step size, but it is much more efficient to take the entire buffer
-        -- instead of hard splitting it exactly on the step size, which would require more string manipulation and allocations
-        local length = 0
-        local buffer = self._state.buffer
-        for i = 1, self._state.size, 1 do
-            length = length + #buffer[i]
-        end
-        self:_handle_data(chunk, length)
+    end
+end
+
+function Stream:_handle_stdout(err, chunk)
+    local executor = Async.wrap(Stream._handle_in)
+
+    local streamer = function()
+        self._state.streamer = executor(self, err, chunk, 1)
+        Scheduler.add(self._state.streamer)
+    end
+
+    if self:_is_streaming() then
+        self._state.streamer:await(streamer)
+    else
+        streamer()
     end
 end
 
 function Stream:_handle_stderr(err, chunk)
-    if err or not chunk then return end
-    self:_handle_stdout(err, chunk)
-end
-
-function Stream:_handle_stdout(e, c)
     local executor = Async.wrap(Stream._handle_in)
 
     local streamer = function()
-        self._state.streamer = executor(self, e, c)
+        self._state.streamer = executor(self, err, chunk, 2)
         Scheduler.add(self._state.streamer)
     end
 
@@ -276,7 +318,7 @@ function Stream:_handle_exit(e, c)
     local executor = Async.wrap(Stream._handle_out)
 
     local streamer = function()
-        self._state.streamer = executor(self, e, c)
+        self._state.streamer = executor(self, e, c, 3)
         Scheduler.add(self._state.streamer)
     end
 
@@ -318,7 +360,7 @@ function Stream:destroy()
     self:_destroy_stream()
 end
 
---- Stops the stream if it is running, if the stream is ephemeral, also destroys the context and results, if ephemeral is true
+--- Stops the stream if it is running and finalizes the current buffered results without destroying them
 function Stream:stop()
     self:_close_stream()
     self:_stop_streaming()
@@ -387,17 +429,19 @@ function Stream:start(cmd, opts)
     end
 
     if type(cmd) == "function" then
-        local did_exit = false
+        local did_finalize = false
         local callback = function(data)
-            if not did_exit and data ~= nil then
+            if not did_finalize and data ~= nil then
                 self:_handle_data(
                     data,
                     self._state.size
                 )
             else
-                assert(not did_exit)
-                self:_handle_out()
-                did_exit = true
+                self._state.stdouteof = true
+                self._state.stderreof = true
+                assert(did_finalize == false)
+                self:_handle_out(0, nil, 3)
+                did_finalize = true
             end
         end
         local executor = Async.wrap(function(stream)
@@ -405,8 +449,11 @@ function Stream:start(cmd, opts)
                 cmd, callback, opts.args, opts.cwd, opts.env
             )
             local code = not ok and 1 or 0
-            if did_exit == false then
-                stream:_handle_out(code, err)
+            if did_finalize == false then
+                self._state.stdouteof = true
+                self._state.stderreof = true
+                stream:_handle_out(code, err, 3)
+                did_finalize = true
             end
         end)
         self._state.streamer = executor(self)
@@ -477,19 +524,23 @@ function Stream.new(opts)
     }, opts)
 
     local self = setmetatable({
-        mapper = nil,
+        transform = nil,
         results = nil,
         callback = nil,
         _options = opts,
         _state = {
             size = 0,
             total = 0,
+            pending = 0,
             accum = nil,
             buffer = nil,
             stdout = nil,
             stderr = nil,
             handle = nil,
             streamer = nil,
+            exitdata = nil,
+            stdouteof = false,
+            stderreof = false,
         },
     }, Stream)
 

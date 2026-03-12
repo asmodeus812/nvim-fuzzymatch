@@ -5,8 +5,15 @@
 --- @field prune_interval number Prune interval in milliseconds
 --- @field prune_timer uv_timer_t|nil Timer used to run periodic pruning
 --- @field now fun(): number Returns a millisecond timestamp
+--- @field trace? fun(event: string, data: table) Optional debug hook for registry lifecycle events
 local Registry = {}
 Registry.__index = Registry
+
+local function trace(event, data)
+    if Registry.trace then
+        Registry.trace(event, data)
+    end
+end
 
 local function picker_in_use(picker)
     if not picker then
@@ -43,10 +50,12 @@ function Registry.new(opts)
     self.now = opts.now or function()
         return vim.uv.hrtime() / 1e6
     end
+    self.trace = opts.trace
     self.prune_timer = vim.uv.new_timer()
     self.prune_timer:start(self.prune_interval, self.prune_interval, function()
         Registry.prune(Registry.now())
     end)
+    trace("registry_new", { max_idle = self.max_idle, prune_interval = self.prune_interval })
     return self
 end
 
@@ -58,6 +67,7 @@ function Registry.register(picker)
     Registry.items[picker] = {
         last_used = Registry.now(),
     }
+    trace("registry_register", { count = vim.tbl_count(Registry.items) })
     return picker
 end
 
@@ -69,6 +79,7 @@ function Registry.touch(picker)
         return
     end
     meta.last_used = Registry.now()
+    trace("registry_touch", { count = vim.tbl_count(Registry.items) })
 end
 
 --- Remove a picker instance from the registry.
@@ -77,6 +88,7 @@ function Registry.remove(picker)
     if Registry.items then
         Registry.items[picker] = nil
     end
+    trace("registry_remove", { count = Registry.items and vim.tbl_count(Registry.items) or 0 })
 end
 
 --- Prune idle hidden pickers.
@@ -97,6 +109,7 @@ function Registry.prune(now)
                         picker:close()
                     end
                     Registry.items[picker] = nil
+                    trace("registry_prune", { count = vim.tbl_count(Registry.items) })
                 end
             end)
         end

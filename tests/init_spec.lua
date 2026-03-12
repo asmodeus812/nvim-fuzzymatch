@@ -5,6 +5,7 @@ local M = { name = "init" }
 
 function M.run()
     helpers.run_test_case("setup_ui_select", function()
+        package.loaded["fuzzy"] = nil
         local scheduler_module = require("fuzzy.scheduler")
         local pool_module = require("fuzzy.pool")
         local registry_module = require("fuzzy.registry")
@@ -20,9 +21,6 @@ function M.run()
                 new = function()
                     called.pool = (called.pool or 0) + 1
                 end,
-                prime = function()
-                    called.prime = (called.prime or 0) + 1
-                end,
             }, function()
                 helpers.with_mock_map(registry_module, {
                     new = function()
@@ -32,7 +30,7 @@ function M.run()
                     require("fuzzy").setup({
                         override_select = true,
                         scheduler = { async_budget = 1 },
-                        pool = { prime_sizes = {} },
+                        pool = {},
                         registry = {},
                     })
                 end)
@@ -58,7 +56,6 @@ function M.run()
         helpers.eq(called.scheduler, 1, "scheduler called")
         helpers.eq(called.pool, 1, "pool called")
         helpers.eq(called.registry, 1, "registry called")
-        helpers.eq(called.prime, 1, "prime called")
     end)
 end
 

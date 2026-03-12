@@ -182,7 +182,6 @@ function Picker:_close_picker()
     self.select:close()
     self.match:destroy()
     self.stream:destroy()
-    self.stream:stop()
     self:_caching_display()
 end
 

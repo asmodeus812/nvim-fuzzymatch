@@ -288,8 +288,6 @@ function M.run()
             stream_debounce = 0,
             stream_step = 3,
             prompt_query = "ta",
-            prompt_debounce = 0,
-            prompt_debounce = 0,
             actions = {
                 ["<cr>"] = Select.default_select,
             },
@@ -1116,7 +1114,6 @@ function M.run()
                 icons = false,
                 prompt_debounce = 0,
                 prompt_query = "needle",
-                prompt_debounce = 0,
                 _test_skip_command = true,
             })
             helpers.wait_for_stream(picker)

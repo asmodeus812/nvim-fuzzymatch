@@ -3,8 +3,15 @@
 --- @field private _queue table Internal event queue for scheduled Async objects
 --- @field private _budget number Time budget (in microseconds) allotted for async execution
 --- @field private _executor uv_check_t libuv check handle used for driving the scheduler
+--- @field trace? fun(event: string, data: table) Optional debug hook for scheduler lifecycle events
 local Scheduler = {}
 Scheduler.__index = Scheduler
+
+local function trace(event, data)
+    if Scheduler.trace then
+        Scheduler.trace(event, data)
+    end
+end
 
 --- Creates a new Scheduler instance and initializes the async queue.
 --- @param opts table|nil Optional: {async_budget=number}
@@ -18,7 +25,9 @@ function Scheduler.new(opts)
     Scheduler._queue = {}
     Scheduler._budget = assert(opts.async_budget)
     Scheduler._executor = assert(vim.uv.new_check())
+    Scheduler.trace = opts.trace
 
+    trace("scheduler_new", { budget = Scheduler._budget })
     return Scheduler
 end
 
@@ -36,6 +45,7 @@ function Scheduler.step()
     end
 
     if #Scheduler._queue == 0 then
+        trace("scheduler_idle", { budget = budget })
         return Scheduler._executor:stop()
     end
 end
@@ -48,6 +58,7 @@ function Scheduler.add(async)
     if not Scheduler._executor:is_active() then
         local wrapped = vim.schedule_wrap(Scheduler.step)
         Scheduler._executor:start(assert(wrapped))
+        trace("scheduler_start", { queued = #Scheduler._queue })
     end
 end
 

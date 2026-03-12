@@ -5,8 +5,15 @@ local utils = require("fuzzy.utils")
 --- @field private callbacks table List of callback functions to be invoked after completion
 --- @field private running boolean Indicates whether the Async job is still running
 --- @field private thread thread Coroutine object executing the async function
+--- @field trace? fun(event: string, data: table) Optional debug hook for async lifecycle events
 local Async = {}
 Async.__index = Async
+
+local function trace(event, data)
+    if Async.trace then
+        Async.trace(event, data)
+    end
+end
 
 --- Creates a new Async object wrapping the given function in a coroutine.
 --- @param fn function Function to run in the coroutine context
@@ -16,6 +23,7 @@ function Async.new(fn)
     self.callbacks = {}
     self.running = true
     self.thread = coroutine.create(fn)
+    trace("async_new", {})
     return self
 end
 
@@ -60,6 +68,7 @@ function Async:_done(result, reason)
         self.result = result
         self.reason = reason
     end
+    trace("async_done", { reason = reason })
     if not self.reason or self.reason ~= "abort" then
         for _, callback in ipairs(self.callbacks) do
             utils.safe_call(callback, result, reason)

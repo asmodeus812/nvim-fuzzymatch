@@ -55,9 +55,13 @@ function Match:_populate_chunks()
             local new_size = iteration_limit - start_index + 1
             if not new_size or new_size <= 0 then return false end
 
-            -- quickly pull a table from the pool, we are going to use for the tail eleements, to avoid nuking the size of
-            -- the main chunk table re-used for the bulk of the results and matches
-            self._state.tail = Pool.obtain(new_size)
+            if not self._state.tail then
+                -- only use pooled tail when it is close to the normal step size to avoid
+                -- shrinking and chruning pool tables.
+                local use_pool = new_size >= math.floor(self._options.step * 0.50)
+                self._state.tail = use_pool and Pool.obtain(new_size) or {}
+            end
+            utils.resize_table(self._state.tail, new_size, false)
             destination = self._state.tail
         end
         -- ensure that the iteration range is within the iteration range for each step, the range has to be valid and only
@@ -104,22 +108,8 @@ end
 
 function Match:_destroy_context()
     if self.results then
-        -- destroy the results, returning them to the pool, this is only done to forcefully free internally used tables, and reuse them
-        -- again, the results consists of 3 sublists, strings, positions, and scores, each we return to the pool, each we fill with a
-        -- default value to avoid holding references to old data
-        for index, value in ipairs(self.results) do
-            local def
-            if index == 1 then
-                def = utils.EMPTY_STRING
-            elseif index == 2 then
-                def = utils.EMPTY_TABLE
-            elseif index == 3 then
-                def = 0
-            end
-            utils.fill_table(assert(value), assert(def))
-            Pool.attach(value)
-            Pool._return(value)
-        end
+        -- results are user-facing, drop references and allow GC, final results are not required to be returned to the pool.
+        utils.fill_table(self.results, utils.EMPTY_STRING)
         self.results = nil
     end
 end
@@ -161,24 +151,19 @@ function Match:_clean_context()
     end
 
     if self._state.tail then
-        -- clear the tail to avoid holding references to old data, however we do return it to the pool since it can be easily pulled back
-        -- from the pool
+        -- clear the tail to avoid holding references, we want to ensure that the table is releasing all references in case something or somebody else might be holding reference to it.
         utils.fill_table(
             self._state.tail,
             utils.EMPTY_STRING
         )
-        Pool._return(self._state.tail)
+        if Pool.is_pooled(self._state.tail) then
+            Pool._return(self._state.tail)
+        end
         self._state.tail = nil
     end
 
     if self._state.accum then
-        -- accumulated results are detached from the pool to avoid returning them, they will be returned back to the user, if ephemeral is set
-        -- however the results will be returned back to the pool, on the next match:start
-        for _, value in ipairs(self._state.accum) do
-            Pool.detach(value)
-        end
-        -- move the accumulated results to the public results field, signaling that the matching is done and can be used by the user, user
-        -- is responsible for not holding references to this field moer than needed since it might contain huge amounts of data
+        -- move the accumulated results to the public results field, signaling that the matching is done and can be used by the user.
         self.results = self._state.accum
         self._state.accum = nil
     end
@@ -232,25 +217,25 @@ function Match:_match_worker()
             end
         end
         if #self._state.accum == 0 then
-            -- the very first time we just move the results into the accumulator, and also attach them to the pool to make them tracked by
-            -- the pool, eventually either this will be returned to the user as results, or the buffer. Either one will be detached from the
-            -- pool, when returned to the user, the other one will be returned to the pool. If ephemeral the next time a match is started the
-            -- results will be returned to the pool as well making them invalid.
-            self._state.accum[1] = Pool.attach(matches)
-            self._state.accum[2] = Pool.attach(positions)
-            self._state.accum[3] = Pool.attach(scores)
+            -- first results become the accumulator, user facing store and expanded on any new subsequent matches
+            self._state.accum[1] = matches
+            self._state.accum[2] = positions
+            self._state.accum[3] = scores
         else
-            -- merge the new results with the accumulated ones, using double buffering to avoid allocations
-            local result, _ = utils.timed_call(Match.merge,
-                self._state.buffer, self._state.accum,
+            -- merge into scratch buffer to avoid shrinking pooled buffers, then copy into accum
+            local accum = self._state.accum
+            local size = #accum[1] + #matches
+            local scratch = utils.timed_call(Match.merge,
+                self._state.buffer, accum,
                 { matches, positions, scores }
             )
-            -- here is where we swap buffers, the buffer now becomes the accumulator and the accumulator becomes the buffer, accum always
-            -- holds the latest accumulated results however
-            self._state.buffer = self._state.accum
-            self._state.accum = assert(result)
-            assert(#result[1] == #result[2])
-            assert(#result[2] == #result[3])
+            for sub_index = 1, 3 do
+                utils.resize_table(accum[sub_index], size, false)
+                for i = 1, size do
+                    accum[sub_index][i] = scratch[sub_index][i]
+                end
+            end
+            assert(scratch == self._state.buffer)
         end
 
         -- call the callback with the current accumulated results, note that we do that only when there are any new results, at
@@ -327,10 +312,6 @@ function Match:match(list, pattern, callback, transform)
     end
 
     if self.results then
-        for _, value in ipairs(self.results) do
-            Pool.attach(value)
-            Pool._return(value)
-        end
         self.results = nil
     end
 
@@ -363,9 +344,7 @@ function Match:match(list, pattern, callback, transform)
     self._state.offset = 0
 
     if not self._state.accum then
-        -- prepare accumulator for results, these will hold the results across multiple matches, together with the buffer we are
-        -- using a double buffering strategy, not using pool since this table is just a holder for the 3 sub-tables which
-        -- actually contain the matching results, positions and scoress
+        -- prepare accumulator for results
         self._state.accum = {}
     end
 
@@ -377,13 +356,13 @@ function Match:match(list, pattern, callback, transform)
     end
 
     if not self._state.buffer then
-        -- prepare buffer for storing intermediate results, the very first time buffer will be come the accumulator, we can try to pull at
-        -- most #list size tables from the pool, since in the worst case we might have to hold all items, if it turns out we do not need
-        -- that much, the merge will resize the source table anyway
+        -- prepare buffer for storing intermediate results, start from step-sized buffers,
+        -- and allow Match.merge to grow as needed.
+        local size = math.min(#list, self._options.step or 1)
         self._state.buffer = {
-            Pool.obtain(#list),
-            Pool.obtain(#list),
-            Pool.obtain(#list),
+            Pool.obtain(size),
+            Pool.obtain(size),
+            Pool.obtain(size),
         }
     end
 
@@ -419,10 +398,12 @@ function Match.merge(dest, left, right)
 
     -- ensure destination has capacity for all merged results
     for sub_index = 1, 3 do
-        utils.resize_table(
-            dest[sub_index],
-            final_size, nil
-        )
+        if #dest[sub_index] < final_size then
+            utils.resize_table(
+                dest[sub_index],
+                final_size, false
+            )
+        end
     end
 
     -- merge until we reach the end of either left or right
@@ -445,7 +426,7 @@ function Match.merge(dest, left, right)
     end
 
     for sub_index = 1, 3 do
-        assert(#dest[sub_index] == final_size)
+        assert(#dest[sub_index] >= final_size)
     end
 
     return dest

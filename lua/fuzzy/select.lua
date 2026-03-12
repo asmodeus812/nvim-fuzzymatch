@@ -10,7 +10,6 @@ local detailed_extmark_opts = { limit = 4, type = "highlight", details = true, h
 local padding = { " ", "SelectHeaderPadding" }
 local spacing = { ",", "SelectHeaderDelimiter" }
 
-local Pool = require("fuzzy.pool")
 local utils = require("fuzzy.utils")
 local Async = require("fuzzy.async")
 local Scheduler = require("fuzzy.scheduler")
@@ -483,9 +482,7 @@ local function populate_buffer(buffer, items, display, step)
     vim.bo[buffer].modifiable = true
     if step ~= nil and step > 0 then
         local size = math.min(#items, step)
-        local lines = Pool.obtain(size)
-
-        local start, _end = 1, size
+        local lines, start, _end = {}, 1, size
         repeat
             for target = start, _end, 1 do
                 lines[(target - start) + 1] = line_mapper(
@@ -500,7 +497,6 @@ local function populate_buffer(buffer, items, display, step)
             _end = math.min(#items, _end + step)
         until start == #items or start > _end
 
-        Pool._return(utils.fill_table(lines, utils.EMPTY_STRING))
         assert(#lines == size)
         Async.yield()
 
@@ -531,8 +527,7 @@ local function populate_range(buffer, start, _end, entries, display)
     if _end > 0 then
         assert(start <= _end and start > 0)
         local diff = math.abs(_end - start) + 1
-        lines = Pool.obtain(diff)
-
+        lines = {}
         for target = start, _end, 1 do
             lines[(target - start) + 1] = line_mapper(
                 entries[target], display, target
@@ -550,10 +545,6 @@ local function populate_range(buffer, start, _end, entries, display)
     local oldma = vim.bo[buffer].modifiable
     vim.bo[buffer].modifiable = true
     vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
-    if lines ~= utils.EMPTY_TABLE then
-        utils.fill_table(lines)
-        Pool._return(lines)
-    end
     vim.bo[buffer].modifiable = oldma
     vim.bo[buffer].modified = false
 end
@@ -1531,8 +1522,7 @@ function Select:_list_selection()
         assert(cursor[1] >= 1 and cursor[1] <= #entries)
         return { entries[cursor[1]] }
     else
-        local index, current = 1, 0
-        local selection = Pool.obtain(size)
+        local selection, index, current = {}, 1, 0
         for line, status in pairs(toggled.entries) do
             if status == true then
                 local position = tonumber(line)
@@ -2948,7 +2938,7 @@ end
 --- @field list_offset? integer|nil Number scroll offset lines to leave at the top and bottom of the list when moving between entries, it works just like see :h 'scrolloffset', but is internally not using the native vim property.
 --- @field quickfix_open? fun() Function to open the quickfix list.
 --- @field loclist_open? fun() Function to open the location list.
---- @field mappings? table<string, fun(self: Select, callback: fun(selection: any, cursor: integer[]|boolean|nil): any)> Key mappings for the selection interface. The keys are the key sequences and the values are functions that take the Select instance and an optional callback as arguments. If `false` is provided for the value of the key-value pair the mapping for that key is disabled
+--- @field mappings? table<string, fun(self: Select, callback?: fun(selection: any, cursor: integer[]|boolean|nil): any)> Key mappings for the selection interface. The keys are the key sequences and the values are functions that take the Select instance and an optional callback as arguments. If `false` is provided for the value of the key-value pair the mapping for that key is disabled
 --- @field preview? Select.Preview|boolean|nil Preview instance or boolean indicating whether to show the preview window. If an instance is provided, it will be used to render the preview. The preview instance must be a subclass of Select.Preview. Preview instances must implement the `preview` method.
 --- @field display? string|fun(entry: any): string|string|nil Function or string to format the display of entries in the list. If a function is provided, it will be called with each entry and should return a string to display. If a string is provided, it will be used as the property name to extract from each entry for display.
 --- @field decorators? Select.Decorator[]|nil List of decorators to apply to entries in the list. Each decorator should be a table with a `decorate` function that takes an entry and returns a decorated string plus highlight, or a list of `{ text, hl }` parts.

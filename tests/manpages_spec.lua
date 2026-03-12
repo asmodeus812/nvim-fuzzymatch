@@ -41,7 +41,7 @@ function M.run()
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
                 local map = picker.select:options().mappings
-                map["<cr>"](picker.select)
+                assert(map)["<cr>"](picker.select)
                 local saw_man = false
                 for _, call in ipairs(calls) do
                     local arg = call.args and call.args[1] or nil
