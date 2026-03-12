@@ -10,12 +10,14 @@
             - [Primary stage](#primary-stage)
             - [Matching stage](#matching-stage)
     - [Features](#features)
+    - [PICKERS](#pickers)
     - [Description](#description)
     - [Installation](#installation)
         - [Using packer.nvim](#using-packernvimhttpsgithubcomwbthomasonpackernvim)
         - [Using lazy.nvim](#using-lazynvimhttpsgithubcomfolkelazynvim)
         - [Using vim-plug](#using-vim-plughttpsgithubcomjunegunnvim-plug)
     - [Configuration](#configuration)
+    - [User commands](#user-commands)
     - [Quickstart](#quickstart)
         - [Static table](#static-table)
         - [Callback function](#callback-function)
@@ -30,20 +32,21 @@
         - [Dynamic streams](#dynamic-streams)
         - [Contextual awareness](#contextual-awareness)
     - [Interaction](#interaction)
-        - [Interactive and Fuzzy stages](#interactive-and-fuzzy-stages)
-        - [Closing and hiding pickers](#closing-and-hiding-pickers)
+        - [Interactive & Matching stages](#interactive--matching-stages)
+        - [Closing & hiding pickers](#closing--hiding-pickers)
         - [Dynamic context evaluation](#dynamic-context-evaluation)
-        - [Picker actions & interaction](#picker-actions--interaction)
+        - [Actions & interaction](#actions--interaction)
         - [Picker Options](#picker-options)
         - [Core options](#core-options)
         - [Advanced options](#advanced-options)
         - [Option details](#option-details)
             - [Core options](#core-options-1)
             - [Advanced options](#advanced-options-1)
-        - [In-depth look](#in-depth-look)
+        - [In-depth description](#in-depth-description)
             - [Actions](#actions)
             - [Previewers](#previewers)
             - [Decorators](#decorators)
+            - [Highlighters](#highlighters)
             - [Converters](#converters)
     - [Examples](#examples)
         - [Interactive grep](#interactive-grep)
@@ -177,6 +180,10 @@ require("fuzzy").setup({
     general = {
         -- override the built-in `vim.ui.select` with fuzzymatch
         override_select = true,
+        user_command = {
+            enabled = true,
+            name = "Fzm",
+        },
     }
 
     -- Scheduler controls the async budget for cooperative tasks
@@ -203,6 +210,8 @@ require("fuzzy").setup({
 Configuration details:
 
 - `general.override_select`: Replaces `vim.ui.select` with the built-in picker-based implementation.
+- `general.user_command.enabled`: Registers the user command that opens pickers by name.
+- `general.user_command.name`: Command name used for pickers (default: `Fzm`).
 - `scheduler.async_budget`: Time budget in microseconds for cooperative async tasks.
 - `pool.max_idle`: Maximum idle time in milliseconds before a pooled table is discarded.
 - `pool.prune_interval`: Interval in milliseconds for pool cleanup.
@@ -225,6 +234,30 @@ when the picker is re-opened the context will be re-evaluated and if it has chan
 
 `TDDR;` To start using the picker simply require the picker and select modules those are going to be enough for you to create pretty much any
 type of picker you can imagine. Lets see a few examples
+
+### User command
+
+The `:Fzm` command opens any picker by name, with optional `key=value` arguments. You can change the
+command name with `general.user_command.name`.
+
+```vim
+:Fzm files
+:Fzm grep cwd=/path/to/project
+:Fzm grep args=--hidden,--iglob=*.lua prompt_query="init.lua"
+:Fzm manpages args=-k,. preview=false
+```
+
+- `cwd`: working directory (string)
+- `args`: comma-separated list (quoted strings supported)
+- `env`: comma-separated list (quoted strings supported)
+- `preview`: `true|false`
+- `icons`: `true|false`
+- `watch`: `true|false`
+- `prompt_query`: initial prompt string (quote if it contains spaces)
+- `prompt_debounce`, `match_limit`, `match_timer`, `match_step`, `stream_step`, `stream_debounce`: numbers
+- `stream_type`: `lines|bytes`
+- `window_size`: number (0-1)
+- `interactive`: `true|false`
 
 ### Static table
 

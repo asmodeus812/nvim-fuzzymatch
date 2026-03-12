@@ -1,8 +1,6 @@
-Picker = require("fuzzy.picker")
-Pool = require("fuzzy.pool")
-Registry = require("fuzzy.registry")
-Scheduler = require("fuzzy.scheduler")
-Select = require("fuzzy.select")
+local Pool = require("fuzzy.pool")
+local Registry = require("fuzzy.registry")
+local Scheduler = require("fuzzy.scheduler")
 
 local M = {
     config = {},
@@ -11,7 +9,11 @@ local M = {
 function M.setup(opts)
     M.config = vim.tbl_deep_extend("keep", opts or {}, {
         general = {
-            override_select = true
+            override_select = true,
+            user_command = {
+                enabled = true,
+                name = "Fzm",
+            },
         },
         scheduler = {
             async_budget = 1 * 1e6,
@@ -42,6 +44,12 @@ function M.setup(opts)
         vim.ui.select = select_picker.open_select_picker
     end
 
+    local user_command = M.config.general.user_command or {}
+    if user_command.enabled then
+        local excmd = require("fuzzy.pickers.excmd")
+        excmd.register_user_commands(user_command.name)
+    end
+
     vim.api.nvim_set_hl(0, "SelectToggleSign", { link = "Special", default = false })
     vim.api.nvim_set_hl(0, "SelectPrefixText", { link = "Normal", default = false })
     vim.api.nvim_set_hl(0, "SelectStatusText", { link = "NonText", default = false })
@@ -50,12 +58,13 @@ function M.setup(opts)
     vim.api.nvim_set_hl(0, "SelectHeaderDefault", { link = "Normal", default = false })
     vim.api.nvim_set_hl(0, "SelectHeaderPadding", { link = "NonText", default = false })
     vim.api.nvim_set_hl(0, "SelectHeaderDelimiter", { link = "Ignore", default = false })
-    vim.api.nvim_set_hl(0, "SelectDecoratorDefault", { link = "Normal", default = false })
-    vim.api.nvim_set_hl(0, "SelectLineHighlight", { link = "Visual", default = false })
 
     vim.api.nvim_set_hl(0, "PickerHeaderActionKey", { link = "ErrorMsg", default = false })
     vim.api.nvim_set_hl(0, "PickerHeaderActionLabel", { link = "MoreMsg", default = false })
     vim.api.nvim_set_hl(0, "PickerHeaderActionSeparator", { link = "ModeMsg", default = false })
+
+    vim.api.nvim_set_hl(0, "SelectLineHighlight", { link = "Normal", default = false })
+    vim.api.nvim_set_hl(0, "SelectDecoratorDefault", { link = "Normal", default = false })
 
     Pool.prime(pool_config.prime_sizes or {})
 end

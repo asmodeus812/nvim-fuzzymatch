@@ -887,13 +887,13 @@ helptags_picker.open_helptags_picker({
 ### Manpages
 
 Lists man pages. Entries are collected from `apropos -k .` (fallback: `man -k .`) and normalized to `name(section)`. The user is allowed
-to provide a list of additional customized command arguments to pass down to the executable (man or apropos)
+to provide a list of additional customized arguments to pass down to the executable (man or apropos).
 
 ```lua
 local manpages_picker = require("fuzzy.pickers.manpages")
 
 manpages_picker.open_manpages_picker({
-    command_args = { "-k", "." }
+    args = { "-k", "." }
 })
 ```
 

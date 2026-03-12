@@ -99,8 +99,9 @@ function M.open_marks_picker(opts)
         decorators = decorators,
         highlighters = {
             Select.RegexHighlighter.new({
-                { "^%[[^%]]+%]", "Identifier" },
-                { "^%[[^%]]+%]%s(%S+)", "Directory", 1 },
+                { "^%[[^%]]+%]", "Number" },
+                { "^%[[^%]]+%]%s(.*/)", "Directory", 1 },
+                { "([^/]+)%s+%d+:%d+$", "Function", 1 },
                 { "%d+:%d+", "Number" },
             }),
         },

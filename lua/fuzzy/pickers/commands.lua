@@ -72,6 +72,11 @@ function M.open_commands_picker(opts)
                 return false
             end)),
         },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%S+", "Statement" },
+            }),
+        },
     }, opts, {
         match_timer = 5,
         match_step = 2000,

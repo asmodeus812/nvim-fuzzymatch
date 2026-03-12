@@ -36,6 +36,11 @@ function M.open_tags_picker(opts)
                 return false
             end)),
         },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%S+", "Special" },
+            }),
+        },
     }, opts, {
         match_timer = 10,
         match_step = 5000,

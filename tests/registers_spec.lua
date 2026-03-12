@@ -19,12 +19,12 @@ function M.run()
         helpers.wait_for_list_extmarks(picker)
         helpers.wait_for(function()
             local extmarks = helpers.get_list_extmarks(picker)
-            local ok_id = pcall(helpers.assert_has_hl, extmarks, "Identifier")
+            local ok_id = pcall(helpers.assert_has_hl, extmarks, "Constant")
             local ok_str = pcall(helpers.assert_has_hl, extmarks, "String")
             return ok_id and ok_str
         end, 1500)
         local extmarks = helpers.get_list_extmarks(picker)
-        helpers.assert_has_hl(extmarks, "Identifier", "registers prefix hl")
+        helpers.assert_has_hl(extmarks, "Constant", "registers prefix hl")
         helpers.assert_has_hl(extmarks, "String", "registers value hl")
         picker:close()
     end)
@@ -63,31 +63,44 @@ function M.run()
 
     helpers.run_test_case("registers_preview_multiline", function()
         vim.fn.setreg("a", { "one", "two", "three" })
-        local registers_picker = require("fuzzy.pickers.registers")
-        local picker = registers_picker.open_registers_picker({
-            prompt_debounce = 0,
-            preview = true,
-            filter = "^a$",
-        })
-        helpers.wait_for_stream(picker)
-        helpers.wait_for_list(picker)
-        helpers.wait_for_entries(picker)
-        helpers.wait_for(function()
-            return picker.select.preview_window
-                and helpers.is_window_valid(picker.select.preview_window)
-        end, 1500)
-        local preview_buf = vim.api.nvim_win_get_buf(picker.select.preview_window)
-        helpers.wait_for(function()
+        helpers.with_mock(vim.fn, "getreginfo", function(name)
+            if name == "a" then
+                return {
+                    regcontents = { "one", "two", "three" },
+                    regtype = "V",
+                }
+            end
+            return {
+                regcontents = { "" },
+                regtype = "v",
+            }
+        end, function()
+            local registers_picker = require("fuzzy.pickers.registers")
+            local picker = registers_picker.open_registers_picker({
+                prompt_debounce = 0,
+                preview = true,
+                filter = "^a$",
+            })
+            helpers.wait_for_stream(picker)
+            helpers.wait_for_list(picker)
+            helpers.wait_for_entries(picker)
+            helpers.wait_for(function()
+                return picker.select.preview_window
+                    and helpers.is_window_valid(picker.select.preview_window)
+            end, 1500)
+            local preview_buf = vim.api.nvim_win_get_buf(picker.select.preview_window)
+            helpers.wait_for(function()
+                local lines = helpers.get_buffer_lines(preview_buf)
+                return vim.tbl_contains(lines, "one")
+                    and vim.tbl_contains(lines, "two")
+                    and vim.tbl_contains(lines, "three")
+            end, 1500)
             local lines = helpers.get_buffer_lines(preview_buf)
-            return vim.tbl_contains(lines, "one")
-                and vim.tbl_contains(lines, "two")
-                and vim.tbl_contains(lines, "three")
-        end, 1500)
-        local lines = helpers.get_buffer_lines(preview_buf)
-        helpers.assert_line_contains(lines, "one", "preview line")
-        helpers.assert_line_contains(lines, "two", "preview line")
-        helpers.assert_line_contains(lines, "three", "preview line")
-        picker:close()
+            helpers.assert_line_contains(lines, "one", "preview line")
+            helpers.assert_line_contains(lines, "two", "preview line")
+            helpers.assert_line_contains(lines, "three", "preview line")
+            picker:close()
+        end)
     end)
 
     helpers.run_test_case("registers_filter", function()

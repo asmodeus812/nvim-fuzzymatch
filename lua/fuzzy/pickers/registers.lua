@@ -107,7 +107,7 @@ function M.open_registers_picker(opts)
         },
         highlighters = {
             Select.RegexHighlighter.new({
-                { "^%[[^%]]+%]", "Identifier" },
+                { "^%[[^%]]+%]", "Constant" },
                 { "^%[[^%]]+%]%s(.+)$", "String", 1 },
             }),
         },

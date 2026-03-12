@@ -241,7 +241,8 @@ function M.open_buffers_picker(opts)
         highlighters = {
             Select.RegexHighlighter.new({
                 { "^%d+", "Number" },
-                { "%s.+$", "Directory" },
+                { "^%d+%s+(.*/)", "Directory", 1 },
+                { "([^/]+)$", "Function", 1 },
             }),
         },
         display = function(entry)

@@ -22,7 +22,7 @@ function M.run()
                 return 1
             end,
             nvim_buf_get_name = function()
-                return "tab-file.txt"
+                return "tabs/tab-file.txt"
             end,
         }, function()
             local tabs_picker = require("fuzzy.pickers.tabs")
@@ -33,11 +33,12 @@ function M.run()
             helpers.wait_for_stream(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "[1]")
-            helpers.wait_for_line_contains(picker, "tab-file.txt")
+            helpers.wait_for_line_contains(picker, "tabs/tab-file.txt")
             helpers.wait_for_list_extmarks(picker)
             local extmarks = helpers.get_list_extmarks(picker)
             helpers.assert_has_hl(extmarks, "Number", "tabs number hl")
-            helpers.assert_has_hl(extmarks, "Directory", "tabs path hl")
+            helpers.assert_has_hl(extmarks, "Directory", "tabs dir hl")
+            helpers.assert_has_hl(extmarks, "Function", "tabs name hl")
             picker:close()
         end)
     end)

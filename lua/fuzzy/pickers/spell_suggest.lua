@@ -121,6 +121,11 @@ function M.open_spell_suggest(opts)
                 end
             ),
         },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%S+", "Keyword" },
+            }),
+        },
     }, opts, {
         match_timer = 5,
         match_step = 1000,

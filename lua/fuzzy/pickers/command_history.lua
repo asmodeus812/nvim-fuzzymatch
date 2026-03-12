@@ -36,6 +36,12 @@ function M.open_command_history(opts)
                 return false
             end)),
         },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%S+", "Statement" },
+                { "%s(.+)$", "Comment", 1 },
+            }),
+        },
     }, opts, {
         match_timer = 5,
         match_step = 1000,

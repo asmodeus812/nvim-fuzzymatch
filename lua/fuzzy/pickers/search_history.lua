@@ -36,6 +36,11 @@ function M.open_search_history(opts)
                 return false
             end)),
         },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^%S+", "String" },
+            }),
+        },
     }, opts, {
         match_timer = 5,
         match_step = 1000,

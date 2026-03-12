@@ -83,8 +83,9 @@ function M.open_quickfix_picker(opts)
         decorators = decorators,
         highlighters = {
             Select.RegexHighlighter.new({
-                { "^%s*%[[^%]]+%]", "Identifier" },
-                { "^%s*%[[^%]]+%]%s(%S+)", "Directory", 1 },
+                { "^%s*%[[^%]]+%]", "Number" },
+                { "^%s*%[[^%]]+%]%s(.*/)", "Directory", 1 },
+                { "([^/]+)%s+%d+:%d+:", "Function", 1 },
                 { "%d+:%d+", "Number" },
                 { ":%s(.+)$", "Comment", 1 },
             }),

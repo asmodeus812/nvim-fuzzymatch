@@ -44,6 +44,12 @@ function M.open_quickfix_stack(opts)
             assert(entry and entry.text)
             return entry.text
         end,
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "%d+", "Number" },
+                { "%f[%a]list%f[%A]", "Keyword" },
+            }),
+        },
     }, opts, {
         match_timer = 5,
         match_step = 2000,

@@ -15,16 +15,7 @@ function M.run()
         local other_dir_path = helpers.create_temp_dir()
         local other_file_path = vim.fs.joinpath(other_dir_path, "other.txt")
         helpers.write_file(other_file_path, "other\n")
-
-        local ok = pcall(function()
-            vim.v.oldfiles = { file_path, other_file_path }
-        end)
-        if not ok then
-            return
-        end
-        if not vim.v.oldfiles or #vim.v.oldfiles == 0 then
-            return
-        end
+        vim.v.oldfiles = { file_path, other_file_path }
 
         local oldfiles_picker = require("fuzzy.pickers.oldfiles")
         local picker = oldfiles_picker.open_oldfiles_picker({
@@ -44,19 +35,19 @@ function M.run()
     end)
 
     helpers.run_test_case("oldfiles_cwd_content_arg", function()
-        local Picker = require("fuzzy.picker")
+        local captured_content = nil
         local captured = nil
         helpers.with_mock(Picker, "new", function(opts)
             captured = opts
+            captured_content = opts.content
             return { _options = opts, open = function() end }
         end, function()
             require("fuzzy.pickers.oldfiles").open_oldfiles_picker({
                 preview = false,
                 icons = false,
-                cwd = "/should/not/use",
             })
         end)
-        helpers.assert_ok(captured and captured.content, "content missing")
+        helpers.assert_ok(captured and captured_content, "content missing")
         local dir_a = helpers.create_temp_dir()
         local dir_b = helpers.create_temp_dir()
         local path_a = vim.fs.joinpath(dir_a, "a.txt")
@@ -66,7 +57,7 @@ function M.run()
         vim.v.oldfiles = { path_a, path_b }
 
         local entries = {}
-        captured.content(function(entry)
+        captured_content(function(entry)
             if entry ~= nil then
                 entries[#entries + 1] = entry
             end
@@ -86,16 +77,7 @@ function M.run()
         local file_b = vim.fs.joinpath(dir_path, "beta.txt")
         helpers.write_file(file_a, "alpha\n")
         helpers.write_file(file_b, "beta\n")
-
-        local ok = pcall(function()
-            vim.v.oldfiles = { file_a, file_b }
-        end)
-        if not ok then
-            return
-        end
-        if not vim.v.oldfiles or #vim.v.oldfiles == 0 then
-            return
-        end
+        vim.v.oldfiles = { file_a, file_b }
 
         local oldfiles_picker = require("fuzzy.pickers.oldfiles")
         local picker = oldfiles_picker.open_oldfiles_picker({
@@ -129,49 +111,63 @@ function M.run()
         helpers.write_file(file_c, "gamma\n")
         helpers.write_file(file_d, "delta\n")
 
-        local ok = pcall(function()
-            vim.v.oldfiles = { file_a, file_b, file_c, file_d }
-        end)
-        if not ok then
-            return
-        end
-        if not vim.v.oldfiles or #vim.v.oldfiles == 0 then
-            return
-        end
+        vim.v.oldfiles = { file_a, file_b, file_c, file_d }
         helpers.assert_ok(#vim.v.oldfiles >= 4, "oldfiles not populated")
 
         vim.v.errmsg = ""
-        local conv = Select.default_converter
+        local emitted = {}
+        local captured_content = nil
+        local original_new = Picker.new
+        local picker = nil
+        helpers.with_mock(Picker, "new", function(opts)
+            captured_content = opts.content
+            local original_content = opts.content
+            opts.content = function(stream, args, cwd)
+                return original_content(function(entry)
+                    if entry ~= nil then
+                        emitted[#emitted + 1] = entry
+                    end
+                    return stream(entry)
+                end, args, cwd)
+            end
+            return original_new(opts)
+        end, function()
+            local oldfiles_picker = require("fuzzy.pickers.oldfiles")
+            picker = oldfiles_picker.open_oldfiles_picker({
+                preview = true,
+                icons = false,
+                prompt_debounce = 0,
+                stat_file = true,
+                cwd = dir_path,
+            })
+        end)
+        helpers.assert_ok(picker ~= nil, "picker missing")
+        helpers.wait_for_stream(picker)
+        helpers.wait_for_list(picker)
+        helpers.assert_ok(captured_content ~= nil, "oldfiles content missing")
+        local manual_entries = {}
+        local context = picker:context()
+        captured_content(function(entry)
+            if entry ~= nil then
+                manual_entries[#manual_entries + 1] = entry
+            end
+        end, context.args, context.cwd)
+        helpers.assert_ok(#manual_entries >= 4, "oldfiles manual count")
+        helpers.assert_ok(#emitted >= 4, "oldfiles emitted count")
         local display_opts = {
-            cwd = nil,
+            cwd = dir_path,
             filename_only = false,
             path_shorten = nil,
             home_to_tilde = true,
         }
-        local entries = {}
-        for _, filename in ipairs(vim.v.oldfiles or {}) do
-            entries[#entries + 1] = { filename = filename }
+        for _, entry in ipairs(emitted) do
+            helpers.assert_ok(type(entry) == "table", "oldfiles emitted type")
+            helpers.assert_ok(entry.filename ~= nil, "oldfiles emitted filename")
         end
-        local picker = Picker.new({
-            content = function(stream)
-                for _, entry in ipairs(entries) do
-                    stream(entry)
-                end
-                stream(nil)
-            end,
-            display = function(entry)
-                local filename = assert(entry.filename)
-                return util.format_display_path(filename, display_opts)
-            end,
-            preview = Select.BufferPreview.new(nil, conv),
-            prompt_debounce = 0,
-            icons = false,
-        })
-        picker:open()
-        helpers.wait_for_stream(picker)
-        helpers.wait_for_list(picker)
-        helpers.assert_ok(helpers.wait_for_line_contains(picker, "alpha.txt"), "oldfiles list alpha")
-        helpers.assert_ok(helpers.wait_for_line_contains(picker, "beta.txt"), "oldfiles list beta")
+        local display_a = util.format_display_path(file_a, display_opts)
+        local display_b = util.format_display_path(file_b, display_opts)
+        helpers.assert_ok(helpers.wait_for_line_contains(picker, display_a), "oldfiles list alpha")
+        helpers.assert_ok(helpers.wait_for_line_contains(picker, display_b), "oldfiles list beta")
         helpers.type_query(picker, "alpha")
         helpers.wait_for_match(picker)
         helpers.wait_for_list(picker)
@@ -192,16 +188,7 @@ function M.run()
         vim.fn.mkdir(nested_dir, "p")
         local file_path = vim.fs.joinpath(dir_path, "file.txt")
         helpers.write_file(file_path, "data")
-
-        local ok = pcall(function()
-            vim.v.oldfiles = { nested_dir, file_path }
-        end)
-        if not ok then
-            return
-        end
-        if not vim.v.oldfiles or #vim.v.oldfiles == 0 then
-            return
-        end
+        vim.v.oldfiles = { nested_dir, file_path }
 
         local oldfiles_picker = require("fuzzy.pickers.oldfiles")
         local picker = oldfiles_picker.open_oldfiles_picker({

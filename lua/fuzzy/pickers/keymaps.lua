@@ -76,10 +76,11 @@ function M.open_keymaps_picker(opts)
         },
         highlighters = {
             Select.RegexHighlighter.new({
-                { "^%[[bg]%]", "Identifier" },
-                { "^%[[bg]%]%s(%S+)", "Type", 1 },
-                { "%s(%S+)%s%-%>", "Statement", 1 },
+                { "^%[[bg]%]", "Number" },
+                { "^%[[bg]%]%s(%S+)", "Keyword", 1 },
+                { "%s(%S+)%s%-%>", "Function", 1 },
                 { "%-%>%s(%S+)", "String", 1 },
+                { "%-%>", "Operator" },
                 { "%s%-%s(.+)$", "Comment", 1 },
             }),
         },

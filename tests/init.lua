@@ -31,6 +31,7 @@ M.tests = {
     require("tests.colorscheme_spec"),
     require("tests.spell_suggest_spec"),
     require("tests.registry_spec"),
+    require("tests.excmd_spec"),
     require("tests.git_spec"),
     require("tests.uiselect_spec"),
     require("tests.scheduler_spec"),

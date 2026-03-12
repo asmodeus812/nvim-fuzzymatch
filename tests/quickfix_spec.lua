@@ -35,10 +35,11 @@ function M.run()
             for _, span in ipairs(spans) do
                 span_hls[span[3]] = true
             end
-            helpers.assert_ok(span_hls.Identifier, "quickfix prefix hl")
+            helpers.assert_ok(span_hls.Number, "quickfix prefix hl")
             if line:find("%.txt", 1, true) then
                 helpers.assert_ok(span_hls.Directory, "quickfix path hl")
             end
+            helpers.assert_ok(span_hls.Function, "quickfix name hl")
             helpers.assert_ok(span_hls.Number, "quickfix line hl")
             helpers.assert_ok(span_hls.Comment, "quickfix text hl")
             picker:close()

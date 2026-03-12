@@ -3,7 +3,7 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class ManpagesPickerOptions
---- @field command_args? string[] Override the arguments passed to the command
+--- @field args? string[] Override the arguments passed to the command
 
 local M = {}
 
@@ -12,24 +12,23 @@ local function parse_manpage_entry(line)
     if name and section then
         return string.format("%s(%s)", name, section)
     end
-    return tostring(line or ""):match("^%s*(%S+)")
+    return line and line:match("^%s*(%S+)") or false
 end
 
 --- Open Manpages picker.
 --- @param opts ManpagesPickerOptions|nil Picker options for this picker
 --- @return Picker
 function M.open_manpages_picker(opts)
-    local cmd = util.pick_first_command({ "apropos", "man" })
     opts = util.merge_picker_options({
-        command_args = { "-k", "." }
+        preview = false,
+        args = { "-k", "." },
     }, opts)
+    local cmd = util.pick_first_command({ "apropos", "man" })
 
     local picker = Picker.new(vim.tbl_extend("force", {
         content = assert(cmd),
         headers = util.build_picker_headers("Manpages", opts),
-        context = {
-            args = opts.command_args,
-        },
+        context = { args = opts.args },
         stream_map = parse_manpage_entry,
         preview = false,
         actions = {
@@ -37,6 +36,14 @@ function M.open_manpages_picker(opts)
                 vim.cmd({ cmd = "Man", args = { entry } })
                 return false
             end)),
+        },
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^[^(]+", "Function" },
+                { "%(([^)]+)%)", "Number", 1 },
+                { "%(", "Delimiter" },
+                { "%)", "Delimiter" },
+            }),
         },
     }, opts))
 

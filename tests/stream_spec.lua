@@ -81,6 +81,24 @@ local function run_bytes_case()
     stream:destroy()
 end
 
+local function run_trim_results_case()
+    local stream = Stream.new({ lines = true, step = 6048 })
+    stream:start(function(cb)
+        for i = 1, 4 do
+            cb(string.format("item-%02d", i))
+        end
+        cb(nil)
+    end, {
+        callback = function() end,
+    })
+    local results = assert(stream:wait(1500))
+    helpers.assert_ok(type(results) == "table", "empty type")
+    helpers.eq(results[1], "item-01", "empty one")
+    helpers.eq(results[4], "item-04", "empty last")
+    helpers.eq(#results, 4, "empty count")
+    stream:destroy()
+end
+
 local function run_restart_case()
     local stream = Stream.new({
         lines = true,
@@ -375,6 +393,7 @@ function M.run()
     helpers.run_test_case("stream_lines", run_lines_case)
     helpers.run_test_case("stream_transform", run_transform_case)
     helpers.run_test_case("stream_bytes", run_bytes_case)
+    helpers.run_test_case("stream_trim_results_case", run_trim_results_case)
     helpers.run_test_case("stream_restart", run_restart_case)
     helpers.run_test_case("stream_context", run_context_case)
     helpers.run_test_case("stream_partial_line", run_partial_line_case)

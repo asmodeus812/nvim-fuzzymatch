@@ -35,10 +35,11 @@ function M.run()
             for _, span in ipairs(spans) do
                 span_hls[span[3]] = true
             end
-            helpers.assert_ok(span_hls.Identifier, "loclist prefix hl")
+            helpers.assert_ok(span_hls.Number, "loclist prefix hl")
             if line:find("%.txt", 1, true) then
                 helpers.assert_ok(span_hls.Directory, "loclist path hl")
             end
+            helpers.assert_ok(span_hls.Function, "loclist name hl")
             helpers.assert_ok(span_hls.Number, "loclist line hl")
             helpers.assert_ok(span_hls.Comment, "loclist text hl")
             picker:close()

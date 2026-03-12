@@ -71,6 +71,11 @@ function M.open_changes_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "%d+:%d+", "Number" },
+            }),
+        },
         display = function(entry)
             return util.format_location_entry(
                 nil, entry.lnum or 1, entry.col or 1

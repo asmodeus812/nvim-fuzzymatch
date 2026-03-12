@@ -74,6 +74,11 @@ function M.open_colorscheme_picker(opts)
         },
         preview = opts.preview,
         actions = actions,
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^.+$", "Constant" },
+            }),
+        },
     }, opts, {
         match_timer = 5,
         match_step = 1000,

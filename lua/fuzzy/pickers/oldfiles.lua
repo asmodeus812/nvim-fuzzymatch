@@ -83,6 +83,12 @@ function M.open_oldfiles_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^.+/", "Directory" },
+                { "[^/]+$", "Identifier" },
+            }),
+        },
         display = function(entry)
             local filename = assert(entry.filename)
             return util.format_display_path(filename, opts)

@@ -122,6 +122,12 @@ function M.open_files_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(conv, opts),
         decorators = decorators,
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { "^.+/", "Directory" },
+                { "[^/]+$", "Identifier" },
+            }),
+        },
     }, opts, {
         match_timer = 30,
         match_step = 75000,

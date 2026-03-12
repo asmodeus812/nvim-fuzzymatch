@@ -907,8 +907,8 @@ function Picker.new(opts)
         context = {
             args = {},
             env = nil,
+            cwd = nil,
             tick = nil,
-            cwd = vim.loop.cwd,
         },
         interactive = false,
         stream_map = nil,

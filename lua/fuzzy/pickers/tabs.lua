@@ -54,7 +54,8 @@ function M.open_tabs_picker(opts)
         highlighters = {
             Select.RegexHighlighter.new({
                 { "^%[[%d]+%]", "Number" },
-                { "^%[[%d]+%]%s(.+)$", "Directory", 1 },
+                { "^%[[%d]+%]%s(.*/)", "Directory", 1 },
+                { "([^/]+)$", "Function", 1 },
             }),
         },
         display = function(entry)

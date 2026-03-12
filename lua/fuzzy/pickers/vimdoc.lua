@@ -205,9 +205,10 @@ function M.open_vimdoc_picker(opts)
         },
         highlighters = {
             Select.RegexHighlighter.new({
-                { "^%S+", "Identifier" },
+                { "^%S+", "Function" },
                 { "since:%d+", "Number" },
                 { "dep@%d+", "WarningMsg" },
+                { "%smethod", "Keyword" },
                 { "%s%S+$", "Type" },
             }),
         },

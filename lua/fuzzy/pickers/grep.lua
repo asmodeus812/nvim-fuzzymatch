@@ -198,6 +198,12 @@ function M.open_grep_picker(opts)
         preview = opts.preview,
         actions = util.build_default_actions(convert, opts),
         decorators = decorators,
+        highlighters = {
+            Select.RegexHighlighter.new({
+                { ":%d+:%d+", "Number" },
+                { ":%d+:",    "Number" },
+            }),
+        },
     }, opts, {
         match_timer = 30,
         match_step = 75000,

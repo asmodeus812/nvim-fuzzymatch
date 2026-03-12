@@ -46,7 +46,7 @@ function M.open_btags_picker(opts)
         },
         highlighters = {
             Select.RegexHighlighter.new({
-                { "^%S+", "Identifier" },
+                { "^%S+", "Function" },
                 { "%s%[([^%]]+)%]$", "Type", 1 },
             }),
         },
