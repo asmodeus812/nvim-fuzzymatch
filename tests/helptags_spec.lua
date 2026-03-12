@@ -35,7 +35,7 @@ function M.run()
                 helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
-                local map = picker.select._options.mappings
+                local map = picker.select:options().mappings
                 map["<cr>"](picker.select)
                 local saw_help = false
                 for _, call in ipairs(calls) do

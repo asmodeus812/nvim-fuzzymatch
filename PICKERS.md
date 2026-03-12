@@ -886,12 +886,14 @@ helptags_picker.open_helptags_picker({
 
 ### Manpages
 
-Lists manpages. Entries are collected from `apropos -k .` (fallback: `man -k .`) and normalized to `name(section)`.
+Lists man pages. Entries are collected from `apropos -k .` (fallback: `man -k .`) and normalized to `name(section)`. The user is allowed
+to provide a list of additional customized command arguments to pass down to the executable (man or apropos)
 
 ```lua
 local manpages_picker = require("fuzzy.pickers.manpages")
 
 manpages_picker.open_manpages_picker({
+    command_args = { "-k", "." }
 })
 ```
 
@@ -923,8 +925,8 @@ Options and behavior:
 
 ## Tags
 
-Tags pickers rely on ctags output and are meant for code navigation. They keep content small to avoid storing huge tag
-lines in memory.
+Tags pickers rely on `ctags` like output and are meant for code navigation. They keep content small to avoid storing huge tag lines in
+memory.
 
 ### Tags
 

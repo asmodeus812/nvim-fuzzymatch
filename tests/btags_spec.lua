@@ -50,7 +50,7 @@ function M.run()
                 helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
-                local action = picker.select._options.mappings["<cr>"]
+                local action = picker.select:options().mappings["<cr>"]
                 action(picker.select)
                 helpers.assert_ok(#calls > 0, "tag cmd")
                 helpers.close_picker(picker)

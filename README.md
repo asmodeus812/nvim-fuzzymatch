@@ -673,142 +673,6 @@ PickerHeaderActionLabel - default highlight for the picker action label in selec
 PickerHeaderActionSeparator - default highlight for the picker action separator selection interface in the header
 ```
 
-### Interactive and Fuzzy stages
-
-Interactive mode feeds the query to the command; fuzzy mode matches the current result list. Use `<c-g>` to switch. Interactive mode is best
-for command-driven searches; fuzzy mode is best for ranking the current set. Picker can be in one of two modes fuzzy or interactive, one can
-toggle between the `interactive and fuzzy` stages of the picker, when a picker is configured with an `interactive state`, the user is able
-to switch between them both - the interactive state is such that the user provided `content` stream is restarted based on the user input and
-new results are obtained from it. For example imagine that you would like to do a live grep of the current user query on a directory, while
-you type it in the results will be streamed into the picker from grep, once the grep command finishes, the user can optionally toggle into
-the fuzzy stage, to further fuzzy match on the results from the live grep.
-
-By default all pickers are non-interactive, and the default first and only stage that is available is the fuzzy matching stage, that is
-the normal operation of most all types of pickers.
-
-`interactive` controls how prompt input drives the command. When interactive is enabled the command is re-run on each prompt change. If
-`interactive` is `true`, the prompt is appended to `args`. If it's a string, that string is treated as a placeholder token in `args` and is
-replaced with the user query/prompt. If it's a number, the prompt is inserted into `args` at that index. If it's a function, it is called as
-`interactive(query, arguments)` where `arguments` is always a copy of the original `args` list, and it must return the same `args` table,
-with the appropriate interactive/dynamic `arguments` added/removed/changed into the `args` table. This is a top-level picker option, not
-part of the context.
-
-### Closing and hiding pickers
-
-Hide keeps state and does not cancel streaming or matching; close destroys state and forces a rerun on next open. Use hide for "temporary
-dismiss," close for "reset and refresh." A picker state can be in either a closed or hidden state using methods such as - `close` and
-`hide`, or the built-in default bindings to trigger them, those are different and very powerful, when used together, the `hide` action
-allows you to hide the current picker away, retaining all of its state, and the picker state can be resumed again at any time by calling
-`open` method again on the same instance that was hidden. The `close` action is different and it usually destroys the state of the `picker`
-instance. However you can still call `open` on the same picker instance, which would cause the internal state to be re-initialized.
-
-A neat side-effect that the hide feature provides is that you can `hide the picker while it is still processing matches or streaming data
-in`, and revisit/resume it later, the streaming or/and matching `will not be canceled and will still be working in the background`
-
-Lets take an example, imagine you have created a picker that shows all files in the current directory, you have done some matching on it and
-now you `hide` it, calling `open` on the same picker instance will resume its state exactly as you have left it off. The same list of files
-will be visible, the prompt query, the last item that was in under preview, your cursor position in the list and preview windows and so on.
-
-However lets say now you create a new file in this directory, if you keep showing/hiding the picker the new file will not be part of the
-list (unless the stream providing the files list has not yet finished, see above, hiding a picker does not cancel the data streaming or
-match processing, by default), and now instead of hiding the picker you instead `close` the picker, calling `open` again on the closed
-picker instance will cause the underlying content stream to be re-run, the new file that was created will be now part of the list, the old
-query will of course be lost and all previous matches and the last item that was under preview.
-
-### Dynamic context evaluation
-
-This section defines what "context change" means and when streams are re-run. Read this carefully if you expect pickers to refresh
-automatically. The context is the primary data that is used to invoke a stream and collect output from it, either a user-provided static
-table, callback or system executable. Every context field can be a plain value or a callback that is evaluated on open, and the evaluated
-values are what get compared to decide whether the stream needs to be re-run.
-
-`cwd` controls where the command runs and how relative paths are resolved. Use a function if you want the picker to follow the current
-working directory dynamically. If `cwd` changes between opens, the stream is re-run.
-
-`env` is a table of environment variables passed to the command. If you need to compute env vars on demand (for example, based on buffer
-state), provide a function that returns the env table.
-
-`args` is the argument list for the command or the content callback. Keep it focused on values that actually change between runs. Large static
-payloads here make the context comparison noisy and can cause unnecessary reruns.
-
-`tick` is a lightweight change signal. It can be any value and is compared as part of context evaluation; changing `tick` forces a
-re-run without having to mutate `args` or `env`. Setting `tick = true` is a shorthand that installs a per-picker counter and makes the
-picker re-run on every open. This is useful for commands that depend on external changes like changes (find, grep) to directory or files
-or version control status (git, hg, svn).
-
-Only the evaluated values of `args`, `cwd`, `env`, and `tick` are compared for change detection. Changes to these keys trigger a re-run.
-The picker detects when the evaluated context has changed compared to what it was originally used to run the data stream with, and the
-content stream will be automatically refreshed, regardless of whether you have `hidden or closed` the picker and now re-opening it.
-
-### Picker actions & interaction
-
-Actions are the control surface. Prefer built-ins for common operations (edit, split, quickfix) and wrap them with converters when your
-entries are structured. Custom actions should be small and use the select instance for selection and closing behavior. Below is a list of
-the built-in actions that the Select module exposes for use, by the users, you can bind these however you see fit, directly to the `actions`
-property or with a `Select.action` binding to make use of the callback mechanism that they provide, mentioned above. Some like the
-`close_view, noop_select and default_select` can be used to be the primary entry points for new custom user actions. The purpose of these
-actions is to streamline and simplify the process of creating new custom actions, by composing them from the built-in ones.
-
-All built-in actions accept as an argument a callback, that callback will be invoked during the execution of the action, however for some
-actions this callback is necessary, as it is also acting as the converter of the `selected` items (see below for more details on what action
-converters are) - like `select_entry`. For others like `default_select`, `toggle_entry`, `close_view` and so on and so forth where no
-conversion is required or they simply do not act on the user selection at all, the callback is executed normally during the execution of the
-action. The callback will receive as its only argument the current user selection. Some actions are exceptions such as the preview related
-ones which will receive the current cursor position in the preview window, or the prompt related ones which would also receive the current
-cursor position in the prompt, after the primary action has executed (i.e after moving the prompt cursor, the callback will be invoked with
-the current cursor position in the prompt, similarly for the preview related actions as well).
-
-```lua
--- General actions
-Select.close_view
-Select.noop_select
-Select.default_select
-
--- List actions
-Select.move_down
-Select.move_up
-Select.toggle_all
-Select.toggle_list
-Select.toggle_clear
-Select.toggle_entry
-Select.toggle_up
-Select.toggle_down
-
--- Select actions
-Select.select_entry
-Select.select_next
-Select.select_prev
-Select.select_tab
-Select.select_vertical
-Select.select_horizontal
-Select.send_loclist
-Select.send_quickfix
-
--- Preview actions
-Select.line_down
-Select.line_up
-Select.half_down
-Select.half_up
-Select.page_down
-Select.page_up
-Select.toggle_preview
-
--- Prompt actions
-Select.prompt_end
-Select.prompt_home
-Select.prompt_left
-Select.prompt_left_word
-Select.prompt_right
-Select.prompt_right_word
-Select.prompt_delete_end
-Select.prompt_delete_home
-Select.prompt_delete_word_left
-Select.prompt_delete_word_right
-```
-
-`Be careful leaving pickers in a hidden state, you should take care of making sure that if a picker remains hidden, at some point if it is
-no longer used and never re-opened it is closed or destroyed to avoid retaining persistent state`
-
 ### Picker Options
 
 Options are split into core behavior (content, context, display, actions, preview, decorators/highlighters) and performance tuning. Use core
@@ -961,7 +825,143 @@ hl? }, { start, length, hl? } }`. The highlight start is automatically offset by
 - **prompt_decor**: The prefix/suffix for the prompt. This can be a single string (used as a prefix), or a table providing both a `prefix`
   and `suffix` key. This can be used to add visual cues to the prompt
 
-### In-depth look
+### Interactive & Matching stages
+
+Interactive mode feeds the query to the command; fuzzy mode matches the current result list. Use `<c-g>` to switch. Interactive mode is best
+for command-driven searches; fuzzy mode is best for ranking the current set. Picker can be in one of two modes fuzzy or interactive, one can
+toggle between the `interactive and fuzzy` stages of the picker, when a picker is configured with an `interactive state`, the user is able
+to switch between them both - the interactive state is such that the user provided `content` stream is restarted based on the user input and
+new results are obtained from it. For example imagine that you would like to do a live grep of the current user query on a directory, while
+you type it in the results will be streamed into the picker from grep, once the grep command finishes, the user can optionally toggle into
+the fuzzy stage, to further fuzzy match on the results from the live grep.
+
+By default all pickers are non-interactive, and the default first and only stage that is available is the fuzzy matching stage, that is
+the normal operation of most all types of pickers.
+
+`interactive` controls how prompt input drives the command. When interactive is enabled the command is re-run on each prompt change. If
+`interactive` is `true`, the prompt is appended to `args`. If it's a string, that string is treated as a placeholder token in `args` and is
+replaced with the user query/prompt. If it's a number, the prompt is inserted into `args` at that index. If it's a function, it is called as
+`interactive(query, arguments)` where `arguments` is always a copy of the original `args` list, and it must return the same `args` table,
+with the appropriate interactive/dynamic `arguments` added/removed/changed into the `args` table. This is a top-level picker option, not
+part of the context.
+
+### Closing & hiding pickers
+
+Hide keeps state and does not cancel streaming or matching; close destroys state and forces a rerun on next open. Use hide for "temporary
+dismiss," close for "reset and refresh." A picker state can be in either a closed or hidden state using methods such as - `close` and
+`hide`, or the built-in default bindings to trigger them, those are different and very powerful, when used together, the `hide` action
+allows you to hide the current picker away, retaining all of its state, and the picker state can be resumed again at any time by calling
+`open` method again on the same instance that was hidden. The `close` action is different and it usually destroys the state of the `picker`
+instance. However you can still call `open` on the same picker instance, which would cause the internal state to be re-initialized.
+
+A neat side-effect that the hide feature provides is that you can `hide the picker while it is still processing matches or streaming data
+in`, and revisit/resume it later, the streaming or/and matching `will not be canceled and will still be working in the background`
+
+Lets take an example, imagine you have created a picker that shows all files in the current directory, you have done some matching on it and
+now you `hide` it, calling `open` on the same picker instance will resume its state exactly as you have left it off. The same list of files
+will be visible, the prompt query, the last item that was in under preview, your cursor position in the list and preview windows and so on.
+
+However lets say now you create a new file in this directory, if you keep showing/hiding the picker the new file will not be part of the
+list (unless the stream providing the files list has not yet finished, see above, hiding a picker does not cancel the data streaming or
+match processing, by default), and now instead of hiding the picker you instead `close` the picker, calling `open` again on the closed
+picker instance will cause the underlying content stream to be re-run, the new file that was created will be now part of the list, the old
+query will of course be lost and all previous matches and the last item that was under preview.
+
+`Be careful leaving pickers in a hidden state, you should take care of making sure that if a picker remains hidden, at some point if it is
+no longer used and never re-opened it is closed or destroyed to avoid retaining persistent state`
+
+### Dynamic context evaluation
+
+This section defines what "context change" means and when streams are re-run. Read this carefully if you expect pickers to refresh
+automatically. The context is the primary data that is used to invoke a stream and collect output from it, either a user-provided static
+table, callback or system executable. Every context field can be a plain value or a callback that is evaluated on open, and the evaluated
+values are what get compared to decide whether the stream needs to be re-run.
+
+`cwd` controls where the command runs and how relative paths are resolved. Use a function if you want the picker to follow the current
+working directory dynamically. If `cwd` changes between opens, the stream is re-run.
+
+`env` is a table of environment variables passed to the command. If you need to compute env vars on demand (for example, based on buffer
+state), provide a function that returns the env table.
+
+`args` is the argument list for the command or the content callback. Keep it focused on values that actually change between runs. Large static
+payloads here make the context comparison noisy and can cause unnecessary reruns.
+
+`tick` is a lightweight change signal. It can be any value and is compared as part of context evaluation; changing `tick` forces a
+re-run without having to mutate `args` or `env`. Setting `tick = true` is a shorthand that installs a per-picker counter and makes the
+picker re-run on every open. This is useful for commands that depend on external changes like changes (find, grep) to directory or files
+or version control status (git, hg, svn).
+
+Only the evaluated values of `args`, `cwd`, `env`, and `tick` are compared for change detection. Changes to these keys trigger a re-run.
+The picker detects when the evaluated context has changed compared to what it was originally used to run the data stream with, and the
+content stream will be automatically refreshed, regardless of whether you have `hidden or closed` the picker and now re-opening it.
+
+### Actions & interaction
+
+Actions are the control surface. Prefer built-ins for common operations (edit, split, quickfix) and wrap them with converters when your
+entries are structured. Custom actions should be small and use the select instance for selection and closing behavior. Below is a list of
+the built-in actions that the Select module exposes for use, by the users, you can bind these however you see fit, directly to the `actions`
+property or with a `Select.action` binding to make use of the callback mechanism that they provide, mentioned above. Some like the
+`close_view, noop_select and default_select` can be used to be the primary entry points for new custom user actions. The purpose of these
+actions is to streamline and simplify the process of creating new custom actions, by composing them from the built-in ones.
+
+All built-in actions accept as an argument a callback, that callback will be invoked during the execution of the action, however for some
+actions this callback is necessary, as it is also acting as the converter of the `selected` items (see below for more details on what action
+converters are) - like `select_entry`. For others like `default_select`, `toggle_entry`, `close_view` and so on and so forth where no
+conversion is required or they simply do not act on the user selection at all, the callback is executed normally during the execution of the
+action. The callback will receive as its only argument the current user selection. Some actions are exceptions such as the preview related
+ones which will receive the current cursor position in the preview window, or the prompt related ones which would also receive the current
+cursor position in the prompt, after the primary action has executed (i.e after moving the prompt cursor, the callback will be invoked with
+the current cursor position in the prompt, similarly for the preview related actions as well).
+
+```lua
+-- General actions
+Select.close_view
+Select.noop_select
+Select.default_select
+
+-- List actions
+Select.move_down
+Select.move_up
+Select.toggle_all
+Select.toggle_list
+Select.toggle_clear
+Select.toggle_entry
+Select.toggle_up
+Select.toggle_down
+
+-- Select actions
+Select.select_entry
+Select.select_next
+Select.select_prev
+Select.select_tab
+Select.select_vertical
+Select.select_horizontal
+Select.send_loclist
+Select.send_quickfix
+
+-- Preview actions
+Select.line_down
+Select.line_up
+Select.half_down
+Select.half_up
+Select.page_down
+Select.page_up
+Select.toggle_preview
+
+-- Prompt actions
+Select.prompt_end
+Select.prompt_home
+Select.prompt_left
+Select.prompt_left_word
+Select.prompt_right
+Select.prompt_right_word
+Select.prompt_delete_end
+Select.prompt_delete_home
+Select.prompt_delete_word_left
+Select.prompt_delete_word_right
+```
+
+### In-depth description
 
 This section explains the internals of actions, previewers, decorators, highlighters, and converters. Use it as reference when you need
 custom behavior or integration with external data formats. There are a few key elements which need a bit more attention, when using the

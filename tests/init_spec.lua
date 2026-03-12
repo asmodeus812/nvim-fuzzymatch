@@ -49,7 +49,7 @@ function M.run()
 
         helpers.wait_for_list(picker)
         helpers.wait_for_entries(picker)
-        local action = assert(picker).select._options.mappings["<cr>"]
+        local action = assert(picker).select:options().mappings["<cr>"]
         action(assert(picker).select, function() end)
         helpers.eq(picked, "one", "picked")
         helpers.close_picker(picker)

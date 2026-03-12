@@ -24,11 +24,11 @@ function M.run()
                 icons = false,
                 prompt_debounce = 0,
             })
-            local highlighters = picker.select._options.highlighters
+            local highlighters = picker.select:options().highlighters
             helpers.assert_ok(highlighters and #highlighters > 0, "loclist highlighters")
             local entry = item_list[1]
             helpers.assert_ok(entry ~= nil, "loclist entry")
-            local line = picker.select._options.display(entry, 1)
+            local line = picker.select:options().display(entry, 1)
             helpers.assert_ok(type(line) == "string" and #line > 0, "loclist line")
             local spans = highlighters[1]:highlight({}, line) or {}
             local span_hls = {}

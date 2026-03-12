@@ -98,7 +98,7 @@ function M.run()
                 helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
-                local map = picker.select._options.mappings
+                local map = picker.select:options().mappings
                 map["<cr>"](picker.select)
                 local saw_help = false
                 for _, call in ipairs(calls) do
@@ -147,7 +147,7 @@ function M.run()
                 })
                 helpers.wait_for_stream(picker)
                 helpers.wait_for_entries(picker)
-                picker.select._options.mappings["<cr>"](picker.select)
+                picker.select:options().mappings["<cr>"](picker.select)
                 helpers.wait_for(function()
                     local buf = vim.api.nvim_get_current_buf()
                     if vim.bo[buf].filetype ~= "help" then
@@ -193,7 +193,7 @@ function M.run()
             helpers.wait_for_entries(picker)
             helpers.wait_for_list(picker)
             helpers.wait_for_line_contains(picker, "nvim_deprecated_fn()")
-            local previewer = picker.select._options.preview
+            local previewer = picker.select:options().preview
             local entries = helpers.get_entries(picker)
             local entry = entries and entries[1] or nil
             helpers.assert_ok(

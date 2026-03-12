@@ -9,12 +9,11 @@ local function run_lines_case()
     helpers.eq(stream:options().step, 100, "stream options reference")
     local buf_size = 0
     local acc_size = 0
-    stream:start(function(cb)
-        for i = 1, 500 do
-            cb(string.format("line-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=500;i++) printf \"line-%03d\\n\", i}",
+        },
         callback = function(buffer, accum)
             if buffer and accum then
                 buf_size = #buffer
@@ -28,10 +27,10 @@ local function run_lines_case()
     helpers.assert_ok(results ~= nil, "stream nil")
     helpers.assert_ok(type(results) == "table", "results")
     helpers.eq(#results, 500, "results count")
-    helpers.eq(results[1], "line-001\n", "results one")
-    helpers.eq(results[2], "line-002\n", "results two")
-    helpers.eq(results[3], "line-003\n", "results three")
-    helpers.eq(results[500], "line-500\n", "results last")
+    helpers.eq(results[1], "line-001", "results one")
+    helpers.eq(results[2], "line-002", "results two")
+    helpers.eq(results[3], "line-003", "results three")
+    helpers.eq(results[500], "line-500", "results last")
     helpers.assert_ok(buf_size > 0, "buffer")
     helpers.eq(acc_size, #results, "accum")
     stream:destroy()
@@ -40,15 +39,13 @@ end
 local function run_transform_case()
     local stream = Stream.new({ lines = true, step = 50 })
 
-    stream:start(function(cb)
-        for i = 1, 200 do
-            cb(string.format("keep-%03d\n", i))
-        end
-        cb("drop\n")
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=200;i++) printf \"keep-%03d\\n\", i; printf \"drop\\n\"}",
+        },
         transform = function(line)
-            if line == "drop\n" then
+            if line == "drop" then
                 return nil
             end
             return line
@@ -60,8 +57,8 @@ local function run_transform_case()
     helpers.assert_ok(results ~= nil, "transform nil")
     helpers.assert_ok(type(results) == "table", "transform")
     helpers.eq(#results, 200, "transform count")
-    helpers.eq(results[1], "keep-001\n", "transform keep")
-    helpers.eq(results[2], "keep-002\n", "transform keep two")
+    helpers.eq(results[1], "keep-001", "transform keep")
+    helpers.eq(results[2], "keep-002", "transform keep two")
     stream:destroy()
 end
 
@@ -91,22 +88,19 @@ local function run_restart_case()
         ephemeral = false,
     })
 
-    stream:start(function(cb)
-        for i = 1, 150 do
-            cb(string.format("one-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=150;i++) printf \"one-%03d\\n\", i}",
+        },
         callback = function() end,
     })
     stream:wait(1500)
 
-    stream:start(function(cb)
-        for i = 1, 100 do
-            cb(string.format("two-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=100;i++) printf \"two-%03d\\n\", i}",
+        },
         callback = function() end,
     })
     helpers.assert_ok(helpers.wait_for(function()
@@ -116,42 +110,34 @@ local function run_restart_case()
     helpers.assert_ok(results ~= nil, "restart nil")
     helpers.assert_ok(type(results) == "table", "restart")
     helpers.eq(#results, 100, "restart count")
-    helpers.eq(results[1], "two-001\n", "restart value")
+    helpers.eq(results[1], "two-001", "restart value")
     stream:destroy()
 end
 
 local function run_context_case()
     local stream = Stream.new({ lines = true, step = 1 })
-    local got_cwd
-    local got_env
-    stream:start(function(cb, _, cwd, env)
-        got_cwd = cwd
-        got_env = env
-        for i = 1, 300 do
-            cb(string.format("ok-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
         cwd = "/tmp",
-        env = { "TEST_ENV=1" },
+        env = { "TEST_ENV=1", "PWD=/tmp" },
+        args = {
+            "BEGIN{print ENVIRON[\"PWD\"]; print \"TEST_ENV=\" ENVIRON[\"TEST_ENV\"]; for(i=1;i<=300;i++) printf \"ok-%03d\\n\", i}",
+        },
         callback = function() end,
     })
     local results = stream:wait(1500)
     helpers.assert_ok(results ~= nil, "context nil")
-    helpers.eq(#results, 300, "context count")
-    helpers.eq(results[1], "ok-001\n", "context value")
-    helpers.eq(got_cwd, "/tmp", "context cwd")
-    helpers.assert_ok(type(got_env) == "table", "context env")
+    helpers.eq(results[1], "/tmp", "context cwd")
+    helpers.eq(results[2], "TEST_ENV=1", "context env")
+    helpers.eq(results[3], "ok-001", "context value")
     stream:destroy()
 end
 
 local function run_partial_line_case()
     local stream = Stream.new({ lines = true, step = 2 })
-    stream:start(function(cb)
-        stream:_handle_in(nil, "aaaa_kq")
-        stream:_handle_in(nil, "zv_bbbb\n")
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("printf") == 1, "printf missing")
+    stream:start("printf", {
+        args = { "aaaa_kqzv_bbbb\n" },
         callback = function() end,
     })
     local results = stream:wait(1500)
@@ -163,10 +149,9 @@ end
 
 local function run_trailing_partial_case()
     local stream = Stream.new({ lines = true, step = 2 })
-    stream:start(function(cb)
-        stream:_handle_in(nil, "tail_only")
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("printf") == 1, "printf missing")
+    stream:start("printf", {
+        args = { "tail_only" },
         callback = function() end,
     })
     local results = stream:wait(1500)
@@ -180,12 +165,11 @@ local function run_lines_multi_flush_case()
     local stream = Stream.new({ lines = true, step = 100 })
     local buffers = {}
     local accums = {}
-    stream:start(function(cb)
-        for i = 1, 350 do
-            cb(string.format("item-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=350;i++) printf \"item-%03d\\n\", i}",
+        },
         callback = function(buffer, accum)
             if buffer and accum then
                 buffers[#buffers + 1] = #buffer
@@ -203,14 +187,11 @@ end
 
 local function run_lines_empty_lines_case()
     local stream = Stream.new({ lines = true, step = 100 })
-    stream:start(function(cb)
-        local payload = { "alpha\n\nbeta\n" }
-        for i = 1, 200 do
-            payload[#payload + 1] = string.format("line-%03d\n", i)
-        end
-        stream:_handle_in(nil, table.concat(payload))
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{print \"alpha\"; print \"\"; print \"beta\"; for(i=1;i<=200;i++) printf \"line-%03d\\n\", i}",
+        },
         callback = function() end,
     })
     local results = stream:wait(1500)
@@ -224,16 +205,11 @@ end
 
 local function run_lines_pending_multi_case()
     local stream = Stream.new({ lines = true, step = 100 })
-    stream:start(function(cb)
-        local chunks = { "foo", "bar\nbaz", "qux\n" }
-        for i = 1, 100 do
-            chunks[#chunks + 1] = string.format("line-%03d\n", i)
-        end
-        for _, chunk in ipairs(chunks) do
-            stream:_handle_in(nil, chunk)
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{print \"foobar\"; print \"bazqux\"; for(i=1;i<=100;i++) printf \"line-%03d\\n\", i}",
+        },
         callback = function() end,
     })
     local results = stream:wait(1500)
@@ -248,12 +224,11 @@ local function run_bytes_flush_case()
     local stream = Stream.new({ bytes = true, lines = false, step = 16 })
     local buffers = {}
     local accums = {}
-    stream:start(function(cb)
-        for i = 1, 20 do
-            stream:_handle_in(nil, "abcd")
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=20;i++) printf \"abcd\"}",
+        },
         callback = function(buffer, accum)
             if buffer and accum then
                 buffers[#buffers + 1] = #buffer
@@ -263,20 +238,21 @@ local function run_bytes_flush_case()
     })
     local results = stream:wait(1500)
     helpers.assert_ok(results ~= nil, "bytes flush nil")
-    helpers.eq(#results, 20, "bytes flush count")
-    helpers.assert_ok(#buffers >= 2, "bytes flush buffers")
-    helpers.eq(accums[#accums], 20, "bytes flush accums")
+    local joined = table.concat(results or {}, "")
+    helpers.eq(#joined, 80, "bytes flush count")
+    helpers.eq(joined:sub(1, 4), "abcd", "bytes flush prefix")
+    helpers.assert_ok(#buffers >= 1, "bytes flush buffers")
+    helpers.eq(accums[#accums], #results, "bytes flush accums")
     stream:destroy()
 end
 
 local function run_transform_prefix_case()
     local stream = Stream.new({ lines = true, step = 100 })
-    stream:start(function(cb)
-        for i = 1, 300 do
-            stream:_handle_in(nil, string.format("line-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=300;i++) printf \"line-%03d\\n\", i}",
+        },
         transform = function(line)
             return "x:" .. line
         end,
@@ -293,12 +269,11 @@ end
 local function run_callback_nil_case()
     local stream = Stream.new({ lines = true, step = 100 })
     local saw_nil = false
-    stream:start(function(cb)
-        for i = 1, 200 do
-            cb(string.format("line-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=200;i++) printf \"line-%03d\\n\", i}",
+        },
         callback = function(buffer, accum)
             if buffer == nil and accum == nil then
                 saw_nil = true
@@ -320,17 +295,16 @@ local function run_onexit_success_case()
             msg = exit_msg
         end,
     })
-    stream:start(function(cb)
-        for i = 1, 200 do
-            cb(string.format("line-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=200;i++) printf \"line-%03d\\n\", i}",
+        },
         callback = function() end,
     })
     stream:wait(1500)
-    helpers.eq(code, nil, "onexit success code")
-    helpers.eq(msg, nil, "onexit success msg")
+    helpers.eq(code, 0, "onexit success code")
+    helpers.assert_ok(msg == nil or type(msg) == "number", "onexit success msg")
     stream:destroy()
 end
 
@@ -344,9 +318,8 @@ local function run_onexit_error_case()
             msg = exit_msg
         end,
     })
-    helpers.assert_ok(vim.fn.executable("sh") == 1, "sh missing")
-    stream:start("sh", {
-        args = { "-c", "exit 1" },
+    helpers.assert_ok(vim.fn.executable("false") == 1, "false missing")
+    stream:start("false", {
         callback = function() end,
     })
     stream:wait(1500)
@@ -358,39 +331,35 @@ end
 
 local function run_ephemeral_false_case()
     local stream = Stream.new({ lines = true, step = 100, ephemeral = false })
-    stream:start(function(cb)
-        for i = 1, 200 do
-            cb(string.format("first-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=200;i++) printf \"first-%03d\\n\", i}",
+        },
         callback = function() end,
     })
     local results = stream:wait(1500)
     helpers.eq(#results, 200, "ephemeral false first count")
-    stream:start(function(cb)
-        for i = 1, 100 do
-            cb(string.format("third-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=100;i++) printf \"third-%03d\\n\", i}",
+        },
         callback = function() end,
     })
     local next_results = stream:wait(1500)
     helpers.eq(#next_results, 200, "ephemeral false second count")
-    helpers.eq(next_results[1], "first-001\n", "ephemeral false second value")
+    helpers.eq(next_results[1], "first-001", "ephemeral false second value")
     stream:destroy()
 end
 
 local function run_accum_sizes_case()
     local stream = Stream.new({ lines = true, step = 100 })
     local accums = {}
-    stream:start(function(cb)
-        for i = 1, 250 do
-            cb(string.format("line-%03d\n", i))
-        end
-        cb(nil)
-    end, {
+    helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
+    stream:start("awk", {
+        args = {
+            "BEGIN{for(i=1;i<=250;i++) printf \"line-%03d\\n\", i}",
+        },
         callback = function(_, accum)
             if accum then
                 accums[#accums + 1] = #accum

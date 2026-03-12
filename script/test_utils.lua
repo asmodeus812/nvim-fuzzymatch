@@ -153,6 +153,25 @@ function M.type_query(picker, text)
     end
 end
 
+function M.trigger_action(picker, keys)
+    M.assert_ok(picker and picker.select, "picker not available")
+    local select = picker.select
+    local opts = select:options() or {}
+    if opts.mappings and opts.mappings[keys] then
+        return opts.mappings[keys](select)
+    end
+    local win = select and select.prompt_window
+    if not win or not vim.api.nvim_win_is_valid(win) then
+        return
+    end
+    local term_codes = vim.api.nvim_replace_termcodes(
+        assert(keys), false, false, true
+    )
+    vim.api.nvim_win_call(win, function()
+        vim.api.nvim_feedkeys(term_codes, "i", false)
+    end)
+end
+
 function M.get_query(picker)
     M.assert_ok(picker and picker.select, "picker not available")
     return picker.select:query()
@@ -198,6 +217,12 @@ function M.wait_for(fn, timeout)
     timeout = math.floor(timeout * mul)
     local ok = vim.wait(timeout, fn, 50)
     return ok
+end
+
+function M.wait_for_picker_closed(picker, timeout)
+    return M.wait_for(function()
+        return not picker:isopen()
+    end, timeout or 1500)
 end
 
 function M.wait_for_list_extmarks(picker, namespace, timeout)

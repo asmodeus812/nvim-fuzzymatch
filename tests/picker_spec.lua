@@ -170,11 +170,11 @@ function M.run()
     helpers.wait_for_list(picker)
     helpers.wait_for_line_contains(picker, "alpha")
     helpers.assert_ok(helpers.wait_for(function()
-        return picker.select and picker.select._state.entries
-            and #picker.select._state.entries == 3
+        local lines = helpers.get_list_lines(picker)
+        return #lines == 3
     end, 1500), "entries")
 
-    helpers.eq(#picker.select._state.entries, 3, "entries")
+    helpers.eq(#helpers.get_list_lines(picker), 3, "entries")
     local lines = helpers.get_list_lines(picker)
     helpers.assert_ok(#lines > 0, "list empty")
     helpers.assert_line_contains(lines, "alpha", "missing")
@@ -218,9 +218,8 @@ function M.run()
     helpers.wait_for_list(stream_picker)
     helpers.wait_for_line_contains(stream_picker, "ONE")
     helpers.assert_ok(helpers.wait_for(function()
-        return stream_picker.select
-            and stream_picker.select._state.entries
-            and #stream_picker.select._state.entries == 3
+        local lines = helpers.get_list_lines(stream_picker)
+        return #lines == 3
     end, 1500), "stream entries")
 
     local stream_lines = helpers.get_list_lines(stream_picker)
@@ -443,7 +442,7 @@ function M.run()
                 return interactive_picker.select and interactive_picker.select:isopen()
             end, 1500), "interactive open")
             helpers.eq(interactive_picker._test_stream_count(), 0, "interactive open should not start stream")
-            interactive_picker._state.context.args = { "--test-open" }
+            interactive_picker:options().context.args = { "--test-open" }
             interactive_picker:hide()
             interactive_picker:open()
             helpers.assert_ok(helpers.wait_for(function()
@@ -468,8 +467,8 @@ function M.run()
         helpers.wait_for_stream(picker)
         helpers.assert_ok(picker.stream.results and #picker.stream.results == 2, "stream results")
 
-        local cancel = picker:_cancel_prompt()
-        cancel(picker.select)
+        helpers.trigger_action(picker, "<esc>")
+        helpers.wait_for_picker_closed(picker)
 
         helpers.assert_ok(picker.stream.results and #picker.stream.results == 2, "cancel keeps results")
         helpers.assert_ok(picker.select:isopen() == false, "cancel closes select")
@@ -664,10 +663,8 @@ function M.run()
             prompt_debounce = 0,
         })
     end, function(picker)
-        local buf = picker._state
-            and picker._state._evaluated_context
-            and picker._state._evaluated_context.args
-            and picker._state._evaluated_context.args.buf
+        local context = picker:context()
+        local buf = context and context.args and context.args.buf
         if buf and vim.api.nvim_buf_is_valid(buf) then
             vim.api.nvim_buf_set_lines(buf, -1, -1, false, { "extra" })
         end
@@ -682,10 +679,8 @@ function M.run()
             prompt_debounce = 0,
         })
     end, function(picker)
-        local buf = picker._state
-            and picker._state._evaluated_context
-            and picker._state._evaluated_context.args
-            and picker._state._evaluated_context.args.buf
+        local context = picker:context()
+        local buf = context and context.args and context.args.buf
         if buf and vim.api.nvim_buf_is_valid(buf) then
             vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "change" })
         end
@@ -748,10 +743,8 @@ function M.run()
             prompt_debounce = 0,
         })
     end, function(picker)
-        local wid = picker._state
-            and picker._state._evaluated_context
-            and picker._state._evaluated_context.args
-            and picker._state._evaluated_context.args.wid
+        local context = picker:context()
+        local wid = context and context.args and context.args.wid
             or 0
         local dir_path = helpers.create_temp_dir()
         local file_path = vim.fs.joinpath(dir_path, "rerun_loclist.txt")
@@ -1110,8 +1103,15 @@ function M.run()
             local dir_a = helpers.create_temp_dir()
             local dir_b = helpers.create_temp_dir()
             local utils = require("fuzzy.utils")
+            local context_cwd = dir_a
+            local context_args = {}
             local picker = require("fuzzy.pickers.grep").open_grep_picker({
-                cwd = dir_a,
+                cwd = function()
+                    return context_cwd
+                end,
+                args = function()
+                    return context_args
+                end,
                 preview = false,
                 icons = false,
                 prompt_debounce = 0,
@@ -1120,15 +1120,18 @@ function M.run()
                 _test_skip_command = true,
             })
             helpers.wait_for_stream(picker)
-            local eval_before = picker:_context_evaluate({ "args", "cwd", "env" }, picker)
-            picker._state.context.cwd = dir_b
-            picker._state.context.args = { "--test" }
-            local eval_after = picker:_context_evaluate({ "args", "cwd", "env" }, picker)
+            local eval_before = picker:context()
+            context_cwd = dir_b
+            context_args = { "--test" }
+            picker:hide()
+            picker:open()
+            helpers.wait_for_stream(picker)
+            local eval_after = picker:context()
             helpers.assert_ok(not utils.compare_tables(eval_before, eval_after), "grep context changed")
             picker:hide()
             picker:open()
             helpers.wait_for_stream(picker)
-            local after_cwd = picker._state._evaluated_context.cwd
+            local after_cwd = picker:context().cwd
             helpers.assert_ok(eval_before.cwd ~= after_cwd, "grep cwd changed")
             helpers.eq(after_cwd, dir_b, "grep cwd args")
             helpers.close_picker(picker)

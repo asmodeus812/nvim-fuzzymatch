@@ -1,5 +1,8 @@
 ---@diagnostic disable: invisible
 local helpers = require("script.test_utils")
+local Picker = require("fuzzy.picker")
+local Select = require("fuzzy.select")
+local util = require("fuzzy.pickers.util")
 
 local M = { name = "oldfiles" }
 
@@ -105,12 +108,12 @@ function M.run()
         helpers.wait_for_list(picker)
         helpers.wait_for_entries(picker)
         local select = picker.select
-        select._state.cursor = { 2, 0 }
+        select:move_down()
         select:list({ { filename = file_a } }, nil)
         helpers.wait_for(function()
-            return select._state.cursor[1] == 1
+            return vim.api.nvim_win_get_cursor(select.list_window)[1] == 1
         end, 1500)
-        local cursor = picker.select._state.cursor
+        local cursor = vim.api.nvim_win_get_cursor(select.list_window)
         helpers.eq(cursor[1], 1, "cursor clamped")
         picker:close()
     end)
@@ -119,11 +122,15 @@ function M.run()
         local dir_path = helpers.create_temp_dir()
         local file_a = vim.fs.joinpath(dir_path, "alpha.txt")
         local file_b = vim.fs.joinpath(dir_path, "beta.txt")
+        local file_c = vim.fs.joinpath(dir_path, "gamma.txt")
+        local file_d = vim.fs.joinpath(dir_path, "delta.txt")
         helpers.write_file(file_a, "alpha\n")
         helpers.write_file(file_b, "beta\n")
+        helpers.write_file(file_c, "gamma\n")
+        helpers.write_file(file_d, "delta\n")
 
         local ok = pcall(function()
-            vim.v.oldfiles = { file_a, file_b }
+            vim.v.oldfiles = { file_a, file_b, file_c, file_d }
         end)
         if not ok then
             return
@@ -131,21 +138,44 @@ function M.run()
         if not vim.v.oldfiles or #vim.v.oldfiles == 0 then
             return
         end
+        helpers.assert_ok(#vim.v.oldfiles >= 4, "oldfiles not populated")
 
         vim.v.errmsg = ""
-        local oldfiles_picker = require("fuzzy.pickers.oldfiles")
-        local picker = oldfiles_picker.open_oldfiles_picker({
-            preview = true,
-            icons = false,
+        local conv = Select.default_converter
+        local display_opts = {
+            cwd = nil,
+            filename_only = false,
+            path_shorten = nil,
+            home_to_tilde = true,
+        }
+        local entries = {}
+        for _, filename in ipairs(vim.v.oldfiles or {}) do
+            entries[#entries + 1] = { filename = filename }
+        end
+        local picker = Picker.new({
+            content = function(stream)
+                for _, entry in ipairs(entries) do
+                    stream(entry)
+                end
+                stream(nil)
+            end,
+            display = function(entry)
+                local filename = assert(entry.filename)
+                return util.format_display_path(filename, display_opts)
+            end,
+            preview = Select.BufferPreview.new(nil, conv),
             prompt_debounce = 0,
-            stat_file = true,
+            icons = false,
         })
+        picker:open()
         helpers.wait_for_stream(picker)
-        helpers.wait_for_entries(picker)
+        helpers.wait_for_list(picker)
+        helpers.assert_ok(helpers.wait_for_line_contains(picker, "alpha.txt"), "oldfiles list alpha")
+        helpers.assert_ok(helpers.wait_for_line_contains(picker, "beta.txt"), "oldfiles list beta")
         helpers.type_query(picker, "alpha")
-        helpers.wait_for_stream(picker)
         helpers.wait_for_match(picker)
-        helpers.wait_for_line_contains(picker, "alpha.txt")
+        helpers.wait_for_list(picker)
+        helpers.assert_ok(helpers.wait_for_line_contains(picker, "alpha.txt"), "oldfiles filter alpha")
         vim.wait(80, function()
             return true
         end, 10)

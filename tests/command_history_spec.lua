@@ -45,7 +45,7 @@ function M.run()
                 helpers.wait_for_stream(picker)
                 helpers.wait_for_list(picker)
                 helpers.wait_for_entries(picker)
-                local action = picker.select._options.mappings["<cr>"]
+                local action = picker.select:options().mappings["<cr>"]
                 action(picker.select)
                 local found = false
                 for _, call in ipairs(calls) do
