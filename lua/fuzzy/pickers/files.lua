@@ -125,7 +125,7 @@ function M.open_files_picker(opts)
         decorators = decorators,
         highlighters = {
             Select.RegexHighlighter.new({
-                { "^.+/", "Directory" },
+                { "^.+/",   "Directory" },
                 { "[^/]+$", "Identifier" },
             }),
         },

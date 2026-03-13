@@ -116,7 +116,8 @@ end
 
 function Match:_clean_context()
     if self._state.buffer then
-        -- clear the buffer to avoid holding references to old data, do return them to the pool, from where we can easily pull them back
+        -- clear the buffer to avoid holding references to old data, do return them to the pool, from where we can easily pull
+        -- them back
         for i, value in ipairs(self._state.buffer) do
             if i == 1 then
                 utils.fill_table(
@@ -250,7 +251,11 @@ end
 --- Returns true if the matcher is considered finalized and no longer processing data in-flight, and there is a valid set of data present for consumption produced by the matcher
 --- @return boolean True if the matcher has finalized and matched results data is ready to be consumed by the client
 function Match:isvalid()
-    return not self:running() and self.results ~= nil and #self.results > 0 and self.results[1] ~= nil and #self.results[1] >= 0
+    return not self:running()
+        and self.results ~= nil
+        and #self.results > 0
+        and self.results[1] ~= nil
+        and #self.results[1] >= 0
 end
 
 --- Checks if the match has finalized and has matched any entries that are ready for consumption
@@ -323,6 +328,8 @@ function Match:match(list, pattern, callback, transform)
         end
     end
 
+    -- ensure we drop the old results first, these will be re-referenced only when the matching process finishes after this matching process
+    -- that is currently being started now
     if self.results then
         self.results = nil
     end
@@ -362,14 +369,14 @@ function Match:match(list, pattern, callback, transform)
 
     if not self._state.chunks then
         -- chunks are reused to avoid frequent allocations, they represent the part of the whole source list currently being processed
-        -- for matches
+        -- for matches, the chunks are first filled from the source list and then used in the matchfuzzy call
         local size = self._options.step
         self._state.chunks = Pool.obtain(size)
     end
 
     if not self._state.buffer then
-        -- prepare buffer for storing intermediate results, start from step-sized buffers,
-        -- and allow Match.merge to grow as needed.
+        -- prepare buffer for storing intermediate results, start from step-sized buffers, the finaly buffer will likely contain much less
+        -- items than the initial list.
         local size = math.min(#list, self._options.step or 1)
         self._state.buffer = {
             Pool.obtain(size),

@@ -149,8 +149,6 @@ function Stream:_flush_results()
 
     -- reset the state for the next flush call
     self._state.size = 0
-
-    -- handle result flushing in an async way
 end
 
 function Stream:_handle_data(data, size)
@@ -220,7 +218,7 @@ end
 
 function Stream:_handle_in(err, chunk, kind)
     if err ~= nil then
-        self:_handle_out(1, nil, kind)
+        self:_handle_out(1, err, kind)
     elseif not chunk then
         if kind == 1 then
             self._state.stdouteof = true

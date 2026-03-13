@@ -255,13 +255,6 @@ function M.run()
             end
         end
 
-        local function wait_for_entries(picker, min_count)
-            helpers.assert_ok(helpers.wait_for(function()
-                local entries = helpers.get_entries(picker)
-                return entries and #entries >= min_count
-            end, 1500), "entries count")
-        end
-
         local picker = Picker.new({
             content = function(cb)
                 wait_ms(25)
@@ -284,9 +277,12 @@ function M.run()
                 cb(nil)
             end,
             preview = false,
-            prompt_debounce = 0,
+            prompt_debounce = 30,
             stream_debounce = 0,
-            stream_step = 3,
+            match_debounce = 15,
+            match_timer = 10,
+            match_step = 16,
+            stream_step = 32,
             prompt_query = "ta",
             actions = {
                 ["<cr>"] = Select.default_select,
@@ -302,19 +298,17 @@ function M.run()
         helpers.assert_ok(helpers.wait_for(function()
             return state.sent >= 1
         end, 1500), "chunk 1 sent")
-        wait_for_entries(picker, 1)
 
         helpers.assert_ok(helpers.wait_for(function()
             return state.sent >= 2
         end, 1500), "chunk 2 sent")
-        wait_for_entries(picker, 3)
 
         helpers.assert_ok(helpers.wait_for(function()
             return state.sent >= 3
         end, 1500), "chunk 3 sent")
-        wait_for_entries(picker, 6)
 
         helpers.wait_for_stream(picker)
+        helpers.wait_for_match(picker, 1500)
 
         local entries = helpers.get_entries(picker) or {}
         helpers.eq(#entries, 6, "ta matches")
@@ -376,6 +370,8 @@ function M.run()
             preview = false,
             prompt_debounce = 0,
             stream_debounce = 0,
+            match_debounce = 0,
+            match_step = 1,
             stream_step = 3,
             prompt_query = "ta",
             actions = {
