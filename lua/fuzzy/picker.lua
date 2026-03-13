@@ -573,6 +573,59 @@ function Picker:_compute_headers(headers, actions)
     return vim.list_extend(headers, action_headers)
 end
 
+function Picker:_matching_worker(mode, list, match_query, total, __type)
+    if __type == 1 then
+        if self._matching_worker_debounced == nil then
+            self._matching_worker_debounced = utils.debounce_callback(
+                self._options.match_debounce, self._matching_worker
+            )
+        end
+        self._matching_worker_debounced(
+            self, mode, list,
+            match_query, total
+        )
+    else
+        -- since this call is sometimes debounced we want to minimize the chance of doing extra work, in case the query has
+        -- changed in between the call of this callback and it actually execting, we can skip it, the finalization above
+        -- will ensure that the check should_match will trigger the final matching if needed.
+        local current = assert(self.select:query())
+        if #current == 0 or current ~= match_query then
+            return
+        end
+        -- start a new matcher with a non-empty query, against the target list that list will either be the entire stream
+        -- accumulated so far, or just the latest chunk from the stream,
+        self.match:match(list, match_query, function(matching)
+            if matching == nil then
+                if not self.match:isvalid() or self.match:isempty() then
+                    local matching_state = self._state.matching or {}
+                    local accum = matching_state and matching_state.accum
+                    if not accum or #accum[1] == 0 then
+                        self.select:list(
+                            utils.EMPTY_TABLE,
+                            utils.EMPTY_TABLE
+                        )
+                        self.select:status("0/0")
+                        self.select:list(nil, nil)
+                    end
+                end
+            else
+                -- the running match will ensure to reset the state internally in case the query was any different than
+                -- it is currently stored with the matching state, the matching argument here will either be all results
+                -- or the current streaming buffer based on the call site of this callback
+                if assert(mode) == "all" then self:_running_match() end
+                matching = self:_running_match(matching, match_query)
+                self.select:list(matching[1], matching[2])
+                self.select:status(string.format(
+                    "%d/%d", #matching[1], total
+                ))
+            end
+        end, self._state.display)
+    end
+end
+
+-- match_state.workerd = utils.debounce_callback(
+-- self._options.match_debounce, match_state.worker)
+
 function Picker:_running_match(matching, query)
     -- Maintain a running accumulator of match results while a stream is active; it is a
     -- {matches, positions, scores} triplet that grows per chunk, resets on query change,
@@ -629,10 +682,6 @@ function Picker:_running_match(matching, query)
                 query = query,
                 debounced = nil,
             }
-        end
-        if state.matching.query ~= query then
-            self:_running_match()
-            state.matching = {}
         end
         local match_state = state.matching
         match_state.query = assert(query)
@@ -801,52 +850,20 @@ function Picker:_flush_direct()
             local query = self.select:query()
 
             if #all > 0 and type(query) == "string" and #query > 0 then
-                if not self._state.matching then
-                    self._state.matching = {}
-                end
-                local match_state = self._state.matching
-                if match_state.debounced == nil then
-                    match_state.debounced = utils.debounce_callback(
-                        self._options.match_debounce,
-                        function(mode, list, match_query, total)
-                            local current = self.select:query()
-                            if current ~= match_query or current == "" then
-                                return
-                            end
-                            self.match:match(list, match_query, function(matching)
-                                if matching == nil then
-                                    if not self.match:isvalid() or self.match:isempty() then
-                                        local current_state = self._state.matching
-                                        local accum = current_state and current_state.accum
-                                        if not accum or #accum[1] == 0 then
-                                            self.select:list(
-                                                utils.EMPTY_TABLE,
-                                                utils.EMPTY_TABLE
-                                            )
-                                            self.select:status("0/0")
-                                            self.select:list(nil, nil)
-                                        end
-                                    end
-                                else
-                                    if mode == "all" then self:_running_match() end
-                                    matching = self:_running_match(matching, match_query)
-                                    self.select:list(matching[1], matching[2])
-                                    self.select:status(string.format(
-                                        "%d/%d", #matching[1], total
-                                    ))
-                                end
-                            end, self._state.display)
-                        end
-                    )
-                end
-
                 -- If the query changed we have to do a match on all stream entries thus far, to reflect the matching state of these entries
-                -- while the stream is still emitting
-                local query_changed = not match_state or match_state.query ~= query
-                if query_changed and #all > 0 then
-                    match_state.debounced("all", all, query, #all)
+                -- while the stream is still emitting. We have two options here the query changed and we have to match on the entire set of
+                -- results, or keep matching the incoming chunks of the stream and merge with current running match results, since the query
+                -- never changed
+                local match_all = not self._state.matching
+                    or self._state.matching.query ~= query
+                if match_all and #all > 0 then
+                    -- debounce call, match onto all stream results, it is safe to debounce this call because we always have access to the latest
+                    -- accumulated results
+                    self:_matching_worker("all", all, query, #all, 1)
                 elseif buf and #buf > 0 then
-                    match_state.debounced("buf", buf, query, #all)
+                    -- directly call non-debounced accumulate match worker for the current buffer, it is not safe to debounce this call as
+                    -- the buffer we receive here will no longer be available and and we can not afford to skip it
+                    self:_matching_worker("buf", buf, query, #all, 0)
                 end
             else
                 -- No query, render all of the results as-is and reset any running accumulator, as it will have become
