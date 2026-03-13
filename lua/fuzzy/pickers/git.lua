@@ -102,8 +102,8 @@ local function build_git_picker(opts, config)
         actions = config.actions,
         highlighters = config.highlighters,
         match_timer = 15,
-        match_step = 25000,
-        stream_step = 100000,
+        match_step = 32768,
+        stream_step = 131072,
         stream_debounce = 0,
         prompt_debounce = 60,
     }, opts))
@@ -117,17 +117,6 @@ local function build_git_default_action(label, callback)
         Select.action(Select.default_select, Select.first(callback)),
         label,
     }
-end
-
-local function build_git_tick(opts, callback)
-    local tick_counter = 0
-    return function(picker)
-        if opts.watch == true then
-            return callback(picker) or ""
-        end
-        tick_counter = tick_counter + 1
-        return tick_counter
-    end
 end
 
 local function parse_git_status_entry(entry)
@@ -186,6 +175,15 @@ function M.open_git_files(opts)
         opts.preview = false
     end
 
+    if opts.watch == true then
+        opts.tick = function(picker)
+            local cwd = assert(resolve_git_root(picker))
+            return git_version_status(cwd, opts.untracked) or ""
+        end
+    else
+        opts.tick = true
+    end
+
     local decorators = {}
     if opts.icons ~= false then
         decorators = { Select.IconDecorator.new(convert) }
@@ -206,10 +204,7 @@ function M.open_git_files(opts)
             cwd = function(picker)
                 return assert(resolve_git_root(picker))
             end,
-            tick = build_git_tick(opts, function(picker)
-                local cwd = assert(resolve_git_root(picker))
-                return git_version_status(cwd, opts.untracked)
-            end),
+            tick = opts.tick,
         },
         preview = opts.preview,
         decorators = decorators,
@@ -233,6 +228,15 @@ function M.open_git_status(opts)
 
     if opts.cwd == true then
         opts.cwd = vim.loop.cwd
+    end
+
+    if opts.watch == true then
+        opts.tick = function(picker)
+            local cwd = assert(resolve_git_root(picker))
+            return git_version_status(cwd, true) or ""
+        end
+    else
+        opts.tick = true
     end
 
     local converter = Picker.Converter.new(
@@ -263,10 +267,7 @@ function M.open_git_status(opts)
             cwd = function(picker)
                 return assert(resolve_git_root(picker))
             end,
-            tick = build_git_tick(opts, function(picker)
-                local cwd = assert(resolve_git_root(picker))
-                return git_version_status(cwd, true)
-            end),
+            tick = opts.tick,
         },
         preview = opts.preview,
         decorators = decorators,
@@ -292,6 +293,15 @@ function M.open_git_branches(opts)
         opts.cwd = vim.loop.cwd
     end
 
+    if opts.watch == true then
+        opts.tick = function(picker)
+            local cwd = assert(resolve_git_root(picker))
+            return git_version_refs(cwd) or ""
+        end
+    else
+        opts.tick = true
+    end
+
     local command_args = {
         "branch",
         "--all",
@@ -308,10 +318,7 @@ function M.open_git_branches(opts)
             cwd = function(picker)
                 return assert(resolve_git_root(picker))
             end,
-            tick = build_git_tick(opts, function(picker)
-                local cwd = assert(resolve_git_root(picker))
-                return git_version_refs(cwd)
-            end),
+            tick = opts.tick,
         },
         actions = {
             ["<cr>"] = build_git_default_action("checkout", function(entry)
@@ -342,6 +349,15 @@ function M.open_git_commits(opts)
         opts.cwd = vim.loop.cwd
     end
 
+    if opts.watch == true then
+        opts.tick = function(picker)
+            local cwd = assert(resolve_git_root(picker))
+            return git_version_refs(cwd) or ""
+        end
+    else
+        opts.tick = true
+    end
+
     local command_args = {
         "log",
         "--color=never",
@@ -357,10 +373,7 @@ function M.open_git_commits(opts)
             cwd = function(picker)
                 return assert(resolve_git_root(picker))
             end,
-            tick = build_git_tick(opts, function(picker)
-                local cwd = assert(resolve_git_root(picker))
-                return git_version_refs(cwd)
-            end),
+            tick = opts.tick,
         },
         actions = {
             ["<cr>"] = build_git_default_action("checkout", function(entry)
@@ -391,6 +404,15 @@ function M.open_git_stash(opts)
         opts.cwd = vim.loop.cwd
     end
 
+    if opts.watch == true then
+        opts.tick = function(picker)
+            local cwd = assert(resolve_git_root(picker))
+            return git_version_stash(cwd) or ""
+        end
+    else
+        opts.tick = true
+    end
+
     local command_args = {
         "--no-pager",
         "stash",
@@ -403,10 +425,7 @@ function M.open_git_stash(opts)
             cwd = function(picker)
                 return assert(resolve_git_root(picker))
             end,
-            tick = build_git_tick(opts, function(picker)
-                local cwd = assert(resolve_git_root(picker))
-                return git_version_stash(cwd)
-            end),
+            tick = opts.tick,
         },
         actions = {
             ["<cr>"] = build_git_default_action("unstash", function(entry)
@@ -437,6 +456,15 @@ function M.open_git_bcommits(opts)
         opts.cwd = vim.loop.cwd
     end
 
+    if opts.watch == true then
+        opts.tick = function(picker)
+            local cwd = assert(resolve_git_root(picker))
+            return git_version_refs(cwd) or ""
+        end
+    else
+        opts.tick = true
+    end
+
     return build_git_picker(opts, {
         title = "BCommits",
         context = {
@@ -463,10 +491,7 @@ function M.open_git_bcommits(opts)
                     rel_path,
                 }
             end,
-            tick = build_git_tick(opts, function(picker)
-                local cwd = assert(resolve_git_root(picker))
-                return git_version_refs(cwd)
-            end),
+            tick = opts.tick,
         },
         actions = {
             ["<cr>"] = build_git_default_action("checkout", function(entry)

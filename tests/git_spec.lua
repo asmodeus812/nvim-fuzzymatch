@@ -103,9 +103,7 @@ function M.run()
                         return opts
                     end,
                 }
-                local tick1 = eval(opts.context.tick, picker_stub)
-                local tick2 = eval(opts.context.tick, picker_stub)
-                helpers.assert_ok(tick2 > tick1, "tick increments")
+                helpers.eq(opts.context.tick, true, "tick shorthand")
             end)
         end)
     end)

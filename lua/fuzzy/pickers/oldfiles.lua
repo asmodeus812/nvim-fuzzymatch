@@ -95,8 +95,8 @@ function M.open_oldfiles_picker(opts)
         end,
     }, opts, {
         match_timer = 10,
-        match_step = 5000,
-        stream_step = 10000,
+        match_step = 4096,
+        stream_step = 8192,
         stream_debounce = 0,
         prompt_debounce = 30,
     }))

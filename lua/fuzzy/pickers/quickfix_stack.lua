@@ -52,8 +52,8 @@ function M.open_quickfix_stack(opts)
         },
     }, opts, {
         match_timer = 5,
-        match_step = 2000,
-        stream_step = 4000,
+        match_step = 2048,
+        stream_step = 4096,
         stream_debounce = 0,
         prompt_debounce = 20,
     }))

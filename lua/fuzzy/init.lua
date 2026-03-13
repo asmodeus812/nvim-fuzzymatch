@@ -17,20 +17,14 @@ function M.setup(opts)
         },
         scheduler = {
             async_budget = 1 * 1e6,
-            trace = nil,
         },
         pool = {
-            max_idle = 5 * 60 * 1000,
-            prune_interval = 30 * 1000,
-            max_tables = nil,
             prime_min = 16384,
             prime_max = 524288,
-            prime_chunk = 8192,
         },
         registry = {
             max_idle = 5 * 60 * 1000,
             prune_interval = 30 * 1000,
-            trace = nil,
         },
     })
 
@@ -69,7 +63,6 @@ function M.setup(opts)
 
     vim.api.nvim_set_hl(0, "SelectLineHighlight", { link = "Normal", default = false })
     vim.api.nvim_set_hl(0, "SelectDecoratorDefault", { link = "Normal", default = false })
-
 end
 
 return M

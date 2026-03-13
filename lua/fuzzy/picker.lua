@@ -659,8 +659,7 @@ function Picker:_flush_direct()
             -- arrives from the stream we have to re-roder them all and re-match them in accordance to the query
             local query = self.select:query()
 
-            -- If the query did not change between stream chunk deliveries there is no need to re-match or re-display. However if the query
-            -- changed we have to do a match on all accumulated stream entries thus far, to reflect the matching state of these entries
+            -- If the query changed we have to do a match on all stream entries thus far, to reflect the matching state of these entries
             -- while the stream is still emitting
             if #all > 0 and type(query) == "string" and #query > 0 then
                 self.match:match(all, query, function(matching)
@@ -674,7 +673,6 @@ function Picker:_flush_direct()
                         end
                         self.select:list(nil, nil)
                     else
-                        -- Merge new matches into the accumulator and render.
                         self.select:list(matching[1], matching[2])
                         self.select:status(string.format(
                             "%d/%d", #matching[1], #all
@@ -917,8 +915,8 @@ function Picker.new(opts)
         highlighters = {},
         match_limit = nil,
         match_timer = 30,
-        match_step = 75000,
-        stream_step = 150000,
+        match_step = 65536,
+        stream_step = 131072,
         stream_type = "lines",
         stream_debounce = 0,
         window_size = 0.20,

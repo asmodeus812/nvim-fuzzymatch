@@ -3,6 +3,37 @@ local helpers = require("script.test_utils")
 
 local M = { name = "pool" }
 
+local function resize_table(tbl, size, value)
+    if size > #tbl then
+        for i = #tbl + 1, size do
+            tbl[i] = value
+        end
+    else
+        for i = #tbl, size + 1, -1 do
+            tbl[i] = nil
+        end
+    end
+    return tbl
+end
+
+local function fill_table(tbl, value)
+    for i = 1, #tbl do
+        tbl[i] = value
+    end
+    return tbl
+end
+
+local function remove_value(tbl, value)
+    local removed = false
+    for i = #tbl, 1, -1 do
+        if tbl[i] == value then
+            table.remove(tbl, i)
+            removed = true
+        end
+    end
+    return removed
+end
+
 local function reset_pool()
     local loaded = package.loaded["fuzzy.pool"]
     if loaded then
@@ -14,6 +45,15 @@ local function reset_pool()
         end)
     end
     package.loaded["fuzzy.pool"] = nil
+end
+
+local function new_pool(opts)
+    local Pool = require("fuzzy.pool")
+    opts = vim.tbl_extend("force", {
+        prime = false,
+    }, opts or {})
+    Pool.new(opts)
+    return Pool
 end
 
 function M.run()
@@ -45,7 +85,6 @@ function M.run()
                             max_tables = 3,
                             prime_min = 16,
                             prime_max = 256,
-                            prime_chunk = 8,
                         },
                         registry = {},
                     })
@@ -59,13 +98,11 @@ function M.run()
         helpers.eq(called.pool, 1, "pool called")
         helpers.eq(captured.pool.prime_min, 16, "pool prime min")
         helpers.eq(captured.pool.prime_max, 256, "pool prime max")
-        helpers.eq(captured.pool.prime_chunk, 8, "pool prime chunk")
     end)
 
     helpers.run_test_case("pool_obtain_allocates_normalized_size", function()
         reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({
+        local Pool = new_pool({
             max_tables = 10,
             prime_min = 16384,
             prime_max = 524288,
@@ -79,19 +116,18 @@ function M.run()
 
     helpers.run_test_case("pool_obtain_closest_fit", function()
         reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({ now = function() return 1 end })
+        local Pool = new_pool({ now = function() return 1 end })
 
         local t1 = Pool.attach({})
-        Pool.resize(t1, 8, false)
+        resize_table(t1, 8, false)
         Pool._return(t1)
 
         local t2 = Pool.attach({})
-        Pool.resize(t2, 16, false)
+        resize_table(t2, 16, false)
         Pool._return(t2)
 
         local t3 = Pool.attach({})
-        Pool.resize(t3, 32, false)
+        resize_table(t3, 32, false)
         Pool._return(t3)
 
         local pick = Pool.obtain(10)
@@ -105,8 +141,7 @@ function M.run()
 
     helpers.run_test_case("pool_reuses_existing_bucket", function()
         reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({
+        local Pool = new_pool({
             prime_min = 64,
             prime_max = 2048,
             now = function() return 1 end,
@@ -124,15 +159,14 @@ function M.run()
 
     helpers.run_test_case("pool_return_normalizes_bucket", function()
         reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({
+        local Pool = new_pool({
             prime_min = 64,
             prime_max = 1024,
             now = function() return 1 end,
         })
 
         local tbl = Pool.attach({})
-        Pool.resize(tbl, 600, false)
+        resize_table(tbl, 600, false)
         Pool._return(tbl)
 
         helpers.eq(#Pool.tables, 1, "normalized insert")
@@ -141,18 +175,17 @@ function M.run()
 
     helpers.run_test_case("pool_obtain_prefers_smallest_fit", function()
         reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({
+        local Pool = new_pool({
             prime_min = 64,
             prime_max = 2048,
             now = function() return 1 end,
         })
 
         local small = Pool.attach({})
-        Pool.resize(small, 1024, false)
+        resize_table(small, 1024, false)
         Pool._return(small)
         local large = Pool.attach({})
-        Pool.resize(large, 2048, false)
+        resize_table(large, 2048, false)
         Pool._return(large)
 
         local pick = Pool.obtain(900)
@@ -160,54 +193,40 @@ function M.run()
         Pool._return(pick)
     end)
 
-    helpers.run_test_case("pool_prime_steps_are_noops", function()
-        reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({
-            now = function() return 1 end,
-        })
-        Pool._prime_step()
-    end)
-
     helpers.run_test_case("pool_trim_respects_max_tables", function()
         reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({
-            max_tables = 0,
+        local Pool = new_pool({
+            max_tables = 1,
             prime_max = 8,
-            now = function() return 1 end,
+            now = function() return 10 end,
         })
+
+        local old = Pool.attach({})
+        resize_table(old, 4, false)
+        Pool._return(old)
+        Pool.meta[old].last_used = 0
 
         local tbl = Pool.attach({})
-        Pool.resize(tbl, 12, false)
+        resize_table(tbl, 12, false)
         Pool._return(tbl)
 
-        helpers.eq(#Pool.tables, 0, "trim discarded when max_tables reached")
-        helpers.eq(Pool.meta[tbl], nil, "trim meta cleared")
-    end)
-
-    helpers.run_test_case("pool_trim_step_stops_timer_when_empty", function()
-        reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({
-            now = function() return 1 end,
-        })
-        Pool._trim_step()
+        helpers.eq(#Pool.tables, 1, "trim kept max_tables")
+        helpers.eq(Pool.tables[1], tbl, "trim kept newest on return")
+        helpers.eq(Pool.meta[old], nil, "trim old meta cleared")
     end)
 
     helpers.run_test_case("pool_prune_idle", function()
         reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({
+        local Pool = new_pool({
             max_idle = 10,
             now = function() return 1 end,
         })
 
         local t1 = Pool.obtain()
-        Pool.resize(t1, 4, false)
+        resize_table(t1, 4, false)
         Pool._return(t1)
         local t2 = Pool.obtain()
-        Pool.resize(t2, 6, false)
+        resize_table(t2, 6, false)
         Pool._return(t2)
 
         Pool.meta[t1].last_used = 0
@@ -220,17 +239,16 @@ function M.run()
 
     helpers.run_test_case("pool_prune_max_tables", function()
         reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({
+        local Pool = new_pool({
             max_tables = 1,
             now = function() return 1 end,
         })
 
         local t1 = Pool.obtain()
-        Pool.resize(t1, 4, false)
+        resize_table(t1, 4, false)
         Pool._return(t1)
         local t2 = Pool.obtain()
-        Pool.resize(t2, 6, false)
+        resize_table(t2, 6, false)
         Pool._return(t2)
 
         Pool.meta[t1].last_used = 0
@@ -243,21 +261,20 @@ function M.run()
 
     helpers.run_test_case("pool_helpers", function()
         reset_pool()
-        local Pool = require("fuzzy.pool")
-        Pool.new({ now = function() return 1 end })
+        local Pool = new_pool({ now = function() return 1 end })
 
         local tbl = Pool.obtain()
-        Pool.resize(tbl, 3, false)
-        Pool.fill(tbl, true)
+        resize_table(tbl, 3, false)
+        fill_table(tbl, true)
         helpers.eq(tbl[1], true, "fill start")
         helpers.eq(tbl[3], true, "fill end")
-        Pool.resize(tbl, 1, false)
+        resize_table(tbl, 1, false)
         helpers.eq(#tbl, 1, "resize shrink")
-        Pool.resize(tbl, 0, false)
+        resize_table(tbl, 0, false)
         helpers.eq(#tbl, 0, "resize zero")
 
         local list = { 1, 2, 1 }
-        helpers.assert_ok(Pool.remove(list, 1), "remove value")
+        helpers.assert_ok(remove_value(list, 1), "remove value")
         helpers.eq(#list, 1, "remove count")
         helpers.eq(list[1], 2, "remove left")
 

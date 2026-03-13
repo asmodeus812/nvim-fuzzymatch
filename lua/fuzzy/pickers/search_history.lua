@@ -43,8 +43,8 @@ function M.open_search_history(opts)
         },
     }, opts, {
         match_timer = 5,
-        match_step = 1000,
-        stream_step = 2000,
+        match_step = 1024,
+        stream_step = 2048,
         stream_debounce = 0,
         prompt_debounce = 20,
     }))

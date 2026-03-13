@@ -101,8 +101,8 @@ function M.open_loclist_picker(opts)
         end,
     }, opts, {
         match_timer = 10,
-        match_step = 10000,
-        stream_step = 20000,
+        match_step = 8192,
+        stream_step = 16384,
         stream_debounce = 0,
         prompt_debounce = 30,
     }))

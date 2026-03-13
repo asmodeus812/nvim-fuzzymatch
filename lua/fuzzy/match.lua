@@ -453,7 +453,7 @@ function Match.new(opts)
     })
     opts = vim.tbl_deep_extend("force", {
         ephemeral = true,
-        step = 50000,
+        step = 65536,
         limit = 4096,
         timer = 100,
     }, opts)

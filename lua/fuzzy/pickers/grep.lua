@@ -163,6 +163,14 @@ function M.open_grep_picker(opts)
         opts.preview = false
     end
 
+    if opts.watch == true then
+        opts.tick = function()
+            return util.dir_watch_state(opts.cwd).tick
+        end
+    else
+        opts.tick = true
+    end
+
     local decorators = {}
     if opts.icons ~= false then
         decorators = { Select.IconDecorator.new(convert) }
@@ -178,7 +186,6 @@ function M.open_grep_picker(opts)
         }
     end
 
-    local tick_counter = 0
     local picker = Picker.new(vim.tbl_extend("force", {
         content = assert(cmd),
         headers = util.build_picker_headers("Grep", opts),
@@ -186,13 +193,7 @@ function M.open_grep_picker(opts)
             args = args,
             cwd = opts.cwd,
             env = env,
-            tick = function()
-                if opts.watch == true then
-                    return util.dir_watch_state(opts.cwd).tick
-                end
-                tick_counter = tick_counter + 1
-                return tick_counter
-            end,
+            tick = opts.tick,
         },
         interactive = build_interactive_arguments,
         preview = opts.preview,
@@ -206,8 +207,8 @@ function M.open_grep_picker(opts)
         },
     }, opts, {
         match_timer = 30,
-        match_step = 75000,
-        stream_step = 250000,
+        match_step = 65536,
+        stream_step = 262144,
         stream_debounce = 0,
         prompt_debounce = 125,
     }))

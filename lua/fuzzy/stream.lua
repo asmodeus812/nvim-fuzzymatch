@@ -520,7 +520,7 @@ function Stream.new(opts)
         ephemeral = true,
         bytes = false,
         lines = true,
-        step = 100000,
+        step = 131072,
     }, opts)
 
     local self = setmetatable({
