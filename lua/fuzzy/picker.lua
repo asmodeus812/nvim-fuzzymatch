@@ -320,8 +320,7 @@ function Picker:_input_prompt()
             -- in interactive mode we need to restart the stream with the new query, so that the command can produce results
             -- based on the query, for example when using find -name <query>, we do not perform fuzzy matching on the stream
             -- in interactive mode, this is done on demand in the second stage
-            local content = self._state.content
-            assert(type(content) ~= "table")
+            assert(self:_is_dynamic())
 
             if type(query) == "string" and #query > 0 then
                 -- when interactive string it means that the string is an argument placeholder, that should be replaced
@@ -355,15 +354,26 @@ function Picker:_input_prompt()
             -- the interactive stage, that might have been matched
             self:_hide_stage()
             self:_clear_stage()
-        elseif not self.stream:running() then
+        else
+            local data = nil
+            if self:_is_dynamic() then
+                if not self.stream:isvalid() then
+                    return
+                end
+                data = assert(self.stream.results)
+            elseif self:_is_static() then
+                data = assert(self._state.content)
+            else
+                assert(false, "unknown picker state")
+            end
+
             -- when there is a query we need to match against it, in this scenario the picker is non-interactive, there are
             -- two options, either it was configured to use a stream or a user provided table of entries - strings, or other
             -- tables
-            local data = assert(self.stream.results or self._state.content)
             if #data > 0 and type(query) == "string" and #query > 0 then
                 self.match:match(data, query, function(matching)
                     if matching == nil then
-                        if not self.match.results or #self.match.results == 0 or #self.match.results[1] == 0 then
+                        if not self.match:isvalid() or self.match:isempty() then
                             self.select:list(
                                 utils.EMPTY_TABLE,
                                 utils.EMPTY_TABLE
@@ -405,11 +415,11 @@ function Picker:_create_stage()
             if query == nil then
                 self:_close_stage()
                 self:_close_picker()
-            elseif self.stream.results ~= nil then
+            elseif self.stream:isvalid() then
                 if #self.stream.results > 0 and type(query) == "string" and #query > 0 then
                     stage.match:match(self.stream.results, query, function(matching)
                         if matching == nil then
-                            if not stage.match.results or #stage.match.results == 0 or #stage.match.results[1] == 0 then
+                            if not stage.match:isvalid() and stage.match:isempty() then
                                 stage.select:list(
                                     utils.EMPTY_TABLE,
                                     utils.EMPTY_TABLE
@@ -507,7 +517,7 @@ function Picker:_toggle_stage()
         self:_hide_picker()
         stage.select:open()
 
-        if stage.select:isempty() and self.stream.results then
+        if stage.select:isempty() and self.stream:isvalid() then
             stage.select:list(
                 self.stream.results,
                 nil -- no highlights
@@ -619,7 +629,7 @@ function Picker:_flush_interactive()
     return utils.debounce_callback(self._options.stream_debounce, function(_, all)
         if all == nil then
             -- Stream finished: if it produced nothing, explicitly render an empty list, then signal completion.
-            if not self.stream.results or #self.stream.results == 0 then
+            if not self.stream:isvalid() or self.stream:isempty() then
                 self.select:list(
                     utils.EMPTY_TABLE,
                     utils.EMPTY_TABLE
@@ -644,16 +654,23 @@ function Picker:_flush_direct()
         if all == nil then
             -- Stream finished: if it produced nothing, explicitly render an empty list, then signal to the list renderer for content
             -- delivery completion.  there is also a case
-            if not self.stream.results or #self.stream.results == 0 then
+            if not self.stream:isvalid() or self.stream:isempty() then
                 self.select:list(
                     utils.EMPTY_TABLE,
                     utils.EMPTY_TABLE
                 )
                 self.select:status("0/0")
             end
+
             -- Final nil list marks end of streaming: Select stops incremental updates and treats the list as stable until
             -- new data arrives (or re-open).
             self.select:list(nil, nil)
+
+            -- manually prime the input for matching, in case a query has arrived right at the end of the stream, attempt to run a match, in
+            -- case more input arrives this call will be de-bounced by the future calls and effectively be a no-op which is okay
+            local options = self.select:options()
+            local query = self.select:query()
+            options.prompt_input(query)
         else
             -- Pull the current state query, sync we need to have an overview of the query value always, every time new accumulation of items
             -- arrives from the stream we have to re-roder them all and re-match them in accordance to the query
@@ -664,7 +681,7 @@ function Picker:_flush_direct()
             if #all > 0 and type(query) == "string" and #query > 0 then
                 self.match:match(all, query, function(matching)
                     if matching == nil then
-                        if not self.match.results or #self.match.results == 0 or #self.match.results[1] == 0 then
+                        if not self.match:isvalid() or self.match:isempty() then
                             self.select:list(
                                 utils.EMPTY_TABLE,
                                 utils.EMPTY_TABLE
@@ -705,6 +722,14 @@ function Picker:_is_valid()
         and assert(self._state.stage.select)
         and self._state.stage.select:isvalid()
     )
+end
+
+function Picker:_is_dynamic()
+    return type(self._state.content) ~= "table"
+end
+
+function Picker:_is_static()
+    return type(self._state.content) == "table"
 end
 
 function Picker:_is_interactive()
@@ -797,11 +822,11 @@ function Picker:open()
         end
         self.select:open()
 
-        if type(self._state.content) ~= "table" then
+        if self:_is_dynamic() then
             -- when a string or a function is provided the content is expected to be a command that produces output, or a function
             -- that produces output by calling a callback method for each entry in the stream
             assert(type(self._state.content) == "string" or type(self._state.content) == "function")
-            if (needs_rerun or not self.stream.results) and not self:_is_interactive() then
+            if (needs_rerun or not self.stream:isvalid()) and not self:_is_interactive() then
                 -- in case we need to re-run the picker or the stream itself was destroyed, having no-results implies
                 -- that stream requires to be re-started, to obtain results and then fill the select interface
                 self.stream:start(self._state.content, {
@@ -811,7 +836,7 @@ function Picker:open()
                     callback = self:_flush_direct(),
                     transform = self._options.stream_map,
                 })
-            elseif self.stream.results and self.select:isempty() then
+            elseif self.stream:isvalid() and self.select:isempty() then
                 -- in case there are valid results in the stream, just fill the select interface, having results here
                 -- means the stream was not destroyed and it still persistent.
                 self.select:list(
@@ -949,7 +974,7 @@ function Picker.new(opts)
     if self:_is_interactive() then
         -- ensure that picker is not marked interactive when a table
         -- static content is provided for the picker, otherwise fail
-        assert(type(self._options.content) ~= "table")
+        assert(self:_is_dynamic())
     end
 
     self.match = Match.new({

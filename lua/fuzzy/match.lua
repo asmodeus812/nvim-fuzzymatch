@@ -247,6 +247,18 @@ function Match:_match_worker()
     end
 end
 
+--- Returns true if the matcher is considered finalized and no longer processing data in-flight, and there is a valid set of data present for consumption produced by the matcher
+--- @return boolean True if the matcher has finalized and matched results data is ready to be consumed by the client
+function Match:isvalid()
+    return not self:running() and self.results ~= nil and #self.results > 0 and self.results[1] ~= nil and #self.results[1] >= 0
+end
+
+--- Checks if the match has finalized and has matched any entries that are ready for consumption
+--- @return boolean True if the matcher has no entries matched, false otherwise.
+function Match:isempty()
+    return self:isvalid() and #self.results[1] == 0
+end
+
 --- Checks if there is an ongoing matching operation, i.e., if the timer is active, which indicates that matching is in progress.
 --- @return boolean True if a matching operation is currently running, false otherwise.
 function Match:running()

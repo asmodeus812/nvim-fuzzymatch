@@ -340,6 +340,18 @@ function Stream:_stop_streaming()
     end
 end
 
+--- Returns true if the stream is considered finalized and no longer processing data in-flight, and there is a valid set of data present for consumption produced by the stream
+--- @return boolean True if the stream has finalized and results data is ready to be consumed by the client
+function Stream:isvalid()
+    return not self:running() and self.results ~= nil and #self.results >= 0
+end
+
+--- Checks if the stream finalized and has accumulated any entries at all ready for consumption
+--- @return boolean True if the streamer has no entries accumulated, false otherwise.
+function Stream:isempty()
+    return self:isvalid() and #self.results == 0
+end
+
 --- Returns true if the stream is started or is already running, i.e. has been started and not yet stopped, exited or aborted, false otherwise
 --- @return boolean True if the stream is started or running, false otherwise
 function Stream:running()
@@ -351,19 +363,6 @@ end
 --- @return StreamOptions
 function Stream:options()
     return assert(self._options)
-end
-
--- Destroys the stream and any pending state that is currently being allocated into the stream, note that this is done automatically for
--- ephemeral streams when a new stream is re-started the resources for the previous ones are invalidated
-function Stream:destroy()
-    self:_close_stream()
-    self:_destroy_stream()
-end
-
---- Stops the stream if it is running and finalizes the current buffered results without destroying them
-function Stream:stop()
-    self:_close_stream()
-    self:_stop_streaming()
 end
 
 --- Waits for the stream to finish, or until the timeout is reached
@@ -379,6 +378,19 @@ function Stream:wait(timeout)
         self:stop()
     end
     return self.results
+end
+
+-- Destroys the stream and any pending state that is currently being allocated into the stream, note that this is done automatically for
+-- ephemeral streams when a new stream is re-started the resources for the previous ones are invalidated
+function Stream:destroy()
+    self:_close_stream()
+    self:_destroy_stream()
+end
+
+--- Stops the stream if it is running and finalizes the current buffered results without destroying them
+function Stream:stop()
+    self:_close_stream()
+    self:_stop_streaming()
 end
 
 --- @class StreamStartOpts

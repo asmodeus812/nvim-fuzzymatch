@@ -2419,6 +2419,28 @@ function Select:send_locliset(callback)
     self:send_fixlist("loclist", callback)
 end
 
+--- Checks if the selection interface is currently open, this is determined by checking if both the prompt and list windows are valid.
+--- @return boolean True if the selection interface is open, false otherwise.
+function Select:isopen()
+    local prompt = self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window)
+    local list = self.list_window and vim.api.nvim_win_is_valid(self.list_window)
+    return list ~= nil and prompt ~= nil and list and prompt
+end
+
+--- Checks if the selection interface is valid, meaning that it has been initialized/opened at least once and has not been destroyed by calling the `close` method which would invalidate its curent state
+--- @return boolean True if the select interface is still valid, false otherwise.
+function Select:isvalid()
+    local prompt = self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer)
+    local list = self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer)
+    return list ~= nil and prompt ~= nil and list and prompt
+end
+
+--- Checks if the selection interface is showing any entries, the entries can be rendered or set using the `list` method, which renders the specified entries into the list.
+--- @return boolean True if the list is empty, false otherwise.
+function Select:isempty()
+    return not self._state.entries or #self._state.entries == 0
+end
+
 --- Gets the current query from the prompt input. The query is updated on each input change in the prompt. It is not extracted directly from the prompt buffer on-demand but is captured with each input change using TextChangedI and TextChanged autocmd events.
 --- @return string The current query string, the query will never be nil, otherwise that represents invalid state of the selection interface.
 function Select:query()
@@ -2445,28 +2467,6 @@ end
 -- Clears the select interface, from any content and state, that includes the query, list and preview interfaces, but does not close the interface itself, or destroy any internal state or resources associated with it.
 function Select:clear()
     self:_clear_view(false)
-end
-
---- Checks if the selection interface is showing any entries, the entries can be rendered or set using the `list` method, which renders the specified entries into the list.
---- @return boolean True if the list is empty, false otherwise.
-function Select:isempty()
-    return not self._state.entries or #self._state.entries == 0
-end
-
---- Checks if the selection interface is currently open, this is determined by checking if both the prompt and list windows are valid.
---- @return boolean True if the selection interface is open, false otherwise.
-function Select:isopen()
-    local prompt = self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window)
-    local list = self.list_window and vim.api.nvim_win_is_valid(self.list_window)
-    return list ~= nil and prompt ~= nil and list and prompt
-end
-
---- Checks if the selection interface is valid, meaning that it has been initialized/opened at least once and has not been destroyed by calling the `close` method which would invalidate its curent state
---- @return boolean True if the select interface is still valid, false otherwise.
-function Select:isvalid()
-    local prompt = self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer)
-    local list = self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer)
-    return list ~= nil and prompt ~= nil and list and prompt
 end
 
 -- Render a list of entries in the list window, with optional highlighting positions. If entries is nil, it will re-render the current list fully with existing entries and positions. Sending nil for both parameters signals to the interface that the streaming of entries is complete and it should finalize the rendering. This method is optimized to handle large lists of entries efficiently by rendering only the visible portion of the list and updating it as needed around the cursor position. The list is incrementally updated as new entries are provided, allowing for a smooth and responsive user experience even with large datasets.
@@ -2927,7 +2927,7 @@ end
 --- @class SelectOptions
 --- @inlinedoc
 --- @field prompt_list? boolean|fun()|any[] Whether to show the list window or a function to provide initial entries.
---- @field prompt_input? boolean|fun() Whether to show the input prompt, when function is provided it is used as the input callback.
+--- @field prompt_input? boolean|fun(string?) Whether to show the input prompt, when function is provided it is used as the input callback and the query is passed to it.
 --- The callback may return a list of entries directly, or a table with `entries` and optional `positions` for synchronous updates.
 --- @field prompt_headers? table|string|nil Headers to display above the prompt input, can be a string or a table of strings or string/highlight pairs, where each inner table represents a block of header entries.
 --- @field prompt_query? string|nil Initial query to populate the prompt input with. If provided, the prompt input must also be enabled. The query will be set in the prompt input and the input callback will be invoked with this initial query.
