@@ -227,6 +227,35 @@ local function run_wait_timeout_case()
     helpers.assert_ok(saw_results, "wait timeout saw results")
 end
 
+local function run_restart_token_case()
+    local match = new_match({ step = 1, timer = 50 })
+    local list = {}
+    for i = 1, 5000 do
+        list[i] = "item-" .. i
+    end
+    list[100] = "alpha"
+    list[200] = "beta"
+
+    local late_calls = 0
+    local blocked = false
+
+    match:match(list, "alpha", function(results)
+        if blocked and results ~= nil then
+            late_calls = late_calls + 1
+        end
+    end)
+
+    helpers.assert_ok(helpers.wait_for(function()
+        return match:running()
+    end, 500), "restart token running")
+
+    blocked = true
+    match:match(list, "beta", function() end)
+    match:wait(1500)
+
+    helpers.eq(late_calls, 0, "restart token stale callback")
+end
+
 local function run_restart_ephemeral_true_case()
     local match = new_match({ step = 1, timer = 2, ephemeral = true })
     local first = {}
@@ -345,6 +374,7 @@ function M.run()
     helpers.run_test_case("match_multi_chunk", run_multi_chunk_case)
     helpers.run_test_case("match_transform_function", run_transform_function_case)
     helpers.run_test_case("match_wait_timeout", run_wait_timeout_case)
+    helpers.run_test_case("match_restart_token", run_restart_token_case)
     helpers.run_test_case("match_restart_ephemeral_true", run_restart_ephemeral_true_case)
     helpers.run_test_case("match_restart_ephemeral_false", run_restart_ephemeral_false_case)
     helpers.run_test_case("match_tail_chunk", run_tail_chunk_case)

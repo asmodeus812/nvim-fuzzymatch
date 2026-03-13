@@ -335,6 +335,8 @@ function Match:match(list, pattern, callback, transform)
     end
 
     -- init core match context
+    self._state.token = (self._state.token or 0) + 1
+    local token = self._state.token
     self.list = assert(list)
     self.pattern = assert(pattern)
     self.callback = assert(callback)
@@ -390,9 +392,12 @@ function Match:match(list, pattern, callback, transform)
     self._state.timer = vim.loop.new_timer()
     self._state.timer:start(0,
         self._options.timer,
-        vim.schedule_wrap(self:_bind_method(
-            Match._match_worker
-        ))
+        vim.schedule_wrap(function()
+            if self._state.token ~= token then
+                return
+            end
+            Match._match_worker(self)
+        end)
     )
 
     -- run one cycle immediately now

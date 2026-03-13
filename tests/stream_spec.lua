@@ -166,6 +166,50 @@ local function run_restart_case()
     stream:destroy()
 end
 
+local function run_restart_token_case()
+    local Async = require("fuzzy.async")
+    local stream = Stream.new({
+        lines = true,
+        step = 2,
+        ephemeral = true,
+    })
+    local state = { allow_old_finish = false }
+
+    stream:start(function(cb)
+        cb("old-1")
+        while not state.allow_old_finish do
+            Async.yield()
+        end
+        cb("old-2")
+        cb(nil)
+    end, {
+        callback = function() end,
+    })
+
+    helpers.assert_ok(helpers.wait_for(function()
+        return stream:running()
+    end, 500), "restart token running")
+
+    stream:start(function(cb)
+        cb("new-1")
+        cb("new-2")
+        cb(nil)
+    end, {
+        callback = function() end,
+    })
+
+    state.allow_old_finish = true
+    helpers.assert_ok(helpers.wait_for(function()
+        return not stream:running()
+    end, 1500), "restart token done")
+
+    local results = stream.results or {}
+    helpers.eq(#results, 2, "restart token count")
+    helpers.eq(results[1], "new-1", "restart token first")
+    helpers.eq(results[2], "new-2", "restart token second")
+    stream:destroy()
+end
+
 local function run_context_case()
     local stream = Stream.new({ lines = true, step = 1 })
     helpers.assert_ok(vim.fn.executable("awk") == 1, "awk missing")
@@ -480,6 +524,7 @@ function M.run()
     helpers.run_test_case("stream_bytes", run_bytes_case)
     helpers.run_test_case("stream_trim_results_case", run_trim_results_case)
     helpers.run_test_case("stream_restart", run_restart_case)
+    helpers.run_test_case("stream_restart_token", run_restart_token_case)
     helpers.run_test_case("stream_context", run_context_case)
     helpers.run_test_case("stream_partial_line", run_partial_line_case)
     helpers.run_test_case("stream_trailing_partial", run_trailing_partial_case)

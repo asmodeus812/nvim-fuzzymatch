@@ -419,6 +419,9 @@ function Stream:start(cmd, opts)
         end
     end
 
+    self._state.token = (self._state.token or 0) + 1
+    local token = self._state.token
+
     self.transform = opts.transform
     self.callback = assert(opts.callback)
 
@@ -441,6 +444,9 @@ function Stream:start(cmd, opts)
     if type(cmd) == "function" then
         local did_finalize = false
         local callback = function(data)
+            if self._state.token ~= token then
+                return
+            end
             if not did_finalize and data ~= nil then
                 self:_handle_data(
                     data,
@@ -460,9 +466,11 @@ function Stream:start(cmd, opts)
             )
             local code = not ok and 1 or 0
             if did_finalize == false then
-                self._state.stdouteof = true
-                self._state.stderreof = true
-                stream:_handle_out(code, err, 3)
+                if stream._state.token == token then
+                    self._state.stdouteof = true
+                    self._state.stderreof = true
+                    stream:_handle_out(code, err, 3)
+                end
                 did_finalize = true
             end
         end)
@@ -479,22 +487,28 @@ function Stream:start(cmd, opts)
             env = opts.env,
             stdio = stdio,
             hide = true,
-        }, self:_bind_method(
-            Stream._handle_exit)
-        ))
+        }, function(...)
+            if self._state.token == token then
+                return Stream._handle_exit(self, ...)
+            end
+        end))
 
         vim.loop.read_start(
             self._state.stdout,
-            self:_bind_method(
-                Stream._handle_stdout
-            )
+            function(...)
+                if self._state.token == token then
+                    return Stream._handle_stdout(self, ...)
+                end
+            end
         )
 
         vim.loop.read_start(
             self._state.stderr,
-            self:_bind_method(
-                Stream._handle_stderr
-            )
+            function(...)
+                if self._state.token == token then
+                    return Stream._handle_stderr(self, ...)
+                end
+            end
         )
     end
 
