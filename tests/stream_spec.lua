@@ -540,6 +540,31 @@ function M.run()
     helpers.run_test_case("stream_accum_sizes", run_accum_sizes_case)
     helpers.run_test_case("stream_command_large_integrity", run_command_large_integrity_case)
     helpers.run_test_case("stream_exit_before_eof", run_exit_before_eof_case)
+
+    helpers.run_test_case("stream_chunk_order_preserved", function()
+        local Async = require("fuzzy.async")
+        local stream = Stream.new({
+            lines = true,
+            step = 8,
+        })
+        stream:start(function(cb)
+            for i = 1, 200 do
+                cb(tostring(i))
+                if i % 25 == 0 then
+                    Async.yield()
+                end
+            end
+            cb(nil)
+        end, {
+            callback = function() end,
+        })
+        local results = assert(stream:wait(2000))
+        helpers.eq(#results, 200, "stream order count")
+        for i = 1, 200 do
+            helpers.eq(results[i], tostring(i), "stream order item")
+        end
+        stream:destroy()
+    end)
 end
 
 return M

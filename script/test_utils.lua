@@ -437,6 +437,24 @@ function M.get_buffer_lines(buffer_number, start, finish)
     return M.get_lines(buffer_number, start, finish)
 end
 
+function M.wait_for_buffer_line_contains(buffer_number, text, timeout)
+    return M.wait_for(function()
+        local lines = M.get_buffer_lines(buffer_number)
+        return M._line_contains(lines, text)
+    end, timeout or 1500)
+end
+
+function M.wait_for_window_line_contains(window_id, text, timeout)
+    return M.wait_for(function()
+        if not M.is_window_valid(window_id) then
+            return false
+        end
+        local buffer_number = vim.api.nvim_win_get_buf(window_id)
+        local lines = M.get_buffer_lines(buffer_number)
+        return M._line_contains(lines, text)
+    end, timeout or 1500)
+end
+
 function M.get_buffer_line_count(buffer_number)
     if not buffer_number or not vim.api.nvim_buf_is_valid(buffer_number) then
         return 0

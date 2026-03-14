@@ -88,17 +88,24 @@ function M.run()
                 return picker.select.preview_window
                     and helpers.is_window_valid(picker.select.preview_window)
             end, 1500)
-            local preview_buf = vim.api.nvim_win_get_buf(picker.select.preview_window)
-            helpers.wait_for(function()
-                local lines = helpers.get_buffer_lines(preview_buf)
-                return vim.tbl_contains(lines, "one")
-                    and vim.tbl_contains(lines, "two")
-                    and vim.tbl_contains(lines, "three")
-            end, 1500)
-            local lines = helpers.get_buffer_lines(preview_buf)
-            helpers.assert_line_contains(lines, "one", "preview line")
-            helpers.assert_line_contains(lines, "two", "preview line")
-            helpers.assert_line_contains(lines, "three", "preview line")
+            helpers.assert_ok(
+                helpers.wait_for_window_line_contains(
+                    picker.select.preview_window, "one", 1500
+                ),
+                "preview line"
+            )
+            helpers.assert_ok(
+                helpers.wait_for_window_line_contains(
+                    picker.select.preview_window, "two", 1500
+                ),
+                "preview line"
+            )
+            helpers.assert_ok(
+                helpers.wait_for_window_line_contains(
+                    picker.select.preview_window, "three", 1500
+                ),
+                "preview line"
+            )
             picker:close()
         end)
     end)

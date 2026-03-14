@@ -1884,6 +1884,44 @@ local function run_converter_case()
     helpers.eq(conv_buf.bufnr, buf, "default converter bufnr")
 end
 
+local function run_render_coalesce_case()
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = false,
+    })
+
+    select:open()
+    select:list({ "one", "two" })
+    select:list({ "three", "four" })
+
+    helpers.assert_ok(helpers.wait_for(function()
+        local buf = select.list_buffer
+        if not buf or not vim.api.nvim_buf_is_valid(buf) then
+            return false
+        end
+        local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+        return #lines == 2 and lines[1] == "three" and lines[2] == "four"
+    end, 1500), "coalesced render")
+end
+
+local function run_render_cancel_case()
+    local select = new_select({
+        prompt_list = true,
+        prompt_input = false,
+        preview = false,
+    })
+
+    select:open()
+    select:list({ "one", "two" })
+    select:clear()
+
+    helpers.assert_ok(helpers.wait_for(function()
+        return select._state.entries == nil
+            or #select._state.entries == 0
+    end, 1500), "clear cancels render")
+end
+
 function M.run()
     helpers.run_test_case("select_action", run_action_case)
     helpers.run_test_case("select_toggle_signs", run_toggle_signs_case)
@@ -1919,6 +1957,8 @@ function M.run()
     helpers.run_test_case("select_extmark_cleanup", run_extmark_cleanup_case)
     helpers.run_test_case("select_highlighter_multi", run_highlighter_multi_case)
     helpers.run_test_case("select_converter", run_converter_case)
+    helpers.run_test_case("select_render_coalesce", run_render_coalesce_case)
+    helpers.run_test_case("select_render_cancel", run_render_cancel_case)
 end
 
 return M

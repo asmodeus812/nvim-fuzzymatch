@@ -12,7 +12,7 @@ local spacing = { ",", "SelectHeaderDelimiter" }
 
 local utils = require("fuzzy.utils")
 local Async = require("fuzzy.async")
-local Scheduler = require("fuzzy.scheduler")
+local Worker = require("fuzzy.worker")
 
 --- @class Select
 --- @field private source_window integer|nil The window ID of the source window where the selection interface was opened from.
@@ -1688,7 +1688,7 @@ end
 
 --- Internal: schedules a UI render of list+related features.
 function Select:_render_list()
-    local executor = Async.wrap(function()
+    local render = function()
         local entries = self._state.entries or {}
         cursor_clamp(self._state.cursor, #entries)
 
@@ -1710,19 +1710,8 @@ function Select:_render_list()
                 flush = true,
             })
         end
-    end)
-
-    local renderer = function()
-        self._state.renderer = executor()
-        Scheduler.add(self._state.renderer)
     end
-
-    if self:_is_rendering() then
-        self._state.renderer:await(renderer)
-        self:_stop_rendering()
-    else
-        renderer()
-    end
+    self._state.renderer.enqueue(render)
 end
 
 --- Resets the state variables for a Select instance.
@@ -1859,9 +1848,8 @@ function Select:_clear_view(force)
         self:_reset_state()
     end
 
-    if self:_is_rendering() then
-        self._state.renderer:await(clearer)
-        self:_stop_rendering()
+    if self._state.renderer then
+        self._state.renderer.cancel(clearer)
         self._state.renderer = nil
     else
         clearer()
@@ -1897,9 +1885,8 @@ function Select:_close_view(force)
         end
     end
 
-    if self:_is_rendering() then
-        self._state.renderer:await(closer)
-        self:_stop_rendering()
+    if self._state.renderer then
+        self._state.renderer.cancel(closer)
         self._state.renderer = nil
     else
         closer()
@@ -1910,7 +1897,7 @@ end
 --- @return boolean
 function Select:_is_rendering()
     if self._state.renderer then
-        return self._state.renderer:is_running()
+        return self._state.renderer.is_running()
     end
     return false
 end
@@ -1918,7 +1905,7 @@ end
 --- Cancels and clears the running renderer coroutine.
 function Select:_stop_rendering()
     if self._state.renderer then
-        self._state.renderer:cancel()
+        self._state.renderer.cancel()
         self._state.renderer = nil
     end
 end
@@ -2585,6 +2572,9 @@ function Select:open()
         self:_init_preview()
     end
 
+    if not self._state.renderer then
+        self._state.renderer = Worker.coalesce()
+    end
     self.source_window = vim.api.nvim_get_current_win()
     local factor = (opts.prompt_list and opts.preview) and 2.0 or 1.0
     local size = compute_height(opts.window_ratio, factor)

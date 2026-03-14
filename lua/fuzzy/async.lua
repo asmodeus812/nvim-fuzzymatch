@@ -113,7 +113,7 @@ function Async:abort()
     self:_done(nil, "abort")
 end
 
---- Registers a callback for when the async completes, or calls it immediately if already done (unless aborted).
+--- Registers a callback for when the async completes, or calls it immediately if already done (unless aborted). The callbacks are executed in order of registration
 --- @param callback function Function to call on completion
 function Async:await(callback)
     assert(type(callback) == "function")

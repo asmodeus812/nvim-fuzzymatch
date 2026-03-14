@@ -1,6 +1,6 @@
-local Scheduler = require("fuzzy.scheduler")
 local Async = require("fuzzy.async")
 local Pool = require("fuzzy.pool")
+local Worker = require("fuzzy.worker")
 local utils = require("fuzzy.utils")
 
 --- @class Stream
@@ -50,6 +50,7 @@ function Stream:_close_stream()
         close_handle(self._state.handle)
         self._state.handle = nil
     end
+    self:_stop_streaming()
 
     if self._state.buffer then
         -- clean up the string references to avoid any memory leaks, the buffer could still be reused in future calls to start
@@ -83,8 +84,6 @@ function Stream:_close_stream()
 
     self.callback = nil
     self.transform = nil
-
-    self:_stop_streaming()
 end
 
 function Stream:_make_stream()
@@ -166,6 +165,7 @@ function Stream:_handle_data(data, size)
         self._state.buffer[self._state.size + 1] = self:_transform_data(data)
         self._state.size = self._state.size + 1
     end
+    return self._state.size
 end
 
 function Stream:_handle_out(code, chunk, kind)
@@ -264,8 +264,11 @@ function Stream:_handle_in(err, chunk, kind)
                 end
 
                 local line = chunk:sub(start, pos - 1)
-                self:_handle_data(line, size)
+                size = self:_handle_data(line, size)
 
+                if size % 512 == 0 then
+                    Async.yield()
+                end
                 start = next + 1
                 count = count + 1
             end
@@ -285,48 +288,21 @@ function Stream:_handle_in(err, chunk, kind)
 end
 
 function Stream:_handle_stdout(err, chunk)
-    local executor = Async.wrap(Stream._handle_in)
-
-    local streamer = function()
-        self._state.streamer = executor(self, err, chunk, 1)
-        Scheduler.add(self._state.streamer)
-    end
-
-    if self:_is_streaming() then
-        self._state.streamer:await(streamer)
-    else
-        streamer()
-    end
+    self._state.streamer.enqueue(function()
+        self:_handle_in(err, chunk, 1)
+    end)
 end
 
 function Stream:_handle_stderr(err, chunk)
-    local executor = Async.wrap(Stream._handle_in)
-
-    local streamer = function()
-        self._state.streamer = executor(self, err, chunk, 2)
-        Scheduler.add(self._state.streamer)
-    end
-
-    if self:_is_streaming() then
-        self._state.streamer:await(streamer)
-    else
-        streamer()
-    end
+    self._state.streamer.enqueue(function()
+        self:_handle_in(err, chunk, 2)
+    end)
 end
 
 function Stream:_handle_exit(e, c)
-    local executor = Async.wrap(Stream._handle_out)
-
-    local streamer = function()
-        self._state.streamer = executor(self, e, c, 3)
-        Scheduler.add(self._state.streamer)
-    end
-
-    if self:_is_streaming() then
-        self._state.streamer:await(streamer)
-    else
-        streamer()
-    end
+    self._state.streamer.enqueue(function()
+        self:_handle_out(e, c, 3)
+    end)
 end
 
 function Stream:_is_streaming()
@@ -335,7 +311,7 @@ end
 
 function Stream:_stop_streaming()
     if self._state.streamer then
-        self._state.streamer:abort()
+        self._state.streamer.cancel()
         self._state.streamer = nil
     end
 end
@@ -443,6 +419,10 @@ function Stream:start(cmd, opts)
         self._state.accum = Pool.obtain(size)
     end
 
+    if not self._state.streamer then
+        self._state.streamer = Worker.queue()
+    end
+
     if type(cmd) == "function" then
         local finalized = false
         local worker = self:_bind_guarded(function(stream, data)
@@ -459,13 +439,13 @@ function Stream:start(cmd, opts)
                 finalized = true
             end
         end, token)
-        local executor = Async.wrap(function(stream)
+        self._state.streamer.enqueue(function()
             local ok, err = utils.safe_call(
                 cmd, worker, opts.args, opts.cwd, opts.env
             )
             local code = not ok and 1 or 0
             if finalized == false then
-                local finalizer = stream:_bind_guarded(function(s, c, e)
+                local finalizer = self:_bind_guarded(function(s, c, e)
                     s._state.stdouteof = true
                     s._state.stderreof = true
                     s:_handle_out(c, e, 3)
@@ -474,8 +454,6 @@ function Stream:start(cmd, opts)
                 finalized = true
             end
         end)
-        self._state.streamer = executor(self)
-        Scheduler.add(self._state.streamer)
     else
         local stdio = self:_make_stream()
         assert(vim.fn.executable(cmd) == 1)

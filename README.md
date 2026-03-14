@@ -93,6 +93,7 @@ with ease, as the picker will only ever render and decorate a small subset of th
     - [Using vim-plug](#using-vim-plug)
 - [Configuration](#configuration)
 - [Tracing](#tracing)
+- [Workers](#workers)
 - [Pool](#pool)
     - [Lifecycle](#lifecycle)
     - [Normalization](#normalization)
@@ -244,6 +245,22 @@ Supported modules:
 - `scheduler.trace`: Scheduler start, idle, and setup events.
 - `async.trace`: Async creation and completion events.
 - `registry.trace`: Registry registration, touch, removal, and prune events.
+
+## Workers
+
+Workers are internal coordination helpers that sit on top of the async scheduler. They are not user-configurable, but they define how
+different subsystems sequence work so ordering is deterministic even under heavy async load.
+
+There are two worker modes used in the codebase:
+
+- **Coalescer**: Keeps only the latest request while work is in flight. This is used for UI rendering in `Select`, where multiple list updates
+  can arrive rapidly. The coalescer guarantees that only the most recent render request runs, so stale intermediate renders are dropped.
+
+- **Queue**: Runs every request in strict FIFO order. This is used for stream processing, where chunk order is semantically important. The
+  queue executes tasks one after the other, and each task can yield without allowing another queued task to start early.
+
+Workers are cooperative: each task runs inside an `Async` coroutine and may call `Async.yield()`. Yielding allows other unrelated async tasks
+to run, but does not violate the ordering guarantees within a worker.
 
 ## Pool
 
