@@ -38,7 +38,9 @@ local function reset_pool()
     local loaded = package.loaded["fuzzy.pool"]
     if loaded then
         pcall(function()
-            if loaded.prune_timer and not vim.uv.is_closing(loaded.prune_timer) then
+            if loaded.close then
+                loaded.close()
+            elseif loaded.prune_timer and not vim.uv.is_closing(loaded.prune_timer) then
                 loaded.prune_timer:stop()
                 loaded.prune_timer:close()
             end

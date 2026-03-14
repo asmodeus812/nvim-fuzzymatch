@@ -313,7 +313,7 @@ end
 function Picker:_input_prompt()
     -- debounce the user input to avoid flooding the matching and rendering logic with too many updates, especially when dealing
     -- with large result sets or fast typers
-    return utils.debounce_callback(self._options.prompt_debounce, function(query)
+    local debounced = utils.debounce_callback(self._options.prompt_debounce, function(query)
         self.select:move_top()
         self.select:toggle_clear()
 
@@ -410,11 +410,18 @@ function Picker:_input_prompt()
             self:_running_match()
         end
     end)
+
+    return function(query)
+        if query ~= nil then
+            self.match:stop()
+        end
+        return debounced(query)
+    end
 end
 
 function Picker:_create_stage()
     local function _input_prompt()
-        return utils.debounce_callback(self._options.prompt_debounce, function(query)
+        local debounced = utils.debounce_callback(self._options.prompt_debounce, function(query)
             local stage = self._state.stage
             assert(stage and next(stage))
             stage.select:move_top()
@@ -460,6 +467,16 @@ function Picker:_create_stage()
                 end
             end
         end)
+
+        return function(query)
+            if query ~= nil then
+                local state = self._state.stage
+                if state and state.match then
+                    state.match:stop()
+                end
+            end
+            return debounced(query)
+        end
     end
 
     local function _cancel_prompt()
@@ -575,11 +592,13 @@ end
 
 function Picker:_matching_worker(mode, list, match_query, total, __type)
     if __type == 1 then
+        -- stop any ongoing matcher work so the debounced call can run promptly
         if self._matching_worker_debounced == nil then
             self._matching_worker_debounced = utils.debounce_callback(
                 self._options.stream_debounce, self._matching_worker
             )
         end
+        self.match:stop()
         self._matching_worker_debounced(
             self, mode, list,
             match_query, total

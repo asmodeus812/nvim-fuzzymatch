@@ -416,6 +416,98 @@ function M.run()
         picker:close()
     end)
 
+    helpers.run_test_case("picker_stream_query_change_debounced", function()
+        local chunks = {
+            { "beta",  "omicron", "lambda" },
+            { "delta", "zeta",    "omicron" },
+            { "eta",   "theta",   "iota" },
+        }
+        local Async = require("fuzzy.async")
+        local state = { sent = 0, allow_start = false, allow_chunk3 = false }
+
+        local function wait_ms(ms)
+            local done = false
+            vim.defer_fn(function()
+                done = true
+            end, ms)
+            while not done do
+                Async.yield()
+            end
+        end
+
+        local picker = Picker.new({
+            content = function(cb)
+                while not state.allow_start do
+                    Async.yield()
+                end
+                wait_ms(10)
+                for _, entry in ipairs(chunks[1]) do
+                    cb(entry)
+                end
+                state.sent = 1
+                wait_ms(50)
+
+                for _, entry in ipairs(chunks[2]) do
+                    cb(entry)
+                end
+                state.sent = 2
+                while not state.allow_chunk3 do
+                    Async.yield()
+                end
+                wait_ms(10)
+
+                for _, entry in ipairs(chunks[3]) do
+                    cb(entry)
+                end
+                state.sent = 3
+                cb(nil)
+            end,
+            preview = false,
+            prompt_debounce = 0,
+            stream_debounce = 125,
+            match_step = 1,
+            stream_step = 3,
+            prompt_query = "ta",
+            actions = {
+                ["<cr>"] = Select.default_select,
+            },
+        })
+
+        picker:open()
+        helpers.type_query(picker, "ta")
+        helpers.assert_ok(helpers.wait_for(function()
+            return picker.select:query() == "ta"
+        end, 1500), "prompt query")
+        state.allow_start = true
+
+        helpers.assert_ok(helpers.wait_for(function()
+            return state.sent >= 2
+        end, 1500), "chunk 2 sent")
+        helpers.wait_for_match(picker, 1500)
+
+        helpers.type_query(picker, "th")
+        helpers.assert_ok(helpers.wait_for(function()
+            return picker.select:query() == "th"
+        end, 1500), "prompt query")
+        state.allow_chunk3 = true
+
+        helpers.wait_for_stream(picker)
+        helpers.wait_for_match(picker, 1500)
+        helpers.assert_ok(helpers.wait_for(function()
+            local entries = helpers.get_entries(picker) or {}
+            if #entries < 1 then
+                return false
+            end
+            for _, entry in ipairs(entries) do
+                if entry ~= "theta" then
+                    return false
+                end
+            end
+            return true
+        end, 1500), "th match from later chunk")
+        picker:close()
+    end)
+
     helpers.run_test_case("interactive_no_open_rerun", function()
         with_stream_count(function()
             local interactive_picker = Picker.new({

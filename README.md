@@ -92,13 +92,6 @@ with ease, as the picker will only ever render and decorate a small subset of th
     - [Using lazy.nvim](#using-lazynvim)
     - [Using vim-plug](#using-vim-plug)
 - [Configuration](#configuration)
-- [Tracing](#tracing)
-- [Workers](#workers)
-- [Pool](#pool)
-    - [Lifecycle](#lifecycle)
-    - [Normalization](#normalization)
-    - [Pruning](#pruning)
-    - [Misc](#misc)
 - [Quickstart](#quickstart)
     - [User command](#user-command)
     - [Static table](#static-table)
@@ -137,7 +130,17 @@ with ease, as the picker will only ever render and decorate a small subset of th
     - [Context aware](#context-aware)
     - [Static tables](#static-tables)
     - [Basic ui.select](#basic-uiselect)
-    - [Advanced ui.select](#advanced-uiselect)
+- [Advanced ui.select](#advanced-uiselect)
+- [Tracing](#tracing)
+- [Scheduler](#scheduler)
+- [Registry](#registry)
+- [Async](#async)
+- [Workers](#workers)
+- [Pool](#pool)
+    - [Lifecycle](#lifecycle)
+    - [Normalization](#normalization)
+    - [Pruning](#pruning)
+    - [Others](#others)
 - [Requirements](#requirements)
     - [Mandatory](#mandatory)
     - [Optional](#optional)
@@ -233,97 +236,6 @@ Configuration details:
 - `registry.max_idle`: Maximum idle time in milliseconds before an unused picker is destroyed.
 - `registry.prune_interval`: Interval in milliseconds for registry cleanup.
 - `registry.trace`: Optional debug hook `function(event, data)` for registry lifecycle tracing.
-
-## Tracing
-
-Several singleton modules expose a `trace` hook for lightweight diagnostics. Each hook receives `function(event, data)` where `event` is a
-string and `data` is a small table of relevant fields.
-
-Supported modules:
-
-- `pool.trace`: Allocation/reuse, normalization, return, and prune events.
-- `scheduler.trace`: Scheduler start, idle, and setup events.
-- `async.trace`: Async creation and completion events.
-- `registry.trace`: Registry registration, touch, removal, and prune events.
-
-## Workers
-
-Workers are internal coordination helpers that sit on top of the async scheduler. They are not user-configurable, but they define how
-different subsystems sequence work so ordering is deterministic even under heavy async load.
-
-There are two worker modes used in the codebase:
-
-- **Coalescer**: Keeps only the latest request while work is in flight. This is used for UI rendering in `Select`, where multiple list updates
-  can arrive rapidly. The coalescer guarantees that only the most recent render request runs, so stale intermediate renders are dropped.
-
-- **Queue**: Runs every request in strict FIFO order. This is used for stream processing, where chunk order is semantically important. The
-  queue executes tasks one after the other, and each task can yield without allowing another queued task to start early.
-
-Workers are cooperative: each task runs inside an `Async` coroutine and may call `Async.yield()`. Yielding allows other unrelated async tasks
-to run, but does not violate the ordering guarantees within a worker.
-
-## Pool
-
-The pool is a table-reuse subsystem that keeps allocation pressure low for hot paths (streaming, matching, selection). It is a single global
-pool created during `setup()` and reused by the rest of the runtime. The pool is not a cache of results and does not preserve semantic data;
-it only manages table instances and their sizes.
-
-This implementation is **bucketed and deterministic**: tables are normalized into size buckets on return, and future `obtain()` calls return
-the smallest idle table that fits the requested size. There is no adaptive priming or background allocation. Normalization keeps the pool
-stable and prevents it from filling with many distinct odd sizes.
-
-### Lifecycle
-
-**Obtain**
-
-`Pool.obtain(size)` returns a reusable table for scratch work.
-
-- If `size` is provided and greater than 0, the pool returns the **smallest idle table whose size is >= size**.
-- If no idle table is large enough, the pool falls back to the largest available idle table.
-- If the pool is empty, it allocates a fresh table sized to the normalized bucket for the requested size.
-- The returned table is tracked as “in use” and not eligible for pruning.
-
-**Return**
-
-`Pool._return(tbl)` releases a table back to the pool:
-
-- The table is normalized to a bucket size (power-of-two) within `[prime_min, prime_max]`.
-- If `max_tables == 0`, the table is discarded immediately (no pooling).
-- Otherwise, the table is inserted into the idle pool and becomes eligible for reuse.
-
-For code paths that create tables outside of `obtain()` but still need tracking, `Pool.attach(tbl)` and `Pool.detach(tbl)` mark tables as
-in-use without putting them into the idle pool.
-
-### Normalization
-
-Normalization keeps reuse stable across runs:
-
-- Sizes below `prime_min` are kept as-is.
-- Sizes in `[prime_min, prime_max]` are rounded up to the next power-of-two bucket.
-- Sizes above `prime_max` are clamped down to `prime_max` before pooling.
-
-This means a `125000`-element table becomes `131072`, and a `600000`-element table becomes `524288` (default `prime_max`). The pool prefers
-these normalized buckets to avoid fragmentation.
-
-### Pruning
-
-The pool runs a background prune timer:
-
-- Tables idle longer than `max_idle` are discarded.
-- If `max_tables` is set, the pool removes the least-recently-used idle tables until the limit is satisfied.
-- Tables marked “in use” are never pruned.
-
-### Misc
-
-Beyond `obtain()`/`_return()`, the pool exposes a few utility helpers:
-
-- `Pool.attach(tbl)`: mark a table as “in use” without placing it into the idle pool. Use this when you create a table outside
-  `obtain()` but still want the pool to track it.
-- `Pool.detach(tbl)`: remove a table from pool tracking without returning it to the idle pool.
-- `Pool.is_pooled(tbl)`: returns `true` if the table is tracked by the pool (in use or idle).
-- `Pool.fill(tbl, value)`: in-place fill of a table with a single value.
-- `Pool.resize(tbl, size, default)`: resize a table to `size`, filling new slots with `default` when expanding.
-- `Pool.remove(tbl, value)`: remove all entries that match `value` from `tbl`.
 
 ## Quickstart
 
@@ -1872,6 +1784,234 @@ vim.ui.select = function(items, opts, on_choice)
     return picker
 )
 ```
+
+## Tracing
+
+Several singleton modules expose a `trace` hook for lightweight diagnostics. Each hook receives `function(event, data)` where `event` is a
+string and `data` is a small table of relevant fields.
+
+Supported modules:
+
+- `pool.trace`: Allocation/reuse, normalization, return, and prune events.
+- `scheduler.trace`: Scheduler start, idle, and setup events.
+- `worker.trace`: Worker cooperative job management
+- `async.trace`: Async creation and completion events.
+- `registry.trace`: Registry registration, touch, removal, and prune events.
+
+## Scheduler
+
+The scheduler is a **singleton cooperative runtime** that drives `Async` coroutines. It owns a single libuv check handle and an in-memory
+queue of runnable async jobs. Any module that needs background work schedules an `Async` instance through `Scheduler.add()`.
+
+Key properties:
+
+- **Budgeted execution**: The scheduler runs a batch of async steps up to a time budget (`async_budget`, in microseconds).
+- **Cooperative**: Each async job yields explicitly; the scheduler never preempts.
+- **Singleton**: There is only one scheduler, initialized during `setup()`.
+
+**Lifecycle**
+
+The scheduler is created once during `setup()` and reused across the entire plugin. When work arrives, `Scheduler.add(async)` inserts the
+job into the queue and starts the internal libuv check handle if it is idle. When the queue empties, the check handle is stopped. The
+handle is restarted on the next `Scheduler.add()` call.
+
+**Execution model**
+
+`Scheduler.step()` processes the queue until the time budget is exhausted. Each scheduled `Async` job runs a single `_step()` which resumes
+its coroutine once. If the job yields, it remains in the queue; if it finishes, it is removed. This provides fair interleaving between
+long-running async jobs without preemption.
+
+**API**
+
+- `Scheduler.new({ async_budget = number })`: configure the time budget and initialize the check handle.
+- `Scheduler.add(async)`: schedule an `Async` instance. If the scheduler is not active, it starts the check handle.
+- `Scheduler.get(thread)`: find the `Async` instance associated with a coroutine.
+- `Scheduler.close()`: stop and close the check handle and clear internal state. This is called on `VimLeavePre` to avoid leaked handles in
+  tests or long-running sessions.
+
+**Tracing**
+
+`scheduler.trace(event, data)` supports:
+
+- `scheduler_new`: called once during initialization.
+- `scheduler_start`: when the check handle is started.
+- `scheduler_idle`: when the queue is empty and the check handle is stopped.
+
+## Registry
+
+The registry is a **singleton picker manager** that tracks active pickers and prunes stale hidden ones. It is used to prevent long-lived
+pickers from piling up after they are closed or hidden.
+
+Key properties:
+
+- **Idle tracking**: Each picker receives a `last_used` timestamp.
+- **Pruning**: A periodic timer checks for idle pickers and closes them if they are not in use.
+- **Safety checks**: A picker is never pruned while it is open, running a stream, or running a match.
+
+**Lifecycle**
+
+The registry is initialized during `setup()` and runs a background prune timer. The timer fires every `prune_interval` milliseconds and
+scans registered pickers. If a picker has been idle longer than `max_idle`, it is eligible for removal.
+
+**In‑use checks**
+
+Before pruning, the registry verifies that the picker is not actively used:
+
+- `picker:isopen()` is false.
+- `picker:isvalid()` is false.
+- `picker.stream:running()` is false.
+- `picker.match:running()` is false.
+
+These checks prevent the registry from racing against active streams or matching operations.
+
+**Pruning semantics**
+
+Pruning uses `vim.schedule()` to close pickers from the main loop rather than from the timer callback. This avoids closing UI objects from a
+libuv timer context and keeps the teardown safe.
+
+**API**
+
+- `Registry.register(picker)`: register a picker and initialize its `last_used` timestamp.
+- `Registry.touch(picker)`: update the picker's `last_used` timestamp.
+- `Registry.remove(picker)`: remove a picker from the registry without closing it.
+- `Registry.prune(now_ms)`: prune idle pickers if `max_idle` is configured.
+- `Registry.close()`: stop and close the prune timer. This is called on `VimLeavePre`.
+
+## Async
+
+`Async` is the low-level coroutine wrapper that powers all cooperative work in the plugin. It is not tied to any picker or UI state; it is
+used by the scheduler, worker helpers, streaming, and matching.
+
+Key properties:
+
+- **Explicit yielding**: Work continues only when `Async.yield()` is called.
+- **Cancelable**: Async jobs can be canceled, which is used to prevent stale work from completing.
+- **Traceable**: `async.trace` hooks allow diagnosing lifecycle events for unit tests and performance analysis.
+
+**Lifecycle**
+
+An `Async` instance wraps a Lua coroutine. Each time the scheduler resumes the coroutine, it runs until it yields or completes. Completion
+triggers callbacks registered by `await()` unless the job was aborted.
+
+**Yielding**
+
+- `Async.yield()` yields cooperatively.
+- `Async.kill()` yields a special `abort` marker which is interpreted as a hard abort and skips callbacks.
+
+**Cancellation**
+
+- `async:cancel()` marks the job as done with reason `"cancel"` and still runs callbacks.
+- `async:abort()` marks it as `"abort"` and **suppresses callbacks**.
+- `Async.kill()` is the in‑coroutine equivalent of abort.
+
+**Interface**
+
+- `Async.new(fn)`: create an async job from a coroutine function.
+- `Async.wrap(fn)`: wrap a function into a factory that returns `Async`.
+- `Async:await(cb)`: register a completion callback (ignored for aborts).
+- `Async:wait(timeout_ms)`: block until done, canceling the job on timeout.
+- `Async:is_running()`, `Async:stop_reason()`: inspect state.
+
+**Errors**
+
+If the coroutine errors, the error message is stored as the stop reason and emitted to `vim.api.nvim_err_writeln` in `Async.wrap()`.
+
+## Workers
+
+Workers are internal coordination helpers that sit on top of the async scheduler. They are not user-configurable, but they define how
+different subsystems sequence work so ordering is deterministic even under heavy async load.
+
+There are two worker modes used in the codebase:
+
+- **Coalesce**: Keeps only the latest request while work is in flight. This is used for UI rendering in `Select`, where multiple list updates
+  can arrive rapidly. The coalesce guarantees that only the most recent render request runs, so stale intermediate renders are dropped.
+
+- **Queue**: Runs every request in strict FIFO order. This is used for stream processing, where chunk order is semantically important. The
+  queue executes tasks one after the other, and each task can yield without allowing another queued task to start early.
+
+Workers are cooperative: each task runs inside an `Async` coroutine and may call `Async.yield()`. Yielding allows other unrelated async tasks
+to run, but does not violate the ordering guarantees within a worker.
+
+**Lifecycle**
+
+- `enqueue(fn)` submits a task.
+- `finalize(fn)` submits a final task and seals the worker (no more tasks accepted).
+- `cancel(fn)` aborts pending work immediately, seals the worker, and runs optional cleanup.
+- `is_running()` reports whether a worker coroutine is active.
+
+**Tracing**
+
+Each worker emits trace events, including `*_enqueue`, `*_start`, `*_idle`, `*_reschedule`, `*_finalize`, and `*_cancel`. The trace payloads
+include flags such as `running`, `sealed`, and queue length to support deterministic tests.
+
+**Setup**
+
+Workers are module-level singletons in the sense that tracing is shared across all instances. Use `Worker.new({ trace = fn })` to configure
+trace output for every worker instance created afterward. `Worker.coalesce()` and `Worker.queue()` return independent worker instances, but
+they all report to the same trace hook.
+
+## Pool
+
+The pool is a table-reuse subsystem that keeps allocation pressure low for hot paths (streaming, matching, selection). It is a single global
+pool created during `setup()` and reused by the rest of the runtime. The pool is not a cache of results and does not preserve semantic data;
+it only manages table instances and their sizes.
+
+This implementation is **bucketed and deterministic**: tables are normalized into size buckets on return, and future `obtain()` calls return
+the smallest idle table that fits the requested size. There is no adaptive priming or background allocation. Normalization keeps the pool
+stable and prevents it from filling with many distinct odd sizes.
+
+### Lifecycle
+
+**Obtain**
+
+`Pool.obtain(size)` returns a reusable table for scratch work.
+
+- If `size` is provided and greater than 0, the pool returns the **smallest idle table whose size is >= size**.
+- If no idle table is large enough, the pool falls back to the largest available idle table.
+- If the pool is empty, it allocates a fresh table sized to the normalized bucket for the requested size.
+- The returned table is tracked as “in use” and not eligible for pruning.
+
+**Return**
+
+`Pool._return(tbl)` releases a table back to the pool:
+
+- The table is normalized to a bucket size (power-of-two) within `[prime_min, prime_max]`.
+- If `max_tables == 0`, the table is discarded immediately (no pooling).
+- Otherwise, the table is inserted into the idle pool and becomes eligible for reuse.
+
+For code paths that create tables outside of `obtain()` but still need tracking, `Pool.attach(tbl)` and `Pool.detach(tbl)` mark tables as
+in-use without putting them into the idle pool.
+
+### Normalization
+
+Normalization keeps reuse stable across runs:
+
+- Sizes below `prime_min` are kept as-is.
+- Sizes in `[prime_min, prime_max]` are rounded up to the next power-of-two bucket.
+- Sizes above `prime_max` are clamped down to `prime_max` before pooling.
+
+This means a `125000`-element table becomes `131072`, and a `600000`-element table becomes `524288` (default `prime_max`). The pool prefers
+these normalized buckets to avoid fragmentation.
+
+### Pruning
+
+The pool runs a background prune timer:
+
+- Tables idle longer than `max_idle` are discarded.
+- If `max_tables` is set, the pool removes the least-recently-used idle tables until the limit is satisfied.
+- Tables marked “in use” are never pruned.
+
+### Others
+
+Beyond `obtain()`/`_return()`, the pool exposes a few utility helpers:
+
+- `Pool.attach(tbl)`: mark a table as “in use” without placing it into the idle pool. Use this when you create a table outside
+  `obtain()` but still want the pool to track it.
+- `Pool.detach(tbl)`: remove a table from pool tracking without returning it to the idle pool.
+- `Pool.is_pooled(tbl)`: returns `true` if the table is tracked by the pool (in use or idle).
+- `Pool.fill(tbl, value)`: in-place fill of a table with a single value.
+- `Pool.resize(tbl, size, default)`: resize a table to `size`, filling new slots with `default` when expanding.
+- `Pool.remove(tbl, value)`: remove all entries that match `value` from `tbl`.
 
 ## Requirements
 

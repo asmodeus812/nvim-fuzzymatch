@@ -10,6 +10,22 @@ local detailed_extmark_opts = { limit = 4, type = "highlight", details = true, h
 local padding = { " ", "SelectHeaderPadding" }
 local spacing = { ",", "SelectHeaderDelimiter" }
 
+local PREVIEW_EVENTIGNORE = table.concat({
+    "FileType",
+    "BufEnter",
+    "BufLeave",
+    "BufWinEnter",
+    "BufWinLeave",
+    "WinEnter",
+    "WinLeave",
+    "WinNew",
+    "WinClosed",
+    "CursorMoved",
+    "CursorMovedI",
+    "CursorHold",
+    "CursorHoldI",
+}, ",")
+
 local utils = require("fuzzy.utils")
 local Async = require("fuzzy.async")
 local Worker = require("fuzzy.worker")
@@ -850,7 +866,7 @@ local function display_default(content, window, buffer)
     end
     if buffer ~= nil and vim.api.nvim_buf_is_valid(buffer) then
         local old_ignore = vim.o.eventignore
-        vim.o.eventignore = "all"
+        vim.o.eventignore = PREVIEW_EVENTIGNORE
         pcall(populate_buffer, buffer, content)
         vim.api.nvim_win_set_buf(window, buffer)
         vim.api.nvim_win_set_cursor(window, { 1, 0 })
@@ -868,7 +884,7 @@ local function display_entry(previewer, entry, window, buffer)
         return
     end
     local old_ignore = vim.o.eventignore
-    vim.o.eventignore = "all"
+    vim.o.eventignore = PREVIEW_EVENTIGNORE
     local ok, res, msg = pcall(previewer.preview, previewer, entry, window)
     if not ok then
         display_default({ res or msg or "Unable to preview current entry" }, window, buffer)
@@ -2409,7 +2425,8 @@ end
 --- Checks if the selection interface is currently open, this is determined by checking if both the prompt and list windows are valid.
 --- @return boolean True if the selection interface is open, false otherwise.
 function Select:isopen()
-    local prompt = self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window)
+    local prompt = not (self._options.prompt_input ~= false)
+        or (self.prompt_window and vim.api.nvim_win_is_valid(self.prompt_window))
     local list = self.list_window and vim.api.nvim_win_is_valid(self.list_window)
     return list ~= nil and prompt ~= nil and list and prompt
 end
@@ -2417,7 +2434,8 @@ end
 --- Checks if the selection interface is valid, meaning that it has been initialized/opened at least once and has not been destroyed by calling the `close` method which would invalidate its curent state
 --- @return boolean True if the select interface is still valid, false otherwise.
 function Select:isvalid()
-    local prompt = self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer)
+    local prompt = not (self._options.prompt_input ~= false)
+        or (self.prompt_buffer and vim.api.nvim_buf_is_valid(self.prompt_buffer))
     local list = self.list_buffer and vim.api.nvim_buf_is_valid(self.list_buffer)
     return list ~= nil and prompt ~= nil and list and prompt
 end
@@ -2468,6 +2486,9 @@ function Select:list(entries, positions)
         self._state.positions = positions
         self._state.entries = entries
         self._state.streaming = true
+        if not self:isvalid() then
+            return
+        end
         self:_render_list()
     elseif positions == nil then
         self._state.streaming = false
@@ -2573,8 +2594,14 @@ function Select:open()
     end
 
     if not self._state.renderer then
+        -- every select has a stateful renderer, in this case this rednerer worker ensures that only the last render job that is
+        -- queried is run, that makes sure that intermediate render jobs that would otherwise be overridden immediately by new
+        -- ones are discarded. This is the worker.coalesce job type
         self._state.renderer = Worker.coalesce()
     end
+
+    -- the source window has to be remembered, that source windo is the source from which the selection interface was initiated,
+    -- that is then later used for a target for future select actions that are performed by the interface
     self.source_window = vim.api.nvim_get_current_win()
     local factor = (opts.prompt_list and opts.preview) and 2.0 or 1.0
     local size = compute_height(opts.window_ratio, factor)
@@ -2596,7 +2623,7 @@ function Select:open()
                     if self._state.query ~= query then
                         self:_prompt_input(query, opts.prompt_input)
                         if query == nil then self:close() end
-                        self._state.query = query
+                        self._state.query = query or ""
                     end
                 end
             })
@@ -2740,7 +2767,7 @@ function Select:open()
                 pattern = "*",
                 callback = function()
                     if vim.tbl_contains(vim.v.event.windows, self.list_window) and
-                        not self:_is_rendering() and vim.api.nvim_buf_line_count(list_buffer) >= 1
+                        self:isvalid() and vim.api.nvim_buf_line_count(list_buffer) >= 1
                     then
                         utils.timed_call(Select._render_list, self, false)
                     end

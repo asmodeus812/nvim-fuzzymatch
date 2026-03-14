@@ -54,6 +54,9 @@ end
 --- @param async Async Async object to add to the scheduler
 function Scheduler.add(async)
     assert(async and async._step)
+    if not Scheduler._executor then
+        Scheduler.new({})
+    end
     table.insert(Scheduler._queue, async)
     if not Scheduler._executor:is_active() then
         local wrapped = vim.schedule_wrap(Scheduler.step)
@@ -72,6 +75,17 @@ function Scheduler.get(thread)
         end
     end
     return nil
+end
+
+--- Stop and close the scheduler executor.
+function Scheduler.close()
+    if Scheduler._executor and not vim.uv.is_closing(Scheduler._executor) then
+        pcall(Scheduler._executor.stop, Scheduler._executor)
+        pcall(Scheduler._executor.close, Scheduler._executor)
+    end
+    Scheduler._executor = nil
+    Scheduler._queue = nil
+    Scheduler._budget = nil
 end
 
 return Scheduler

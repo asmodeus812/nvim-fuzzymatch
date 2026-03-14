@@ -319,4 +319,13 @@ function Pool.prune(now)
     end
 end
 
+--- Stop and close the prune timer.
+function Pool.close()
+    if Pool.prune_timer and not vim.uv.is_closing(Pool.prune_timer) then
+        pcall(Pool.prune_timer.stop, Pool.prune_timer)
+        pcall(Pool.prune_timer.close, Pool.prune_timer)
+    end
+    Pool.prune_timer = nil
+end
+
 return Pool

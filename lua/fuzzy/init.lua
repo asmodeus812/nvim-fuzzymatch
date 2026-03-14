@@ -1,10 +1,23 @@
 local Pool = require("fuzzy.pool")
 local Registry = require("fuzzy.registry")
 local Scheduler = require("fuzzy.scheduler")
+local group = vim.api.nvim_create_augroup("FUZZYMATCH", { clear = true })
 
 local M = {
     config = {},
 }
+
+function M.teardown()
+    if Scheduler and Scheduler.close then
+        Scheduler.close()
+    end
+    if Registry and Registry.close then
+        Registry.close()
+    end
+    if Pool and Pool.close then
+        Pool.close()
+    end
+end
 
 function M.setup(opts)
     M.config = vim.tbl_deep_extend("keep", opts or {}, {
@@ -63,6 +76,8 @@ function M.setup(opts)
 
     vim.api.nvim_set_hl(0, "SelectLineHighlight", { link = "Normal", default = false })
     vim.api.nvim_set_hl(0, "SelectDecoratorDefault", { link = "Normal", default = false })
+
+    vim.api.nvim_create_autocmd("VimLeavePre", { group = group, callback = M.teardown })
 end
 
 return M

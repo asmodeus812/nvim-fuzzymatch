@@ -103,7 +103,8 @@ function Match:_stop_processing()
         -- kill the timer if it is still active, this will stop any further processing, we do not wait for the current processing to finish,
         -- since it is expected that the callback will handle nil results as a signal that processing was aborted
         if vim.loop.is_closing(self._state.timer) == false then
-            pcall(vim.loop.stop, self._state.timer)
+            pcall(self._state.timer.stop, self._state.timer)
+            pcall(self._state.timer.close, self._state.timer)
         end
         self._state.timer = nil
     end
@@ -179,9 +180,11 @@ function Match:_clean_context()
     self.transform = nil
 end
 
-function Match:_bind_method(method)
+function Match:_bind_guarded(method, token)
     return function(...)
-        return method(self, ...)
+        if self._state.token == token then
+            return method(self, ...)
+        end
     end
 end
 
@@ -334,15 +337,12 @@ function Match:match(list, pattern, callback, transform)
         end
     end
 
-    -- ensure we drop the old results first, these will be re-referenced only when the matching process finishes after this matching process
-    -- that is currently being started now
-    if self.results then
-        self.results = nil
-    end
-
-    -- init core match context
+    -- version the current run, into an incrementing token, that is to ensure that older matching does not start operating on new
+    -- state or on new starts and ensures older ticks get terminated safely
     self._state.token = (self._state.token or 0) + 1
     local token = self._state.token
+
+    -- init core match context
     self.list = assert(list)
     self.pattern = assert(pattern)
     self.callback = assert(callback)
@@ -370,15 +370,22 @@ function Match:match(list, pattern, callback, transform)
     -- ensure offset restored
     self._state.offset = 0
 
+    if self.results then
+        -- ensure we drop the old results first, these will be re-referenced only when the matching process finishes after this matching process
+        -- that is currently being started now
+        self.results = nil
+    end
+
     if not self._state.accum then
-        -- prepare accumulator for results
+        -- the accumulator is an array of 3 sub-arrays, the first sub-array is the matching elements, the second is the matching
+        -- positions and the third is the score, the 3 sub-arrays are always guaranteed to be of the same size.
         self._state.accum = {}
     end
 
     if not self._state.chunks then
         -- chunks are reused to avoid frequent allocations, they represent the part of the whole source list currently being processed
         -- for matches, the chunks are first filled from the source list and then used in the matchfuzzy call
-        local size = self._options.step
+        local size = self._options.step or 0
         self._state.chunks = Pool.obtain(size)
     end
 
@@ -400,12 +407,9 @@ function Match:match(list, pattern, callback, transform)
     self._state.timer = vim.loop.new_timer()
     self._state.timer:start(0,
         self._options.timer,
-        vim.schedule_wrap(function()
-            if self._state.token ~= token then
-                return
-            end
-            Match._match_worker(self)
-        end)
+        vim.schedule_wrap(self:_bind_guarded(
+            Match._match_worker, token
+        ))
     )
 
     -- run one cycle immediately now

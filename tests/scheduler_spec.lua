@@ -7,8 +7,13 @@ local function reset_scheduler()
     local loaded = package.loaded["fuzzy.scheduler"]
     if loaded then
         pcall(function()
-            if loaded._executor and loaded._executor.stop then
+            if loaded.close then
+                loaded.close()
+            elseif loaded._executor and loaded._executor.stop then
                 loaded._executor:stop()
+                if loaded._executor.close then
+                    loaded._executor:close()
+                end
             end
         end)
     end

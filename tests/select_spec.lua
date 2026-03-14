@@ -393,6 +393,7 @@ local function run_display_case()
         prompt_list = true,
         prompt_input = false,
         preview = preview,
+        window_ratio = 1.0,
         display = function(entry, index)
             return string.format("%s:%s:%d", prefix, entry.value, index)
         end,
@@ -455,7 +456,8 @@ local function run_display_case()
     })
     helpers.wait_for(function()
         local final_lines = helpers.get_buffer_lines(select.list_buffer)
-        return final_lines and final_lines[1] == "B:alpha:1"
+        return final_lines
+            and final_lines[1] == "B:alpha:1"
     end, 1500)
     local final_lines = helpers.get_buffer_lines(select.list_buffer)
     helpers.eq(final_lines[2], "B:beta:2", "display function new entries")

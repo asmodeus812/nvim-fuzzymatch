@@ -116,4 +116,13 @@ function Registry.prune(now)
     end
 end
 
+--- Stop and close the prune timer.
+function Registry.close()
+    if Registry.prune_timer and not vim.uv.is_closing(Registry.prune_timer) then
+        pcall(Registry.prune_timer.stop, Registry.prune_timer)
+        pcall(Registry.prune_timer.close, Registry.prune_timer)
+    end
+    Registry.prune_timer = nil
+end
+
 return Registry
