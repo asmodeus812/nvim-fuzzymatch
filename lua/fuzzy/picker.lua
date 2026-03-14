@@ -1106,7 +1106,7 @@ function Picker.new(opts)
         match_step = 65536,
         stream_step = 131072,
         stream_type = "lines",
-        stream_debounce = 0,
+        stream_debounce = 15,
         window_size = 0.20,
         prompt_debounce = 125,
         prompt_query = "",

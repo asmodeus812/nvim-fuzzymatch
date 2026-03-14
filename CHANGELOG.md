@@ -4,6 +4,36 @@
 
 ### Fixed
 
+## [1.1.0] - 2026-03-14
+
+### Added
+- feat(excmd): various test fixes and introducing excmd module
+- feat(schedule): remove unnecessary vim.schedule calls
+- feat(timing): concrete timing settings for command pickers
+- feat(misc): adjust picker documentation and simplify public interface
+- feat(regex): add regex highlight and improve existing pickers
+
+### Fixed
+- fix(debounce): fix small buf debounce issue, add more docs
+- fix(token): ensure that running states are guarded by run tokens
+- fix(api): add more robust api state detection for stream/match
+- fix(bench): add several fixes to the bench and tests
+- fix(spell): spelling testing and picker issues
+
+### Changed
+- perf(picker): picker streaming is cumulative on static query
+- perf(cont): continue refining performance concerns
+- perf(pool): pool performance was not on par with the rest of the modules
+
+### Breaking
+- feat(debounce)!: stream debounce usage slightly adjusted and changed
+- feat(cache)!: introduce a caching for display entries and optimize fuzzy performance
+
+### Misc
+- text(api): ensure the test do not abuse the private api.
+- test(specs): expand the match and stream specs with more tests
+- test(spec): refactor tests & specs logs to be more readable
+
 ## [1.0.0] - 2026-03-06
 
 ### Breaking
