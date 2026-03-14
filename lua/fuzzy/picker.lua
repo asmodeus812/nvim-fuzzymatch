@@ -577,7 +577,7 @@ function Picker:_matching_worker(mode, list, match_query, total, __type)
     if __type == 1 then
         if self._matching_worker_debounced == nil then
             self._matching_worker_debounced = utils.debounce_callback(
-                self._options.match_debounce, self._matching_worker
+                self._options.stream_debounce, self._matching_worker
             )
         end
         self._matching_worker_debounced(
@@ -624,7 +624,7 @@ function Picker:_matching_worker(mode, list, match_query, total, __type)
 end
 
 -- match_state.workerd = utils.debounce_callback(
--- self._options.match_debounce, match_state.worker)
+-- self._options.stream_debounce, match_state.worker)
 
 function Picker:_running_match(matching, query)
     -- Maintain a running accumulator of match results while a stream is active; it is a
@@ -635,14 +635,6 @@ function Picker:_running_match(matching, query)
         local match_state = state.matching
         local function release_table(tbl)
             for i, value in ipairs(tbl) do
-                if not Pool.is_pooled(value) then
-                    utils.fill_table(
-                        value,
-                        i == 1 and utils.EMPTY_STRING
-                        or (i == 2 and utils.EMPTY_TABLE or 0)
-                    )
-                    goto continue
-                end
                 if i == 1 then
                     utils.fill_table(
                         value,
@@ -658,8 +650,9 @@ function Picker:_running_match(matching, query)
                         value, 0
                     )
                 end
-                Pool._return(value)
-                ::continue::
+                if Pool.is_pooled(value) then
+                    Pool._return(value)
+                end
             end
         end
 
@@ -688,7 +681,7 @@ function Picker:_running_match(matching, query)
 
         if not match_state.accum or #match_state.accum == 0 then
             local obtain_table = Pool.prime_min ~= nil
-                and #matching[1] >= Pool.prime_min
+                and #matching[1] >= math.floor(Pool.prime_min * 0.50)
             match_state.accum = {
                 obtain_table and Pool.obtain(#matching[1]) or {},
                 obtain_table and Pool.obtain(#matching[2]) or {},
@@ -706,7 +699,7 @@ function Picker:_running_match(matching, query)
         else
             if not match_state.buffer then
                 local obtain_table = Pool.prime_min ~= nil
-                    and #matching[1] >= Pool.prime_min
+                    and #matching[1] >= math.floor(Pool.prime_min * 0.50)
                 match_state.buffer = {
                     obtain_table and Pool.obtain(#matching[1]) or {},
                     obtain_table and Pool.obtain(#matching[2]) or {},
@@ -787,7 +780,7 @@ end
 function Picker:_flush_interactive()
     -- Interactive stream flush: stream is the source of truth (no fuzzy match), render accumulated results and status, debounce to coalesce
     -- very fast flushes.
-    return utils.debounce_callback(self._options.stream_debounce, function(buf, all)
+    return utils.debounce_callback(0, function(buf, all)
         if buf == nil and all == nil then
             -- Stream finished: if it produced nothing, explicitly render an empty list, then signal completion.
             if not self.stream:isvalid() or self.stream:isempty() then
@@ -813,7 +806,7 @@ end
 function Picker:_flush_direct()
     -- Direct stream flush (non-interactive): match per chunk and merge into accumulator when query is present, render all results when
     -- empty, debounce to coalesce rapid flushes.
-    return utils.debounce_callback(self._options.stream_debounce, function(buf, all)
+    return utils.debounce_callback(0, function(buf, all)
         if buf == nil and all == nil then
             -- Stream finished: if it produced nothing, explicitly render an empty list, then signal to the list renderer for content
             -- delivery completion.  there is also a case
@@ -831,8 +824,8 @@ function Picker:_flush_direct()
 
             -- manually prime the input for matching, in case a query has arrived right at the end of the stream, attempt to run a match, in
             -- case more input arrives this call will be de-bounced by the future calls and effectively be a no-op which is okay
-            local options = self.select:options()
             local query = self.select:query()
+            local options = self.select:options()
 
             local match_state = self._state.matching
             local should_match = type(query) == "string" and #query > 0
@@ -849,7 +842,7 @@ function Picker:_flush_direct()
             -- arrives from the stream we have to re-roder them all and re-match them in accordance to the query
             local query = self.select:query()
 
-            if #all > 0 and type(query) == "string" and #query > 0 then
+            if type(query) == "string" and #query > 0 then
                 -- If the query changed we have to do a match on all stream entries thus far, to reflect the matching state of these entries
                 -- while the stream is still emitting. We have two options here the query changed and we have to match on the entire set of
                 -- results, or keep matching the incoming chunks of the stream and merge with current running match results, since the query
@@ -1056,11 +1049,10 @@ end
 --- @field headers? table[]|nil a list of headers to display in the picker, each header must be a list of tuples, where each tuple is a pair of a string and a highlight group name, the string is the text to display, and the highlight group name is the highlight group to use for displaying the text, for example: { {"<c-n>", "PickerHeaderActionKey"}, {"::", "PickerHeaderActionSeparator"}, {"next", "PickerHeaderActionLabel"} }.
 --- @field match_limit? number|nil the maximum number of matches to keep, nil means no limit.
 --- @field match_timer? number the time in milliseconds to wait before flushing the matching results, this is useful when dealing with large result sets.
---- @field match_debounce? number the time in milliseconds to debounce streaming match starts, this is useful to avoid re-matching the full list on every flush.
 --- @field match_step? number the number of entries to process in each matching step, this is useful when dealing with large result sets.
 --- @field stream_type? "lines"|"bytes" whether the stream produces lines or bytes, when lines is used the stream will be split on newlines, when bytes is used the stream will be split on byte size.
 --- @field stream_step? number the number of bytes or lines to read in each streaming step, this is useful when dealing with large result sets.
---- @field stream_debounce? number the time in milliseconds to debounce the flush calls of the stream, this is useful to avoid stream batch flushes in quick succession, when the results accumulate fast enough that we can combine into a single flush call instead, caused by the executable being too fast, or the `stream_step` being too small.
+--- @field stream_debounce? number the time in milliseconds to debounce the matching work while a non-interactive picker stream is still producing entries and the user types in a query. As the stream accumulates, unchanged queries continue matching against new stream chunks instead of the complete stream, query changes trigger a debounced full re-match of everything seen thus far. When the query is empty, results are rendered directly without matching.
 --- @field window_size? number the size of the window to use for the picker, this is a ratio between 0 and 1, where 1 is the full screen.
 --- @field prompt_debounce? number the time in milliseconds to debounce the user input, this is useful to avoid flooding the matching and streaming with too many updates at once.
 --- @field prompt_query? string the initial query to use for the prompt.
@@ -1084,7 +1076,6 @@ function Picker.new(opts)
         highlighters = { opts.highlighters, "table", true },
         match_limit = { opts.match_limit, { "number", "nil" }, true },
         match_timer = { opts.match_timer, "number", true },
-        match_debounce = { opts.match_debounce, { "number", "nil" }, true },
         match_step = { opts.match_step, "number", true },
         stream_step = { opts.stream_step, "number", true },
         stream_type = { opts.stream_type, { "string", "nil" }, true, { "lines", "bytes" } },
@@ -1112,7 +1103,6 @@ function Picker.new(opts)
         highlighters = {},
         match_limit = nil,
         match_timer = 30,
-        match_debounce = 15,
         match_step = 65536,
         stream_step = 131072,
         stream_type = "lines",

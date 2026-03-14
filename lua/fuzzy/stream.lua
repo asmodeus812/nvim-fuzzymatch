@@ -103,9 +103,11 @@ function Stream:_make_stream()
     return stdio
 end
 
-function Stream:_bind_method(method)
+function Stream:_bind_guarded(method, token)
     return function(...)
-        return method(self, ...)
+        if self._state.token == token then
+            return method(self, ...)
+        end
     end
 end
 
@@ -442,36 +444,34 @@ function Stream:start(cmd, opts)
     end
 
     if type(cmd) == "function" then
-        local did_finalize = false
-        local callback = function(data)
-            if self._state.token ~= token then
-                return
-            end
-            if not did_finalize and data ~= nil then
-                self:_handle_data(
+        local finalized = false
+        local worker = self:_bind_guarded(function(stream, data)
+            if not finalized and data ~= nil then
+                stream:_handle_data(
                     data,
-                    self._state.size
+                    stream._state.size
                 )
             else
-                self._state.stdouteof = true
-                self._state.stderreof = true
-                assert(did_finalize == false)
-                self:_handle_out(0, nil, 3)
-                did_finalize = true
+                stream._state.stdouteof = true
+                stream._state.stderreof = true
+                assert(finalized == false)
+                stream:_handle_out(0, nil, 3)
+                finalized = true
             end
-        end
+        end, token)
         local executor = Async.wrap(function(stream)
             local ok, err = utils.safe_call(
-                cmd, callback, opts.args, opts.cwd, opts.env
+                cmd, worker, opts.args, opts.cwd, opts.env
             )
             local code = not ok and 1 or 0
-            if did_finalize == false then
-                if stream._state.token == token then
-                    self._state.stdouteof = true
-                    self._state.stderreof = true
-                    stream:_handle_out(code, err, 3)
-                end
-                did_finalize = true
+            if finalized == false then
+                local finalizer = stream:_bind_guarded(function(s, c, e)
+                    s._state.stdouteof = true
+                    s._state.stderreof = true
+                    s:_handle_out(c, e, 3)
+                end, token)
+                finalizer(code, err)
+                finalized = true
             end
         end)
         self._state.streamer = executor(self)
@@ -487,28 +487,25 @@ function Stream:start(cmd, opts)
             env = opts.env,
             stdio = stdio,
             hide = true,
-        }, function(...)
-            if self._state.token == token then
-                return Stream._handle_exit(self, ...)
-            end
-        end))
+        }, self:_bind_guarded(
+            Stream._handle_exit,
+            token
+        )))
 
         vim.loop.read_start(
             self._state.stdout,
-            function(...)
-                if self._state.token == token then
-                    return Stream._handle_stdout(self, ...)
-                end
-            end
+            self:_bind_guarded(
+                Stream._handle_stdout,
+                token
+            )
         )
 
         vim.loop.read_start(
             self._state.stderr,
-            function(...)
-                if self._state.token == token then
-                    return Stream._handle_stderr(self, ...)
-                end
-            end
+            self:_bind_guarded(
+                Stream._handle_stderr,
+                token
+            )
         )
     end
 

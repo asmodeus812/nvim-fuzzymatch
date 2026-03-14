@@ -44,9 +44,12 @@ function Match:_populate_chunks()
     local size = 0
     if assert(self.list) and #self.list > 0 then
         -- each time we are called we fill the chunks with the next step of items from the source list, the chunks are always the  same size except for the last one which can be smaller.
-        local iteration_limit = self._state.offset + self._options.step
+        local match_step = self._options.step
+        local iteration_limit = self._state.offset + match_step
+
         local start_index = self._state.offset + 1
         local destination = self._state.chunks
+
         if #self.list < iteration_limit then
             -- in case the list has less items than the current step we create a smaller tail chunk to avoid re-sizing the
             -- chunks, instead we use a smaller tail table which accepts the very last items, if the new size is invalid
@@ -58,7 +61,7 @@ function Match:_populate_chunks()
             if not self._state.tail then
                 -- only use pooled tail when it is close to the normal step size to avoid
                 -- shrinking and chruning pool tables.
-                local use_pool = new_size >= math.floor(self._options.step * 0.50)
+                local use_pool = new_size >= math.floor(match_step * 0.50)
                 self._state.tail = use_pool and Pool.obtain(new_size) or {}
             end
             utils.resize_table(self._state.tail, new_size, false)
@@ -223,7 +226,10 @@ function Match:_match_worker()
             self._state.accum[2] = positions
             self._state.accum[3] = scores
         else
-            -- merge into scratch buffer to avoid shrinking pooled buffers, then copy into accum
+            -- merge into intermediate scratch buffer to avoid shrinking pooled buffers, first merge accum and current
+            -- matching results into a temporary constant buffer that only expands. Then move back the results into the
+            -- accum that is user facing results table expressing the total amount of matches accumulated so far ordered and
+            -- sorted according to the score
             local accum = self._state.accum
             local size = #accum[1] + #matches
             local scratch = utils.timed_call(Match.merge,
@@ -379,7 +385,9 @@ function Match:match(list, pattern, callback, transform)
     if not self._state.buffer then
         -- prepare buffer for storing intermediate results, start from step-sized buffers, the finaly buffer will likely contain much less
         -- items than the initial list.
-        local size = math.min(#list, self._options.step or 1)
+        local size = math.min(
+            #list, self._options.step
+        )
         self._state.buffer = {
             Pool.obtain(size),
             Pool.obtain(size),
