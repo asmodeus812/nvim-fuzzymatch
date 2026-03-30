@@ -485,7 +485,7 @@ local picker = Picker.new({
         env = {
             MY_NEW_CUSTOM_VARIABLE = "value"
         },
-        cwd = vim.loop.cwd()
+        cwd = vim.uv.cwd()
     },
     preview = Select.BufferPreview.new(),
     decorators = {
@@ -526,7 +526,7 @@ local picker = Picker.new({
             "f",
         },
         -- dynamically evaluated
-        cwd = vim.loop.cwd
+        cwd = vim.uv.cwd
     },
     actions = {
         ["<cr>"] = Select.select_entry,
@@ -553,7 +553,7 @@ local picker = Picker.new({
         {
             { "Files", "ErrorMsg" },
             { "::", "ModeMsg" },
-            vim.loop.cwd
+            vim.uv.cwd
         },
     },
     content = "find",
@@ -563,7 +563,7 @@ local picker = Picker.new({
             "-type",
             "f",
         },
-        cwd = vim.loop.cwd
+        cwd = vim.uv.cwd
     },
     actions = {
         ["<cr>"] = { Select.select_entry, "edit" },
@@ -1192,7 +1192,7 @@ function EchoPreviewer:preview(entry, win)
     end
     -- user is responsible for managing the buffer if needed, here we are simply reusing a single buffer and clearing it on each preview call
     local lines = type(entry) == "string" and { entry } or vim.split(vim.inspect(entry), "\n")
-    vim.api.nvim_win_set_option(win, "wrap", false)
+    vim.api.nvim_set_option_value("wrap", false, { win = win })
     vim.api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
 end
 ```
@@ -1482,7 +1482,7 @@ local picker = Picker.new({
             "--no-heading",
             "{prompt}",
         },
-        cwd = vim.loop.cwd(),
+        cwd = vim.uv.cwd(),
     },
     interactive = "{prompt}",
     -- tells the picker what preview provider to use, in this case a simple command preview that uses `bat` to display the contents of the
@@ -1529,7 +1529,7 @@ local picker = Picker.new({
             "--files",
             "--hidden",
         },
-        cwd = vim.loop.cwd(),
+        cwd = vim.uv.cwd(),
     },
     -- tells the picker what preview provider to use, in this case a simple buffer preview that will open the selected file in a
     -- buffer, again no converter is needed as the output of `ripgrep` is a straight up filename string, no location information to parse
@@ -1624,7 +1624,7 @@ local picker = Picker.new({
     -- the picker will not have a multi stage option to switch between the interactive command and the fuzzy matcher.
     headers = {
         { "Files" },
-        { vim.loop.cwd() }
+        { vim.uv.cwd() }
     },
     -- use rip-grep to list all files in the current working directory, including hidden files
     content = "rg",
@@ -1636,7 +1636,7 @@ local picker = Picker.new({
             "--files",
             "--hidden",
         },
-        cwd = vim.loop.cwd()
+        cwd = vim.uv.cwd()
     },
     -- tells the picker what preview provider to use, in this case a simple buffer preview that will open the selected file in a buffer, using the same custom
     -- converter instance to ensure that the entry is absolute relative to the cwd of the picker so we can preview it correctly

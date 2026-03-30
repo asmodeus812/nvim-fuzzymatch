@@ -5,7 +5,7 @@ local utils = require("fuzzy.utils")
 local GIT_ROOT_CACHE = {}
 
 --- @class GitPickerOptions
---- @field cwd? boolean|string|fun(): string Working directory for git commands; `true` resolves to `vim.loop.cwd`
+--- @field cwd? boolean|string|fun(): string Working directory for git commands; `true` resolves to `vim.uv.cwd`
 --- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 --- @field icons? boolean Enable file icons
 --- @field actions? table Custom action map
@@ -152,7 +152,7 @@ end
 function M.open_git_files(opts)
     assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
-        cwd = vim.loop.cwd,
+        cwd = vim.uv.cwd,
         untracked = true,
         preview = true,
         icons = true,
@@ -160,7 +160,7 @@ function M.open_git_files(opts)
     }, opts)
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     local converter = Picker.Converter.new(
@@ -220,14 +220,14 @@ end
 function M.open_git_status(opts)
     assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
-        cwd = vim.loop.cwd,
+        cwd = vim.uv.cwd,
         preview = true,
         icons = true,
         watch = false,
     }, opts)
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     if opts.watch == true then
@@ -284,13 +284,13 @@ end
 function M.open_git_branches(opts)
     assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
-        cwd = vim.loop.cwd,
+        cwd = vim.uv.cwd,
         preview = false,
         watch = false,
     }, opts)
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     if opts.watch == true then
@@ -340,13 +340,13 @@ end
 function M.open_git_commits(opts)
     assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
-        cwd = vim.loop.cwd,
+        cwd = vim.uv.cwd,
         preview = false,
         watch = false,
     }, opts)
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     if opts.watch == true then
@@ -395,13 +395,13 @@ end
 function M.open_git_stash(opts)
     assert(util.command_is_available("git"))
     opts = util.merge_picker_options({
-        cwd = vim.loop.cwd,
+        cwd = vim.uv.cwd,
         preview = false,
         watch = false,
     }, opts)
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     if opts.watch == true then
@@ -453,7 +453,7 @@ function M.open_git_bcommits(opts)
     }, opts)
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     if opts.watch == true then

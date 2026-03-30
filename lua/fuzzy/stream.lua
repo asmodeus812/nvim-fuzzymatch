@@ -89,8 +89,8 @@ end
 function Stream:_make_stream()
     -- the stream is curerntly only working with stdout/err there is no handle for stdin, as it is not expected for the stream to
     -- accept any input while it is sending data back to us.
-    self._state.stdout = assert(vim.loop.new_pipe(false))
-    self._state.stderr = assert(vim.loop.new_pipe(false))
+    self._state.stdout = assert(vim.uv.new_pipe(false))
+    self._state.stderr = assert(vim.uv.new_pipe(false))
 
     -- the stdio array needs to contain these in a very specific order, the first entry is the stdin pipe, the rest are the stdout
     -- and stderr is the last one always.
@@ -458,7 +458,7 @@ function Stream:start(cmd, opts)
         local stdio = self:_make_stream()
         assert(vim.fn.executable(cmd) == 1)
 
-        self._state.handle = assert(vim.loop.spawn(cmd, {
+        self._state.handle = assert(vim.uv.spawn(cmd, {
             detached = false,
             args = opts.args,
             cwd = opts.cwd,
@@ -470,7 +470,7 @@ function Stream:start(cmd, opts)
             token
         )))
 
-        vim.loop.read_start(
+        vim.uv.read_start(
             self._state.stdout,
             self:_bind_guarded(
                 Stream._handle_stdout,
@@ -478,7 +478,7 @@ function Stream:start(cmd, opts)
             )
         )
 
-        vim.loop.read_start(
+        vim.uv.read_start(
             self._state.stderr,
             self:_bind_guarded(
                 Stream._handle_stderr,

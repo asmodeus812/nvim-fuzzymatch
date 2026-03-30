@@ -77,7 +77,7 @@ icons, path shortening, and visual separators.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_files({
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     untracked = true,
     preview = true,
     icons = true,
@@ -89,7 +89,7 @@ git_picker.open_git_files({
 Options and behavior:
 
 - `cwd`: Controls where the git command is executed. This can be a string path, a function returning a path, or `true`
-  to use `vim.loop.cwd()`. If you work in nested repositories, pass the root to avoid confusing output.
+  to use `vim.uv.cwd()`. If you work in nested repositories, pass the root to avoid confusing output.
 
 - `untracked`: Includes untracked files in addition to tracked files. This is useful for new files during development.
   It is less suitable when you want a clean list of tracked files only.
@@ -112,7 +112,7 @@ tree.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_status({
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     preview = true,
     icons = true,
     stream_step = 50000,
@@ -122,7 +122,7 @@ git_picker.open_git_status({
 
 Options and behavior:
 
-- `cwd`: This can be a string path, a function returning a path, or `true` to use `vim.loop.cwd()`. It must resolve
+- `cwd`: This can be a string path, a function returning a path, or `true` to use `vim.uv.cwd()`. It must resolve
   inside a repository. The picker asserts if a repo root cannot be found.
 
 - `preview`: Previews the selected file if the status entry can be mapped to a path.
@@ -141,7 +141,7 @@ discover recently updated branches.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_branches({
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     stream_step = 50000,
     match_step = 50000,
 })
@@ -150,7 +150,7 @@ git_picker.open_git_branches({
 Options and behavior:
 
 - `cwd`: Repository root, a path inside the repo, a function returning one of those, or `true` to use
-  `vim.loop.cwd()`.
+  `vim.uv.cwd()`.
 
 - `stream_step`, `match_step`: For very large repos with many branches, lowering these values can smooth UI.
 
@@ -163,7 +163,7 @@ or message works naturally.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_commits({
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     stream_step = 50000,
     match_step = 50000,
 })
@@ -172,7 +172,7 @@ git_picker.open_git_commits({
 Options and behavior:
 
 - `cwd`: Repository root, a path inside the repo, a function returning one of those, or `true` to use
-  `vim.loop.cwd()`. If you are inside a submodule, pass its root explicitly to avoid ambiguity.
+  `vim.uv.cwd()`. If you are inside a submodule, pass its root explicitly to avoid ambiguity.
 
 - `stream_step`, `match_step`: Useful only for repos with very long histories.
 
@@ -195,7 +195,7 @@ Options and behavior:
 - Uses the current buffer path as input. If the buffer has not been written to disk, the picker will assert.
 
 - `cwd`: Optional repository root override. This can be a string path, a function returning a path, or `true` to use
-  `vim.loop.cwd()`.
+  `vim.uv.cwd()`.
 
 - `stream_step`, `match_step` behave as above.
 
@@ -208,7 +208,7 @@ selection, not for bulk stash manipulation.
 local git_picker = require("fuzzy.pickers.git")
 
 git_picker.open_git_stash({
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     stream_step = 50000,
     match_step = 50000,
 })
@@ -216,7 +216,7 @@ git_picker.open_git_stash({
 
 Options and behavior:
 
-- `cwd`: This can be a string path, a function returning a path, or `true` to use `vim.loop.cwd()`. It should resolve
+- `cwd`: This can be a string path, a function returning a path, or `true` to use `vim.uv.cwd()`. It should resolve
   inside a repository.
 
 - Use this picker when you need fast stash inspection. It is not ideal for bulk stash manipulation since actions are
@@ -236,7 +236,7 @@ point.
 local files_picker = require("fuzzy.pickers.files")
 
 files_picker.open_files_picker({
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     hidden = true,
     follow = false,
     no_ignore = false,
@@ -251,7 +251,7 @@ files_picker.open_files_picker({
 Options and behavior:
 
 - `cwd`: Root for the file scan. This can be a string path, a function returning a path, or `true` to use
-  `vim.loop.cwd()`.
+  `vim.uv.cwd()`.
 
 - `watch` (default `false`): Enables a filesystem `tick` to refresh results on reopen.
 
@@ -275,7 +275,7 @@ Lists `:oldfiles` entries. Matching is done on the file path, while display can 
 local oldfiles_picker = require("fuzzy.pickers.oldfiles")
 
 oldfiles_picker.open_oldfiles_picker({
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     max = 256,
     filename_only = false,
     path_shorten = nil,
@@ -288,7 +288,7 @@ oldfiles_picker.open_oldfiles_picker({
 Options and behavior:
 
 - `cwd`: Base directory for filtering and path display. This can be a string path, a function returning a path, or
-  `true` to use `vim.loop.cwd()`. When set, only entries under `cwd` are included.
+  `true` to use `vim.uv.cwd()`. When set, only entries under `cwd` are included.
 
 - `max`: Limit the number of entries emitted from `:oldfiles`. The default is `256`.
 
@@ -315,7 +315,7 @@ buffers_picker.open_buffers_picker({
     include_special = false, -- false | true | { "terminal", "quickfix" } | { terminal = true }
     ignore_current_buffer = true,
     sort_lastused = true,
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     filename_only = false,
     path_shorten = nil,
     home_to_tilde = true,
@@ -344,7 +344,7 @@ Options and behavior:
   raw buffer order.
 
 - `cwd`: Base directory for filtering and path display. This can be a string path, a function returning a path, or
-  `true` to use `vim.loop.cwd()`. When set, only buffers under `cwd` are included.
+  `true` to use `vim.uv.cwd()`. When set, only buffers under `cwd` are included.
 
 - `filename_only`: Display just the filename, not the full path.
 
@@ -390,7 +390,7 @@ lines_picker.open_lines_picker({
     show_unlisted = false,
     show_unloaded = false,
     ignore_current_buffer = false,
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     include_special = false, -- false | true | { "terminal", "quickfix" } | { terminal = true }
     preview = false,
     match_step = 50000,
@@ -404,7 +404,7 @@ Options and behavior:
 
 - `ignore_current_buffer`: Excludes the active buffer from the line list.
 
-- `cwd`: This can be a string path, a function returning a path, or `true` to use `vim.loop.cwd()`. When set, only
+- `cwd`: This can be a string path, a function returning a path, or `true` to use `vim.uv.cwd()`. When set, only
   buffers under `cwd` are included.
 
 - `include_special`: Controls special `buftype` entries.
@@ -476,7 +476,7 @@ Interactive grep using `rg` or `grep` (first available). Supports `query -- args
 local grep_picker = require("fuzzy.pickers.grep")
 
 grep_picker.open_grep_picker({
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     hidden = false,
     follow = false,
     no_ignore = false,
@@ -498,7 +498,7 @@ grep_picker.open_grep_picker({
 
 Options and behavior:
 
-- `cwd`: Search root. This can be a string path, a function returning a path, or `true` to use `vim.loop.cwd()`.
+- `cwd`: Search root. This can be a string path, a function returning a path, or `true` to use `vim.uv.cwd()`.
   This matters for performance and accuracy, especially in monorepos.
 
 - `watch` (default `false`): Enables a filesystem `tick` to refresh results on reopen.
@@ -538,7 +538,7 @@ Same as the main grep picker, but the prompt is prefilled with `<cword>`.
 local grep_picker = require("fuzzy.pickers.grep")
 
 grep_picker.open_grep_word({
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
 })
 ```
 
@@ -550,7 +550,7 @@ Same as the main grep picker, but the prompt is prefilled with the visual select
 local grep_picker = require("fuzzy.pickers.grep")
 
 grep_picker.open_grep_visual({
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
 })
 ```
 
@@ -571,7 +571,7 @@ quickfix_picker.open_quickfix_picker({
     filename_only = false,
     path_shorten = nil,
     home_to_tilde = true,
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     preview = true,
     icons = true,
     match_step = 50000,
@@ -585,7 +585,7 @@ Options and behavior:
 - `path_shorten`, `home_to_tilde`: Display helpers. These are not part of the match content.
 
 - `cwd`: Base directory for filtering and path display. This can be a string path, a function returning a path, or
-  `true` to use `vim.loop.cwd()`. When set, only entries under `cwd` are included.
+  `true` to use `vim.uv.cwd()`. When set, only entries under `cwd` are included.
 
 - `preview`, `icons`: Display only.
 
@@ -613,7 +613,7 @@ loclist_picker.open_loclist_picker({
     filename_only = false,
     path_shorten = nil,
     home_to_tilde = true,
-    cwd = vim.loop.cwd,
+    cwd = vim.uv.cwd,
     preview = true,
     icons = true,
     match_step = 50000,
@@ -625,7 +625,7 @@ Options and behavior:
 - `filename_only`, `path_shorten`, `home_to_tilde`: Display helpers. These are not part of the match content.
 
 - `cwd`: Base directory for filtering and path display. This can be a string path, a function returning a path, or
-  `true` to use `vim.loop.cwd()`. When set, only entries under `cwd` are included.
+  `true` to use `vim.uv.cwd()`. When set, only entries under `cwd` are included.
 
 - `preview`, `icons`, `match_step`: Same meaning as quickfix; tune for large lists.
 

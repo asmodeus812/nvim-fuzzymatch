@@ -10,7 +10,7 @@ local function open_select_picker(items, opts, confirm)
     local picker = Picker.new({
         content = items,
         context = {
-            cwd = vim.loop.cwd()
+            cwd = vim.uv.cwd()
         },
         preview = false,
         display = opts and opts.format_item and function(i)

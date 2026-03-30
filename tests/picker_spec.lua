@@ -515,7 +515,7 @@ function M.run()
                 preview = false,
                 context = {
                     args = { "--test" },
-                    cwd = vim.loop.cwd,
+                    cwd = vim.uv.cwd,
                 },
                 interactive = function(_, arguments)
                     return arguments
@@ -1169,7 +1169,7 @@ function M.run()
     run_rerun_case("rerun_files_cwd", function()
         return require("fuzzy.pickers.files").open_files_picker({
             cwd = function()
-                return vim.loop.cwd()
+                return vim.uv.cwd()
             end,
             preview = false,
             icons = false,

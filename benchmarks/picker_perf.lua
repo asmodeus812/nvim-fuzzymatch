@@ -21,7 +21,7 @@ local function expected_count(size)
 end
 
 local function now_ms()
-    return vim.loop.hrtime() / 1e6
+    return vim.uv.hrtime() / 1e6
 end
 
 local function build_line(i)

@@ -407,12 +407,22 @@ function Picker:_input_prompt()
                     "%d/%d", #data, #data
                 ))
             end
+            -- at this point we have initiated the matching process for the entirety of the stream resutls, implying that the running match
+            -- state is no longer considered valid, and can be destroyed, the stream is not going to produce any new results, and the
+            -- matcher is fully matching results on the static stream results at this point
             self:_running_match()
         end
     end)
 
     return function(query)
-        if query ~= nil then
+        -- stopping the matcher only if the maching process that is running is triggered by the input itself, and not by the
+        -- streaming-matching process, while stream is running matching can be happening, that maching is not yet related to the matching
+        -- that can be initiated by this query input. stopping has to be done only on the finalized stream matching process, not on the
+        -- running-match, the running match has its own handling for stopping the matcher independently of the input prompt
+        if query ~= nil
+            and not self:_is_interactive()
+            and self._state.matching == nil
+        then
             self.match:stop()
         end
         return debounced(query)
@@ -592,17 +602,20 @@ end
 
 function Picker:_matching_worker(mode, list, match_query, total, __type)
     if __type == 1 then
-        -- stop any ongoing matcher work so the debounced call can run promptly
         if self._matching_worker_debounced == nil then
             self._matching_worker_debounced = utils.debounce_callback(
                 self._options.stream_debounce, self._matching_worker
             )
         end
+        -- stop any ongoing matcher work so the debounced call can run promptly, this matcher process here is directly attached to macching
+        -- while the stream is still producing and emitting results and new chunks and the user query is changing. That call is de-bounced
+        -- but we are stopping the matcher outside of the debounced execution that is important.
         self.match:stop()
-        self._matching_worker_debounced(
-            self, mode, list,
-            match_query, total
-        )
+
+        -- call the debounced matcher, debouncing here is added to avoid re-starting too many matchers on the `entire` accumulation of
+        -- stream results as they likely will be huge, we can afford to not do it immediately due to the fact that the stream is still
+        -- emitting and thus we may see rapid changes in these results accumulation, ensures matcher is not overwhelmed
+        self._matching_worker_debounced(self, mode, list, match_query, total)
     else
         -- since this call is sometimes debounced we want to minimize the chance of doing extra work, in case the query has
         -- changed in between the call of this callback and it actually execting, we can skip it, the finalization above
@@ -612,7 +625,9 @@ function Picker:_matching_worker(mode, list, match_query, total, __type)
             return
         end
         -- start a new matcher with a non-empty query, against the target list that list will either be the entire stream
-        -- accumulated so far, or just the latest chunk from the stream,
+        -- accumulated so far, or just the latest chunk from the stream. when we work with the latest chunk we can not afford de-bouncing as
+        -- that would `lose` infomratoin that buffer is only available temporarily before the next one is emitted so match on it
+        -- immediately.
         self.match:match(list, match_query, function(matching)
             if matching == nil then
                 if not self.match:isvalid() or self.match:isempty() then
@@ -639,6 +654,13 @@ function Picker:_matching_worker(mode, list, match_query, total, __type)
                 ))
             end
         end, self._state.display)
+
+        -- this might seem odd, but this is important. When matching on a partial buffer form the stream that emits, we HAVE to block and
+        -- wait for match results, that will ensure that the stream will NOT emit the next stream chunk until we can finish matching. This
+        -- is crucial bvecause we use the results of the matching to merge them to the rest of the running match we can not afford to
+        -- override them with the next chunk emitted by the stream. Wait for results to materialize only when matching on chunks of stream,
+        -- this is not needed when matching on `all => __type => 1`
+        if __type == 0 and self.match:running() and self.match:isempty() then self.match:wait() end
     end
 end
 
@@ -853,8 +875,8 @@ function Picker:_flush_direct()
             -- ensure that there is new something to match, in case the query has changed since the last time the running match was done, we
             -- can safely queue the new query for matching, and clea the running match.
             if should_match == true then
-                options.prompt_input(query)
                 self:_running_match(nil)
+                options.prompt_input(query)
             end
         else
             -- Pull the current state query, sync we need to have an overview of the query value always, every time new accumulation of items
@@ -869,12 +891,12 @@ function Picker:_flush_direct()
                 local match_all = not self._state.matching
                     or self._state.matching.query ~= query
                 if match_all and #all > 0 then
-                    -- debounce call, match onto all stream results, it is safe to debounce this call because we always have access to the latest
-                    -- accumulated results
+                    -- debounced call, match onto all stream results, it is safe to debounce this call because we always have access to the latest
+                    -- accumulated results. This is non-blocking call, matching on all entries can be done async
                     self:_matching_worker("all", all, query, #all, 1)
                 elseif buf and #buf > 0 then
                     -- directly call non-debounced accumulate match worker for the current buffer, it is not safe to debounce this call as
-                    -- the buffer we receive here will no longer be available and and we can not afford to skip it
+                    -- the buffer we receive here, also this is blocking ensuring stream never emits next chunk until matching this one is done
                     self:_matching_worker("buf", buf, query, #all, 0)
                 end
             else

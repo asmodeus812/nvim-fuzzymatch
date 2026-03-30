@@ -7,7 +7,7 @@ local utils = require("fuzzy.utils")
 --- @field show_unlisted? boolean Include unlisted buffers
 --- @field show_unloaded? boolean Include unloaded buffers
 --- @field ignore_current_buffer? boolean Exclude current buffer
---- @field cwd? boolean|string|fun(): string Working directory to filter buffers; `true` resolves to `vim.loop.cwd`
+--- @field cwd? boolean|string|fun(): string Working directory to filter buffers; `true` resolves to `vim.uv.cwd`
 --- @field include_special? boolean|string[]|table<string, boolean> Include special buffers:
 ---   false: only normal buffers (buftype == "")
 ---   true: include all special buftypes
@@ -54,7 +54,7 @@ function M.open_lines_picker(opts)
     end
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     local decorator = Select.Decorator.new()

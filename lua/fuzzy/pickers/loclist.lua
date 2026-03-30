@@ -4,7 +4,7 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class LoclistPickerOptions
---- @field cwd? boolean|string|fun(): string Working directory for path display; `true` resolves to `vim.loop.cwd`
+--- @field cwd? boolean|string|fun(): string Working directory for path display; `true` resolves to `vim.uv.cwd`
 --- @field filename_only? boolean Display only the filename
 --- @field path_shorten? number|nil Path shorten value for display
 --- @field home_to_tilde? boolean Replace home prefix with ~ in display
@@ -37,7 +37,7 @@ function M.open_loclist_picker(opts)
     end
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     if opts.preview == true then

@@ -50,7 +50,7 @@ function M.find_git_root(current_working_directory)
     local result = vim.system({
         "git",
         "-C",
-        current_working_directory or vim.loop.cwd(),
+        current_working_directory or vim.uv.cwd(),
         "rev-parse",
         "--show-toplevel",
     }, { text = true }):wait()
@@ -125,7 +125,7 @@ function M.format_display_path(path_value, picker_options)
         )
     end
     if picker_options.home_to_tilde and not picker_options.absolute_path then
-        local home_directory = vim.loop.os_homedir()
+        local home_directory = vim.uv.os_homedir()
         if home_directory and #home_directory > 0 then
             local home_prefix = table.concat({ home_directory, "/" })
             if normalized_path:sub(1, #home_directory + 1) == home_prefix then

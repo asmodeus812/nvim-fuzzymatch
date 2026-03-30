@@ -954,7 +954,7 @@ function Select.BufferPreview:preview(entry, window)
         buffer = entry.bufnr
     elseif entry.filename and vim.fn.bufexists(entry.filename) ~= 0 then
         buffer = vim.fn.bufnr(entry.filename, false)
-    elseif entry.filename and vim.loop.fs_stat(entry.filename) then
+    elseif entry.filename and vim.uv.fs_stat(entry.filename) then
         local ext = vim.fn.fnamemodify(entry.filename, ':e') or ""
         if vim.tbl_contains(self.ignored, string.lower(ext)) then
             return false, "Unable to preview an ignored entry"

@@ -233,7 +233,7 @@ function M.debounce_callback(wait, callback)
             debounce_timer = nil
         end
         local args = M.table_pack(...)
-        debounce_timer = assert(vim.loop.new_timer())
+        debounce_timer = assert(vim.uv.new_timer())
         debounce_timer:start(wait, 0, vim.schedule_wrap(function()
             if current_version ~= version then
                 if debounce_timer and not debounce_timer:is_closing() then
@@ -292,12 +292,12 @@ end
 --- @return any,integer The result of the function call, and duration of the call in milliseconds
 function M.timed_call(func, ...)
     if func ~= nil and type(func) == "function" then
-        local start = vim.loop.hrtime()
+        local start = vim.uv.hrtime()
 
         local ok, result = M.safe_call(func, ...)
         if not ok then return nil, 0 end
 
-        local _end = vim.loop.hrtime()
+        local _end = vim.uv.hrtime()
         local duration = (_end - start) / 1e6
 
         return result, duration

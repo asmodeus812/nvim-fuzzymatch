@@ -3,7 +3,7 @@ local Select = require("fuzzy.select")
 local util = require("fuzzy.pickers.util")
 
 --- @class FilesPickerOptions
---- @field cwd? boolean|string|fun(): string Working directory for the scan; `true` resolves to `vim.loop.cwd`
+--- @field cwd? boolean|string|fun(): string Working directory for the scan; `true` resolves to `vim.uv.cwd`
 --- @field hidden? boolean Include hidden files
 --- @field follow? boolean Follow symlinks
 --- @field no_ignore? boolean Disable ignore files
@@ -72,7 +72,7 @@ end
 --- @return Picker
 function M.open_files_picker(opts)
     opts = util.merge_picker_options({
-        cwd = vim.loop.cwd,
+        cwd = vim.uv.cwd,
         hidden = true,
         follow = false,
         no_ignore = false,
@@ -83,7 +83,7 @@ function M.open_files_picker(opts)
     }, opts)
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     local converter = Picker.Converter.new(

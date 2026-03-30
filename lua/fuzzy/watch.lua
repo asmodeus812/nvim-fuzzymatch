@@ -34,10 +34,10 @@ local function start_watchdirs(entry, cwd)
 end
 
 local function start_fs_event(entry, cwd)
-    if not vim.loop or type(vim.loop.new_fs_event) ~= "function" then
+    if not vim.uv or type(vim.uv.new_fs_event) ~= "function" then
         return
     end
-    local handle = vim.loop.new_fs_event()
+    local handle = vim.uv.new_fs_event()
     if not handle then
         return
     end
@@ -71,7 +71,7 @@ function M.subscribe(cwd, callback)
             start_fs_event(entry, normalized)
         end
     end
-    local id = tostring(callback) .. tostring(vim.loop.hrtime())
+    local id = tostring(callback) .. tostring(vim.uv.hrtime())
     entry.subscribers[id] = callback
 
     return function()

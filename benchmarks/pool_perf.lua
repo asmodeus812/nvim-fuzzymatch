@@ -10,7 +10,7 @@ local match_every = 997
 local noise = "abcdefghijlmnoprstuwxy"
 
 local function now_ms()
-    return vim.loop.hrtime() / 1e6
+    return vim.uv.hrtime() / 1e6
 end
 
 local function build_random_sizes(min_size, max_size, count)

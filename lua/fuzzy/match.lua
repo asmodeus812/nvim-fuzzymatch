@@ -102,7 +102,7 @@ function Match:_stop_processing()
     if self._state.timer ~= nil then
         -- kill the timer if it is still active, this will stop any further processing, we do not wait for the current processing to finish,
         -- since it is expected that the callback will handle nil results as a signal that processing was aborted
-        if vim.loop.is_closing(self._state.timer) == false then
+        if vim.uv.is_closing(self._state.timer) == false then
             pcall(self._state.timer.stop, self._state.timer)
             pcall(self._state.timer.close, self._state.timer)
         end
@@ -404,7 +404,7 @@ function Match:match(list, pattern, callback, transform)
 
     -- initialize timer, start processing immediately, we need to schedule the callback to avoid issues with uv loop, being executed outside
     -- the main loop in nvim
-    self._state.timer = vim.loop.new_timer()
+    self._state.timer = vim.uv.new_timer()
     self._state.timer:start(0,
         self._options.timer,
         vim.schedule_wrap(self:_bind_guarded(

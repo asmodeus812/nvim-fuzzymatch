@@ -7,7 +7,7 @@ local util = require("fuzzy.pickers.util")
 --- @field max? integer|nil Maximum number of entries to emit
 --- @field preview? boolean|Select.Preview Enable preview window or provide a custom previewer
 --- @field icons? boolean Enable file icons
---- @field cwd? boolean|string|fun(): string Working directory for path display; `true` resolves to `vim.loop.cwd`
+--- @field cwd? boolean|string|fun(): string Working directory for path display; `true` resolves to `vim.uv.cwd`
 --- @field filename_only? boolean Display only the filename
 --- @field path_shorten? number|nil Path shorten value for display
 --- @field home_to_tilde? boolean Replace home prefix with ~ in display
@@ -31,7 +31,7 @@ function M.open_oldfiles_picker(opts)
     }, opts)
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     if opts.preview == true then
@@ -54,7 +54,7 @@ function M.open_oldfiles_picker(opts)
                 if filename and #filename > 0 then
                     if not seen_file_map[filename] and (not cwd or util.is_under_directory(cwd, filename))
                     then
-                        local stat = vim.loop.fs_stat(filename)
+                        local stat = vim.uv.fs_stat(filename)
                         if stat and stat.type == "file" then
                             seen_file_map[filename] = true
                             seen_file_count = seen_file_count + 1

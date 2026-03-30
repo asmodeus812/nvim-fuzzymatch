@@ -4,7 +4,7 @@ local util = require("fuzzy.pickers.util")
 local utils = require("fuzzy.utils")
 
 --- @class GrepPickerOptions
---- @field cwd? boolean|string|fun(): string Working directory for the search; `true` resolves to `vim.loop.cwd`
+--- @field cwd? boolean|string|fun(): string Working directory for the search; `true` resolves to `vim.uv.cwd`
 --- @field hidden? boolean Include hidden files
 --- @field follow? boolean Follow symlinks
 --- @field no_ignore? boolean Disable ignore files
@@ -83,7 +83,7 @@ end
 --- @return Picker
 function M.open_grep_picker(opts)
     opts = util.merge_picker_options({
-        cwd = vim.loop.cwd,
+        cwd = vim.uv.cwd,
         hidden = false,
         follow = false,
         no_ignore = false,
@@ -149,7 +149,7 @@ function M.open_grep_picker(opts)
     end
 
     if opts.cwd == true then
-        opts.cwd = vim.loop.cwd
+        opts.cwd = vim.uv.cwd
     end
 
     local converter = Picker.Converter.new(

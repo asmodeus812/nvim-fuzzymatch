@@ -50,7 +50,7 @@ function M.run()
 
     helpers.run_test_case("util_format_display_path_basic", function()
         local opts = {
-            cwd = vim.loop.cwd(),
+            cwd = vim.uv.cwd(),
             home_to_tilde = true,
             path_shorten = 1,
         }
@@ -88,27 +88,27 @@ function M.run()
     end)
 
     helpers.run_test_case("util_format_display_path_home_to_tilde", function()
-        local original = vim.loop.os_homedir
-        vim.loop.os_homedir = function()
+        local original = vim.uv.os_homedir
+        vim.uv.os_homedir = function()
             return "/tmp/home"
         end
         local ok, result = pcall(util.format_display_path, "/tmp/home/file.txt", {
             home_to_tilde = true,
         })
-        vim.loop.os_homedir = original
+        vim.uv.os_homedir = original
         helpers.assert_ok(ok, "format_display_path threw on home_to_tilde")
         helpers.eq(result, "~/file.txt", "format_display_path home_to_tilde")
     end)
 
     helpers.run_test_case("util_format_display_path_home_prefix_no_next", function()
-        local original = vim.loop.os_homedir
-        vim.loop.os_homedir = function()
+        local original = vim.uv.os_homedir
+        vim.uv.os_homedir = function()
             return "/tmp/home"
         end
         local ok, result = pcall(util.format_display_path, "/tmp/home", {
             home_to_tilde = true,
         })
-        vim.loop.os_homedir = original
+        vim.uv.os_homedir = original
         helpers.assert_ok(ok, "format_display_path threw on home exact")
         helpers.eq(result, "/tmp/home", "format_display_path home exact")
     end)
